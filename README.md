@@ -2,7 +2,7 @@
 
 A local-capacity rule for primordial planetary mass allocation. Predicts planet masses from four system properties — stellar mass, grain size, primordial spin, and disc-to-star mass ratio — using a universal set of physical rules, plus per-planet orbital radius and formation timing.
 
-**[Open the interactive tool →](./hydros.html)**
+**[Open the interactive tool →](./index.html)**
 
 ## What it is
 
