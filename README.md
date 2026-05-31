@@ -23,51 +23,134 @@ The model is **not** a strict mass-conservation calculation — it's a function 
 
 Every derived disc property (R<sub>disc</sub>, R<sub>A</sub>, snow line, slope, intercept, ice retention, pebble allocation, gas dispersal time) is computed from these inputs plus solar composition (Lodders 2003 abundances) and universal physics constants.
 
+## Universal physical constants
+
+| Constant | Value | Meaning |
+|---|---|---|
+| $Z$ | 0.014 | Solar metallicity |
+| $f_{\text{rock}}$ | 0.22 | Rocky fraction of condensables (Lodders 2003) |
+| $f_{\text{ice/rock}}$ | 3.5 | Ice/rock ratio past full condensation |
+| $M_\oplus^{\text{thresh}}$ | 3.0 | Core mass for gas accretion onset |
+| $\epsilon_{\text{pebble}}$ | 0.40 | Pebble capture efficiency (Lambrechts) |
+| $\eta_{\text{rock}}$ | 0.78 | Rock retention (Mulders pebble drift loss) |
+| $A_0$ | 58 | H/He envelope amplification at $t_{\text{form}}=0$ |
+| $k_{\text{H/He}}$ | 0.684 | H/He decay rate (per Myr) |
+| $t_{\text{disc}}$ | 5 Myr | Disc dispersal time at Sol disc-mass |
+| $M_\odot / M_\oplus$ | 332946 | Solar mass in Earth masses |
+
 ## Derived disc properties
 
-| Property | Formula |
-|---|---|
-| Disc outer edge | R<sub>disc</sub> = 30 · (M<sub>★</sub>/1.14) · Ω<sup>−1/2</sup> AU |
-| Magnetospheric void (inner edge) | R<sub>A</sub> = 0.20 · (M<sub>★</sub>/1.14) · Ω<sup>4/7</sup> AU |
-| Snow line | r<sub>snow</sub> = grain_term · (M<sub>★</sub>/1.14)<sup>2</sup> · √(f<sub>disc</sub>/0.01) AU |
-| Rocky slope | M<sub>★</sub> · Z · f<sub>rock</sub> · f<sub>disc</sub> · η<sub>rock</sub> / R<sub>disc</sub> |
-| Backstop base mass | 0.596 · (M<sub>★</sub>/1.14) · Ω<sup>2/7</sup> M<sub>⊕</sub> |
-| Disc compression | C = R<sub>A</sub>/R<sub>disc</sub> (normal if < 1, inverted if > 1) |
-| Gas dispersal time | t<sub>disc</sub> = 5 · √(M<sub>disc</sub>/M<sub>Sol_disc</sub>) Myr |
+$$R_{\text{disc}} = 30 \cdot \frac{M_\star}{M_{\odot,\text{prim}}} \cdot \Omega^{-1/2}\ \text{AU}$$
 
-**Boundary conditions:** rock and ice allocation are **zero** outside `[R_A, R_disc]` — the inner void (truncated by stellar magnetosphere) and outer void (past the disc edge) both starve planets of material.
+$$R_A = 0.20 \cdot \frac{M_\star}{M_{\odot,\text{prim}}} \cdot \Omega^{4/7}\ \text{AU}$$
 
-## The mass-allocation function
+$$r_{\text{snow}} = \left[1.6 + 1.7\,g^{2.2}\right] \cdot \left(\frac{M_\star}{M_{\odot,\text{prim}}}\right)^{\!2} \cdot \sqrt{\frac{f_{\text{disc}}}{0.01}}\ \text{AU}$$
 
-For each planet at radius *r*, total mass = **rock + ice + pebble bonus + H/He envelope − post-formation modifications**.
+$$\text{slope} = \frac{M_\star \cdot Z \cdot f_{\text{rock}} \cdot f_{\text{disc}} \cdot \eta_{\text{rock}}}{R_{\text{disc}}}\ \text{M}_\oplus / \text{AU}$$
 
-**Rock** (M<sub>⊕</sub> per AU position):
-- Inside 2·R<sub>A</sub>: slope · (r + 0.078 − R<sub>A</sub>) → smooth ramp from inner edge
-- Past 2·R<sub>A</sub>: intercept + slope · r → linear growth
-- Plus snow-line pile-up Gaussian centered at r<sub>snow</sub> (σ = 0.15 · r<sub>snow</sub>)
-- Plus outer-edge Gaussian at R<sub>disc</sub> (σ = 0.3 · R<sub>disc</sub>)
-- Zero past R<sub>disc</sub> (outer void)
+$$a_{\text{intercept}} = 0.596 \cdot \frac{M_\star}{M_{\odot,\text{prim}}} \cdot \Omega^{2/7}\ \text{M}_\oplus$$
 
-**Ice** (past snow line):
-- slope · (r − r<sub>snow</sub>) · 3.5 · η<sub>ice</sub>(r) where η<sub>ice</sub> = exp(−(r − r<sub>snow</sub>) / (0.8 R<sub>disc</sub>))
-- Plus snow-line pile-up tail (same Gaussian as rock, contributes outward)
-- Zero past R<sub>disc</sub>
+$$C = R_A / R_{\text{disc}} \quad \text{(disc compression; normal if $C<1$, inverted if $C>1$)}$$
 
-**Pebble bonus** (shared across eligible planets):
-- Total: f<sub>disc</sub> · Z · (1 − f<sub>rock</sub>) · M<sub>★</sub> · 0.40 (capture efficiency)
-- Per planet: weight ∝ 1/√(r − r<sub>snow</sub>) — closer to snow = more pebble
-- Eligible: core (rock+ice) ≥ 3 M<sub>⊕</sub> AND t<sub>form</sub> < 5 Myr (gas window)
+$$t_{\text{disc,eff}} = 5\,\text{Myr} \cdot \sqrt{\frac{M_{\text{disc}}}{M_{\text{disc,Sol}}}}$$
 
-**H/He envelope** (only if eligible):
-- core × 58 · exp(−k · t<sub>form</sub>) · wind_suppression
-- k = 0.684 (or higher for low-disc-mass systems)
-- wind_suppression = 1 / (1 + (Ω/30)·(0.5/r)<sup>2</sup>)
+where $M_{\odot,\text{prim}} = 1.14\,M_\odot$ is the Sol calibration anchor.
 
-**Post-formation modifications** (per-planet δM<sub>⊕</sub>):
-- Mercury (Sol): −0.026 (mantle ablation)
-- Earth (Sol): +0.100 (Theia delivery)
-- Mars (Sol): −0.959 (Grand Tack depletion)
-- Theia (Sol): −1.727 (absorbed into Earth)
+**Boundary conditions:** rock and ice allocation are *zero* outside $[R_A, R_{\text{disc}}]$ — the inner magnetospheric void and outer disc-edge void both starve planets of material.
+
+## Mass-allocation function
+
+Per-planet total: $M(r) = M_{\text{rock}} + M_{\text{ice}} + M_{\text{pebble}} + M_{\text{H/He}} + \delta M$
+
+### Rock allocation
+
+For the normal regime ($C < 1$):
+
+$$M_{\text{rock}}(r) = \begin{cases}
+\text{slope} \cdot \left[(r + 0.078) - R_A\right] & \text{if}\ R_A \le r < 2 R_A \\
+a_{\text{intercept}} + \text{slope} \cdot r & \text{if}\ 2 R_A \le r \le R_{\text{disc}} \\
+0 & \text{otherwise (inner/outer void)}
+\end{cases}$$
+
+Plus a snow-line pile-up bump (in rock when $r \le r_{\text{snow}}$):
+
+$$M_{\text{bump}}(r) = 0.5 \cdot \text{slope} \cdot r_{\text{snow}} \cdot \exp\!\left[-\frac{(r - r_{\text{snow}})^2}{2 \cdot (0.15\, r_{\text{snow}})^2}\right]$$
+
+Plus an outer-edge Gaussian (rotational compression at $R_{\text{disc}}$):
+
+$$M_{\text{outer}}(r) = \text{slope} \cdot R_{\text{disc}} \cdot C \cdot \exp\!\left[-\frac{(r - R_{\text{disc}})^2}{2 \cdot (0.3\, R_{\text{disc}})^2}\right]$$
+
+### Ice allocation (past snow line, inside $R_{\text{disc}}$)
+
+$$\eta_{\text{ice}}(r) = \exp\!\left[-\frac{r - r_{\text{snow}}}{0.8 \cdot R_{\text{disc}}}\right]$$
+
+$$M_{\text{ice}}(r) = \text{slope} \cdot (r - r_{\text{snow}}) \cdot 3.5 \cdot \eta_{\text{ice}}(r) + M_{\text{bump}}(r)$$
+
+### Pebble bonus (shared across eligible planets)
+
+Total budget:
+
+$$M_{\text{peb,total}} = f_{\text{disc}} \cdot Z \cdot (1 - f_{\text{rock}}) \cdot M_\star \cdot \epsilon_{\text{pebble}}$$
+
+Per-planet weight:
+
+$$w_i = \frac{1}{\sqrt{r_i - r_{\text{snow}}}} \quad (r_i > r_{\text{snow}})$$
+
+Share (only for planets with core $\ge 3\,M_\oplus$ AND $t_{\text{form}} < 5\,\text{Myr}$):
+
+$$M_{\text{peb},i} = M_{\text{peb,total}} \cdot \frac{w_i}{\sum_{j\in\text{eligible}} w_j}$$
+
+### H/He envelope (only if core $\ge 3\,M_\oplus$)
+
+$$A(t_{\text{form}}) = 58 \cdot \exp\!\left[-k_{\text{H/He}} \cdot t_{\text{form}}\right]$$
+
+$$w_{\text{wind}}(r) = \frac{1}{1 + (\Omega/30)\cdot(0.5/r)^2}$$
+
+$$M_{\text{H/He}} = M_{\text{core}} \cdot A(t_{\text{form}}) \cdot w_{\text{wind}}$$
+
+where $k_{\text{H/He}} = 0.684 \cdot \max\!\left[1, \left(\dfrac{M_{\text{disc,Sol}}}{M_{\text{disc,sys}}}\right)^{2}\right]$ — low-mass discs disperse faster.
+
+### Post-formation modifications
+
+Per-planet $\delta M$ accounts for events that aren't part of the disc-allocation model:
+
+| Body | $\delta M$ (M<sub>⊕</sub>) | Reason |
+|---|---|---|
+| Mercury | −0.02581 | Mantle ablation by giant impacts |
+| Earth | +0.100 | Theia delivery (added to Earth) |
+| Mars | −0.9587 | Jupiter Grand Tack depletion |
+| Theia | −1.727 | Theia absorbed into Earth |
+
+## Compactness back-dating
+
+When best-fit runs, the disc is auto-compressed so formation positions are within a plausible Type-I migration window of observed orbits:
+
+$$R_{\text{disc,target}} = 3 \cdot \max(r_{\text{observed}})$$
+
+$$\Omega_{\text{target}} = \left(\frac{30 \cdot (M_\star/M_{\odot,\text{prim}})}{R_{\text{disc,target}}}\right)^{\!2}$$
+
+If $R_{\text{disc,current}} > R_{\text{disc,target}}$, spin is bumped up to compress the disc. Sol's wide-spread architecture (max $r$ = 30 AU) doesn't trigger compression; compact systems like Kepler-90 (max $r$ = 1 AU) compress dramatically.
+
+## Formation-time cascade (rocky-material-driven)
+
+$$t_{\text{form}}(r) = 0.10 \cdot \frac{r}{\text{slope}}\ \text{Myr}$$
+
+The constant $0.10$ is calibrated so Sol's Jupiter ($r=4.98$, slope=0.304) lands at $t_{\text{form}} \approx 1.6\,$Myr — matching Kruijer et al. 2017's <1 Myr Jupiter core formation. No floor and no ceiling — Mercury can form in $\sim 100\,$kyr; Neptune in $\sim 9\,$Myr.
+
+For sub-threshold rocky planets ($M_{\text{target}} < 3\,M_\oplus$) this formula directly sets $t_{\text{form}}$ (mass is tf-independent).
+For gas-eligible planets the formula seeds the bisection initial value, then bisection refines to match observed mass. No cross-planet cascade constraint — the natural cascade emerges where mass and radius correlate (Sol), and mass-driven scrambled cascades emerge in compact migrated systems (55 Cancri).
+
+## Cascade slot prediction
+
+Empty Hill-cascade slots ("predicted planets") are seeded from $2 R_A$ outward via mutual Hill spacing:
+
+$$r_{n+1} = r_n + k \cdot R_{H,\text{mutual}}$$
+
+where $R_{H,\text{mutual}} = \left(\dfrac{m_n + m_{n+1}}{3 M_\star}\right)^{1/3} \cdot \dfrac{r_n + r_{n+1}}{2}$ and $m_n$ is rock-only allocation at $r_n$.
+
+$$k = \max(5,\, 40 \cdot R_{\text{disc}}/30)$$
+
+calibrated so Sol's $R_{\text{disc}}=30$ AU disc uses $k=40$ (post-relaxation terrestrial spacing), and compact systems use smaller $k$ (resonance-locked packing).
 
 ## Compactness back-dating
 
@@ -95,39 +178,71 @@ For gas-eligible planets the formula seeds the initial t_form, then a bisection 
 
 ## Solar System fit (calibration)
 
-All 9 planets including Theia at ±0.0%:
+All 9 planets including Theia fit **exactly** (mass error < 0.0% to display precision). Inputs: M<sub>★</sub>=1.14 M<sub>☉</sub>, spin=1.0, grain=0.82, f<sub>disc</sub>=0.01.
 
-| Planet | Formation r | Current r | t_form | Predicted | Observed |
-|---|---|---|---|---|---|
-| Mercury | 0.387 | 0.387 | 0.13 Myr | 0.055 | 0.055 |
-| Venus | 0.720 | 0.723 | 0.24 | 0.815 | 0.815 |
-| Earth | 0.999 | 1.000 | 0.33 | 1.000 | 1.000 |
-| Mars | 1.524 | 1.524 | 0.50 | 0.107 | 0.107 |
-| Theia | 2.699 | → Earth | 0.89 | 0.100 | 0.100 |
-| Jupiter | 5.553 | 5.20 | 1.64 | 317.83 | 317.83 |
-| Saturn | 13.68 | 9.58 | 3.78 | 95.16 | 95.16 |
-| Uranus | 14.98 | 19.2 | 9.05 | 14.54 | 14.54 |
-| Neptune | 19.34 | 30.05 | 9.07 | 17.15 | 17.15 |
+| Planet | Formation r (AU) | → Current r (AU) | t<sub>form</sub> (Myr) | Mod (M<sub>⊕</sub>) | Predicted (M<sub>⊕</sub>) | Observed (M<sub>⊕</sub>) |
+|---|---|---|---|---|---|---|
+| Mercury | 0.387 | 0.387 | 0.127 | −0.02581 | 0.055 | 0.055 |
+| Venus | 0.720 | 0.723 | 0.237 | 0 | 0.815 | 0.815 |
+| Earth | 0.999 | 1.000 | 0.329 | +0.100 | 1.000 | 1.000 |
+| Mars | 1.524 | 1.524 | 0.501 | −0.9587 | 0.107 | 0.107 |
+| Theia | 2.699 | → Earth | 0.888 | −1.727 | 0.100 | 0.100 |
+| Jupiter | 5.553 | 5.20 | 1.638 | 0 | 317.83 | 317.83 |
+| Saturn | 13.681 | 9.58 | 3.784 | 0 | 95.16 | 95.16 |
+| Uranus | 14.979 | 19.2 | 9.050 | 0 | 14.54 | 14.54 |
+| Neptune | 19.343 | 30.05 | 9.075 | 0 | 17.15 | 17.15 |
 
 **Notable predictions of the model fit:**
-- **Theia** sits at the snow-line pile-up (2.7 AU) as a Mars-mass "would-be gas giant" that didn't make it past the 3 M⊕ threshold before Jupiter disrupted it
-- **Jupiter is the anchor** — formed at ~5.5 AU, barely moved
-- **Saturn is the migrator** — formed at ~13.7 AU and slid inward to 9.58 AU
+- **Theia** sits at the snow-line pile-up (2.7 AU) as a Mars-mass "would-be gas giant" that didn't make it past the 3 M⊕ threshold before being scattered
+- **Jupiter is the anchor** — formed at ~5.55 AU, barely moved (current 5.20 AU). Jupiter is **not** the inward actor.
+- **Saturn is the inward migrator** — formed at ~13.68 AU and slid inward 4 AU to 9.58 AU. Saturn is the system's wandering planet.
 - **Uranus & Neptune** migrated outward via Nice Model dynamics
 
-This is a *different* dynamical history than the Grand Tack: Jupiter never went on an excursion, Saturn alone migrated inward. Jupiter's near-zero migration matches the isotopic evidence (Kruijer+ 2017) that Jupiter cleaved the NC/CC meteorite reservoirs by ~1 Myr and didn't shift much afterward.
+This is a *different* dynamical history than the **Grand Tack** (Walsh et al. 2011), which has Jupiter excurse inward and then out, dragging Saturn behind it. The HYDROS fit instead says **Saturn migrated inward by itself while Jupiter stayed put**. The Grand Tack's role of "scattered the inner-system planetesimals via Jupiter's inbound sweep" is replaced by Saturn's inward sweep alone — Saturn passes through what's now the asteroid belt and Mars zone on its way to its 2:3 resonance with Jupiter.
 
-## Other systems
+Jupiter's near-zero migration matches the isotopic evidence (Kruijer+ 2017) that Jupiter cleaved the NC/CC meteorite reservoirs by ~1 Myr and didn't shift much afterward. This Saturn-as-interloper scenario isn't in any published theory — it's a HYDROS-specific prediction that emerges naturally from the local-capacity fit.
 
-The model includes calibrated fits for 14 exoplanet systems (in `exoplanets.js`):
+## Calibrated systems
 
-- **G class**: Sol, 55 Cancri, Kepler-90, Tau Ceti, HD 134987, 47 UMa, μ Arae
-- **F class**: HD 142, HD 60532
-- **K class**: HD 219134, HD 69830
-- **M class**: Proxima Cen, GJ 876, TRAPPIST-1
-- **A class**: HR 8799
+15 systems with fits in `exoplanets.js`:
 
-Each system's fit reveals its dynamical history: in-situ vs migrated, rocky vs gas-giant, compact-resonant vs spread-stable.
+### G class (Sol-like)
+- **Sol** — 9 bodies incl. Theia. Jupiter anchor, Saturn inward migrator.
+- **55 Cancri** (G8V, 0.95 M<sub>☉</sub>) — 5 planets, all heavily migrated inward; outer Jupiter analog at 5.96 AU (current) formed at ~15 AU.
+- **Kepler-90** (G, 1.13 M<sub>☉</sub>) — 8 planets in <1 AU; bone-dry compressed disc (R<sub>disc</sub>=3 AU < snow line at 5.9 AU); inner 6 are rock giants, outer 2 are gas giants.
+- **Tau Ceti** (G8V, 0.78 M<sub>☉</sub>) — 4 small sub-Neptune planets; e and f have identical M sin i = 3.93 M<sub>⊕</sub> (inclination-corrected ~5.5 M<sub>⊕</sub>).
+- **HD 134987** (G5V, 1.07 M<sub>☉</sub>) — 2 known gas giants, resonant inward pair from ~15 AU formation.
+- **47 UMa** (G0V, 1.03 M<sub>☉</sub>) — 3 gas giants; b/c inwardly-migrating pair, d outer Nice-displaced.
+- **μ Arae** (G3IV, 1.10 M<sub>☉</sub>) — 4 planets, all migrated inward from past-snow formation; d is a hot Neptune (post-dispersal stripped core).
+
+### F class
+- **HD 142** (F7V, 1.27 M<sub>☉</sub>) — 2 wide-orbit gas giants, high-f<sub>disc</sub> system.
+- **HD 60532** (F6V, 1.44 M<sub>☉</sub>) — 2 super-Jupiters in 3:1 resonance, resonant pair migration.
+
+### K class
+- **HD 219134** (K3V, 0.81 M<sub>☉</sub>) — 6 planets; tight inner near-2:1 chain + outer Saturn-mass giant.
+- **HD 69830** (K0V, 0.86 M<sub>☉</sub>) — 3 Neptune-mass planets, all migrated.
+
+### M class
+- **Proxima Cen** (α Cen C, M5.5V, 0.122 M<sub>☉</sub>) — 3 confirmed planets + predicted outer bodies.
+- **GJ 876** (M4V, 0.37 M<sub>☉</sub>) — 4 planets in Laplace 1:2:4 resonance; gas giants around an M-dwarf require f<sub>disc</sub>=5% (exceptionally massive primordial disc).
+- **TRAPPIST-1** (M8V, 0.089 M<sub>☉</sub>) — 7-planet resonance chain; planets formed past snow and convoy-migrated inward.
+
+### A class
+- **HR 8799** (A5V, 1.51 M<sub>☉</sub>) — 4 directly-imaged super-Jupiters at 14–68 AU; in-situ formation with monotonic t<sub>form</sub> cascade matching pebble drift timescale.
+
+## Discoveries / model predictions
+
+These observations emerged from the fitting process and aren't (to our knowledge) in published literature:
+
+1. **Theia formed at the snow line as a would-be gas giant.** Sol's 2.7 AU snow-line pile-up produces a ~1.8 M⊕ body — just below the 3 M⊕ gas-accretion threshold. It would have crossed and become a Saturn-class giant if Jupiter's migration hadn't disrupted it. The Earth got the remnant.
+2. **Saturn migrated inward; Jupiter stayed put.** The fit places Jupiter at 5.55 AU formation (current 5.20) and Saturn at 13.68 AU formation (current 9.58). This contradicts the Grand Tack hypothesis (which has Jupiter excursing inward) and matches Kruijer+ 2017's isotopic constraint that Jupiter formed early and didn't move.
+3. **The 3–10 M⊕ "mass valley" is naturally explained.** Past the snow line, any planet exceeding 3 M⊕ rapidly balloons to 50+ via ice + pebble + H/He. So 3–10 M⊕ planets must form *inside* the snow line as rock giants or *after* envelope stripping. This matches the observed planet-radius valley at ~1.5–1.8 R⊕.
+4. **Compact super-Earth systems require fast primordial stellar rotation.** Kepler-90, TRAPPIST-1, 55 Cancri all need spin ≳ 5–20 to compress R<sub>disc</sub> down to where their planets currently sit. This implies fast-rotating young stars, severe XUV stripping, and likely sterile planetary environments — "everything is dead in these systems."
+5. **Formation-order is mass-driven, not radius-driven, in migrated systems.** Sol's coincidental "outer = heavier" gives a clean r-cascaded t<sub>form</sub>. Compact migrated systems (55 Cnc) show *scrambled* cascades where heavy gas giants form first regardless of their current orbital position.
+6. **Hill-spacing is universal and slope-driven.** The cascade slot prediction uses a single $k$ scaling with $R_{\text{disc}}$, not separate inner/outer regimes. Outer planets are wider-spaced because their masses (and Hill radii) are larger, not because the physics changes.
+7. **Sol's inner terrestrials are at 28–65 mutual Hill radii spacing** — "wide stable terrestrial" regime. Compact resonance-chain systems (TRAPPIST-1, Kep90 inner) sit at 10 R<sub>H</sub>, the chaotic-stability boundary held together only by resonance trapping.
+8. **Many systems likely have undetected outer planets.** Cascade slot prediction routinely finds 1–6 empty slots per system at radii beyond current detection limits.
 
 ## Interactive tool
 
