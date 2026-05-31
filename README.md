@@ -1,6 +1,6 @@
 # HYDROS Planet Formation Model
 
-A simple AU-based capacity model for primordial planetary mass allocation. Predicts planet masses from four system properties — stellar mass, grain size, primordial spin, and disc-to-star mass ratio — using a universal set of physical rules.
+A local-capacity rule for primordial planetary mass allocation. Predicts planet masses from four system properties — stellar mass, grain size, primordial spin, and disc-to-star mass ratio — using a universal set of physical rules, plus per-planet orbital radius and formation timing.
 
 **[Open the interactive tool →](./hydros.html)**
 
@@ -10,9 +10,9 @@ HYDROS treats planet mass at orbital radius *r* as a **local accretion capacity*
 
 > Each AU position in a protoplanetary disc has a finite mass capacity determined by local physics — surface density, snow line, magnetic truncation, compression, pebble drift. The planet that forms at *r* captures roughly that capacity. Material between planet positions drains to the star, is scattered, or feeds neighbors.
 
-The model is **not** a strict mass-conservation calculation — it's a function `M(r)` that empirically matches observed planet masses at observed positions across multiple stellar types.
+The model is **not** a strict mass-conservation calculation — it's a function `M(r)` that empirically matches observed planet masses at observed positions across many stellar types.
 
-## The four fundamental inputs
+## The four fundamental system inputs
 
 | Input | Symbol | Sol value | Range |
 |---|---|---|---|
@@ -21,109 +21,135 @@ The model is **not** a strict mass-conservation calculation — it's a function 
 | Primordial spin | Ω | 1.0 | 0.1–1000+ |
 | Disc/star mass ratio | f<sub>disc</sub> | 1% | 0.1%–30% |
 
-Everything else (R<sub>disc</sub>, R<sub>A</sub>, snow line, slope, intercept, ice retention, pebble allocation, gas dispersal time) is derived universally from these.
+Every derived disc property (R<sub>disc</sub>, R<sub>A</sub>, snow line, slope, intercept, ice retention, pebble allocation, gas dispersal time) is computed from these inputs plus solar composition (Lodders 2003 abundances) and universal physics constants.
 
-## Solar System fit
+## Derived disc properties
 
-| Planet | Predicted | Observed | Error |
-|---|---|---|---|
-| Mercury | 0.056 | 0.055 | +1.5% |
-| Venus | 0.816 | 0.815 | +0.1% |
-| Earth | 1.000 | 1.000 | 0.0% |
-| Mars | 0.110 | 0.107 | +2.5% |
-| Jupiter | 322.4 | 317.8 | +1.4% |
-| Saturn | 94.3 | 95.2 | −0.9% |
-| Uranus | 14.5 | 14.5 | −0.3% |
-| Neptune | 17.1 | 17.2 | −0.3% |
-
-All 8 planets within ±2.5% of observation.
-
-## Why Mars and Mercury look "so big" in the model
-
-The model predicts **primordial allocations** — what material was originally distributed to each orbital position — not what survives today. Two of Sol's inner planets have lost most of their primordial mass to subsequent events:
-
-### Mars: stolen by Jupiter (Grand Tack depletion)
-
-- **HYDROS allocation at 1.524 AU**: ~1.06 M<sub>⊕</sub> rock
-- **Observed Mars mass**: 0.107 M<sub>⊕</sub>
-- **Mass missing**: ~0.95 M<sub>⊕</sub> (90% of original)
-
-The Mars zone originally contained roughly Earth-mass worth of rocky material. During the Grand Tack scenario (Walsh et al. 2011), Jupiter migrated inward to ~1.5 AU during its formation, then back outward. As it swept through the Mars zone, it scattered most of the planetesimals there — some eaten by Jupiter itself, some thrown into the asteroid belt or out of the system.
-
-Mars is the **stunted remnant** of what should have been an Earth-mass planet. The model's overprediction here is correct: it shows what Mars *would have been* without Jupiter's migration disrupting its zone.
-
-The `Mod` field in the tool encodes this: `Mars: −0.950 M⊕` for "Jupiter Grand Tack depletion."
-
-### Mercury: void-truncated + mantle ablated
-
-- **HYDROS allocation at 0.387 AU**: ~0.08 M<sub>⊕</sub> (already small)
-- **Then post-formation**: lost ~30% to mantle ablation
-- **Observed Mercury mass**: 0.055 M<sub>⊕</sub>
-
-Mercury sits right at the edge of the **magnetospheric void** (R<sub>A</sub> ≈ 0.31 AU in current Sol; was 0.20 AU during Mercury's formation). Material inside R<sub>A</sub> can't accumulate — the stellar magnetosphere truncates the inner disc. So Mercury formed from a thin annulus between R<sub>A</sub> and Venus's feeding zone, getting a smaller initial allocation than the slope rule would suggest at that radius.
-
-Then it was subsequently **mantle-stripped** by one or more giant impacts (Benz et al. mantle stripping scenario). Mercury today is ~70% iron core / ~30% mantle, anomalously dense — its rocky mantle was largely ablated, leaving a core-heavy remnant.
-
-The model's combination of void truncation (allocation) + mantle ablation (post-formation modification) explains why Mercury is so much lighter than its orbital radius would imply.
-
-The `Mod` field encodes this: `Mercury: −0.025 M⊕` for "mantle ablation."
-
-### Earth and Venus: undisturbed in-place formation
-
-Earth and Venus are within 1–2% of observed without significant modification:
-- **Venus**: clean direct test of the rule (no significant post-formation events)
-- **Earth**: +0.1 M⊕ for "Theia delivery" — the Mars-sized impactor that formed the Moon also delivered ~10% extra mass
-
-## Why the outer planets are at different positions
-
-The model uses **primordial formation positions**, not current observed orbits. Sol's gas and ice giants migrated outward during the first ~Gyr of the solar system (Nice Model dynamics; Tsiganis et al. 2005).
-
-| Planet | Primordial r (HYDROS) | Current r | Migration |
-|---|---|---|---|
-| Jupiter | 5.40 AU | 5.20 AU | inward (~0.20 AU) |
-| Saturn | 8.90 AU | 9.58 AU | outward (~0.68 AU) |
-| Uranus | 15.0 AU | 19.2 AU | outward (~4.2 AU) |
-| Neptune | 21.0 AU | 30.05 AU | outward (~9.05 AU) |
-
-**Why migrate outward?** During the Nice Model instability event (~600 Myr after formation), interactions between the giant planets and a residual planetesimal disc transferred angular momentum: Jupiter slightly inward, the other three outward. The dance ended with Neptune flinging Kuiper Belt objects inward and getting boosted out to ~30 AU.
-
-**Why does the model use primordial positions?** The allocation rule applies at formation time, before migration. If we used current positions:
-- Neptune at 30 AU would get even more rock+ice from the rule (its current slope×r), overshooting observed
-- Uranus at 19.2 AU similar overshooting
-
-Using primordial positions (15 and 21 AU), the model lands within ±0.5% of observed — a sharp consistency check. **This independently constrains the Nice Model migration history.**
-
-**The Grand Tack vs HYDROS prediction:** The model actually *rules out* Jupiter forming at 3.5 AU (the canonical Grand Tack initial position). At 3.5 AU, the rule gives Jupiter only ~2.5 M⊕ — below the 3 M⊕ threshold for gas-giant runaway. The model says Jupiter must have formed at ≥5 AU to have enough rocky/icy core to nucleate gas accretion.
-
-## Model features
-
-| Feature | Description |
+| Property | Formula |
 |---|---|
-| **Compression regimes** | Normal (C < 1) vs Inverted (C > 1) based on R<sub>A</sub>/R<sub>disc</sub> ratio |
-| **Snow line position** | Set by stellar luminosity (M<sub>★</sub><sup>2</sup>) × disc viscous heating (√f<sub>disc</sub>) × grain opacity |
-| **R<sub>A</sub> scaling** | ∝ M<sub>★</sub><sup>2</sup> × Ω<sup>4/7</sup> — M-dwarfs have tiny R<sub>A</sub> |
-| **R<sub>disc</sub> scaling** | ∝ M<sub>★</sub> × Ω<sup>−1/2</sup> — faster spin compresses disc |
-| **Slope** | M<sub>★</sub> × Z × f<sub>rock</sub> × f<sub>disc</sub> × η<sub>rock</sub> / R<sub>disc</sub> |
-| **Snow-line pile-up** | Universal Mulders pebble trap, mild Gaussian centered at r<sub>snow</sub> |
-| **Outer pile-up** | Universal Gaussian at R<sub>disc</sub>, compression-scaled (negligible for Sol-like) |
-| **Wind suppression** | XUV-driven H stripping, scales with spin × 1/r² |
-| **Gas dispersal** | k<sub>eff</sub> ∝ (Sol_disc / system_disc)² — fast dispersal in low-mass discs |
-| **Threshold** | 3 M<sub>⊕</sub> core needed to retain H/He (universal gravity constraint) |
+| Disc outer edge | R<sub>disc</sub> = 30 · (M<sub>★</sub>/1.14) · Ω<sup>−1/2</sup> AU |
+| Magnetospheric void (inner edge) | R<sub>A</sub> = 0.20 · (M<sub>★</sub>/1.14) · Ω<sup>4/7</sup> AU |
+| Snow line | r<sub>snow</sub> = grain_term · (M<sub>★</sub>/1.14)<sup>2</sup> · √(f<sub>disc</sub>/0.01) AU |
+| Rocky slope | M<sub>★</sub> · Z · f<sub>rock</sub> · f<sub>disc</sub> · η<sub>rock</sub> / R<sub>disc</sub> |
+| Backstop base mass | 0.596 · (M<sub>★</sub>/1.14) · Ω<sup>2/7</sup> M<sub>⊕</sub> |
+| Disc compression | C = R<sub>A</sub>/R<sub>disc</sub> (normal if < 1, inverted if > 1) |
+| Gas dispersal time | t<sub>disc</sub> = 5 · √(M<sub>disc</sub>/M<sub>Sol_disc</sub>) Myr |
+
+**Boundary conditions:** rock and ice allocation are **zero** outside `[R_A, R_disc]` — the inner void (truncated by stellar magnetosphere) and outer void (past the disc edge) both starve planets of material.
+
+## The mass-allocation function
+
+For each planet at radius *r*, total mass = **rock + ice + pebble bonus + H/He envelope − post-formation modifications**.
+
+**Rock** (M<sub>⊕</sub> per AU position):
+- Inside 2·R<sub>A</sub>: slope · (r + 0.078 − R<sub>A</sub>) → smooth ramp from inner edge
+- Past 2·R<sub>A</sub>: intercept + slope · r → linear growth
+- Plus snow-line pile-up Gaussian centered at r<sub>snow</sub> (σ = 0.15 · r<sub>snow</sub>)
+- Plus outer-edge Gaussian at R<sub>disc</sub> (σ = 0.3 · R<sub>disc</sub>)
+- Zero past R<sub>disc</sub> (outer void)
+
+**Ice** (past snow line):
+- slope · (r − r<sub>snow</sub>) · 3.5 · η<sub>ice</sub>(r) where η<sub>ice</sub> = exp(−(r − r<sub>snow</sub>) / (0.8 R<sub>disc</sub>))
+- Plus snow-line pile-up tail (same Gaussian as rock, contributes outward)
+- Zero past R<sub>disc</sub>
+
+**Pebble bonus** (shared across eligible planets):
+- Total: f<sub>disc</sub> · Z · (1 − f<sub>rock</sub>) · M<sub>★</sub> · 0.40 (capture efficiency)
+- Per planet: weight ∝ 1/√(r − r<sub>snow</sub>) — closer to snow = more pebble
+- Eligible: core (rock+ice) ≥ 3 M<sub>⊕</sub> AND t<sub>form</sub> < 5 Myr (gas window)
+
+**H/He envelope** (only if eligible):
+- core × 58 · exp(−k · t<sub>form</sub>) · wind_suppression
+- k = 0.684 (or higher for low-disc-mass systems)
+- wind_suppression = 1 / (1 + (Ω/30)·(0.5/r)<sup>2</sup>)
+
+**Post-formation modifications** (per-planet δM<sub>⊕</sub>):
+- Mercury (Sol): −0.026 (mantle ablation)
+- Earth (Sol): +0.100 (Theia delivery)
+- Mars (Sol): −0.959 (Grand Tack depletion)
+- Theia (Sol): −1.727 (absorbed into Earth)
+
+## Compactness back-dating
+
+When the best-fit algorithm runs, it auto-adjusts spin to keep the disc consistent with observed planet positions:
+
+```
+R_disc_target = max(0.05, 3 × max_observed_au)
+```
+
+If the current R<sub>disc</sub> exceeds this, spin is bumped up (compressing the disc) so the formation cascade can fit within plausible Type-I migration distances. Sol's planets at 0.4–30 AU need a wide disc; Kepler-90's planets at 0.07–1.0 AU need a tightly-compressed disc with high primordial spin.
+
+## Formation-time cascade (rocky-material-driven)
+
+`t_form` is derived from rocky-material pebble drift physics, not arbitrarily set:
+
+```
+t_form = 0.10 · r / slope   (Myr)
+```
+
+The constant 0.10 is calibrated to Sol's Jupiter (r=4.98, slope=0.304) landing at ~1.6 Myr — matching Kruijer et al. 2017's <1 Myr Jupiter core constraint.
+
+For rocky planets (target < 3 M⊕) this formula directly sets t_form (mass is tf-independent for sub-threshold cores).
+
+For gas-eligible planets the formula seeds the initial t_form, then a bisection refines it to match observed mass — without cross-planet cascade constraints, since real systems show that mass, not radius, determines formation order. The natural Sol-like cascade (Jupiter → Neptune) emerges where mass and radius correlate; compact migrated systems (55 Cancri) show mass-driven inverted cascades where the heaviest planets form first regardless of their formation radius.
+
+## Solar System fit (calibration)
+
+All 9 planets including Theia at ±0.0%:
+
+| Planet | Formation r | Current r | t_form | Predicted | Observed |
+|---|---|---|---|---|---|
+| Mercury | 0.387 | 0.387 | 0.13 Myr | 0.055 | 0.055 |
+| Venus | 0.720 | 0.723 | 0.24 | 0.815 | 0.815 |
+| Earth | 0.999 | 1.000 | 0.33 | 1.000 | 1.000 |
+| Mars | 1.524 | 1.524 | 0.50 | 0.107 | 0.107 |
+| Theia | 2.699 | → Earth | 0.89 | 0.100 | 0.100 |
+| Jupiter | 5.553 | 5.20 | 1.64 | 317.83 | 317.83 |
+| Saturn | 13.68 | 9.58 | 3.78 | 95.16 | 95.16 |
+| Uranus | 14.98 | 19.2 | 9.05 | 14.54 | 14.54 |
+| Neptune | 19.34 | 30.05 | 9.07 | 17.15 | 17.15 |
+
+**Notable predictions of the model fit:**
+- **Theia** sits at the snow-line pile-up (2.7 AU) as a Mars-mass "would-be gas giant" that didn't make it past the 3 M⊕ threshold before Jupiter disrupted it
+- **Jupiter is the anchor** — formed at ~5.5 AU, barely moved
+- **Saturn is the migrator** — formed at ~13.7 AU and slid inward to 9.58 AU
+- **Uranus & Neptune** migrated outward via Nice Model dynamics
+
+This is a *different* dynamical history than the Grand Tack: Jupiter never went on an excursion, Saturn alone migrated inward. Jupiter's near-zero migration matches the isotopic evidence (Kruijer+ 2017) that Jupiter cleaved the NC/CC meteorite reservoirs by ~1 Myr and didn't shift much afterward.
 
 ## Other systems
 
-The model works across stellar classes with the same universal rules:
+The model includes calibrated fits for 14 exoplanet systems (in `exoplanets.js`):
 
-- **HR 8799** (A5V): disc-instability regime, 4 super-Jupiters fit to ±21% with f<sub>disc</sub> = 5%
-- **HD 134987** (G5V): outer planet within −1.7% with default settings
-- **Upsilon Andromedae** (F8V): outer planet within M sin i uncertainty
-- **TRAPPIST-1, Proxima**: inverted/compressed M-dwarf systems with predicted "undetected outer planets" sharing pebble budget
+- **G class**: Sol, 55 Cancri, Kepler-90, Tau Ceti, HD 134987, 47 UMa, μ Arae
+- **F class**: HD 142, HD 60532
+- **K class**: HD 219134, HD 69830
+- **M class**: Proxima Cen, GJ 876, TRAPPIST-1
+- **A class**: HR 8799
+
+Each system's fit reveals its dynamical history: in-situ vs migrated, rocky vs gas-giant, compact-resonant vs spread-stable.
+
+## Interactive tool
+
+The HTML page has:
+
+- **Preset selector** — pick a system to load its inputs and planets
+- **Planet table** — edit per-planet r, t_form, observed mass, and modifications
+- **Derived properties** panel — shows R_disc, R_A, snow line, slope, intercept, and cascade-predicted slot count
+- **Calculate** button — recompute all predictions
+- **+ Add planet** — manually add a row
+- **+ Fill predicted slots** — auto-add predicted-planet entries at empty Hill-cascade slot positions (capped by cascade-budget, emptiest slots filled first)
+- **Find best fit** — auto-solve r and t_form for known planets via bisection with compactness back-dating
+- **Save as user preset** — store the current state in localStorage under the User optgroup (built-in presets are never modified)
+- **Delete user preset** — remove user-saved entries
 
 ## Files
 
-- `hydros.html` — Standalone interactive tool (open in any browser)
-- `hydros_model.py` — Python reference implementation
-- `README.md` — This file
+- `hydros.html` — interactive tool (standalone, works offline)
+- `exoplanets.json` — preset system data (canonical)
+- `exoplanets.js` — same data wrapped for browser loading (no fetch required)
+- `hydros_model.py` — Python reference implementation (Sol baseline)
+- `README.md` — this file
 
 ## License
 
