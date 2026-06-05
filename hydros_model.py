@@ -2,16 +2,18 @@
 HYDROS Paradigm — Solar System Mass Allocation Model
 =====================================================
 
-Driven by FIVE fundamental inputs (4 per-system, 1 per-planet):
+Driven by FOUR fundamental inputs (3 per-system, 1 per-planet):
 
     Per system:
       1. M_*_primordial    (stellar mass at formation, in M_sun)
-      2. grain_largeness   (pebble size distribution, 0..1)
-      3. spin_relative     (primordial stellar rotation, 1.0 = Sol's value)
-      4. f_disc            (disc-to-star mass ratio at formation, fraction)
+      2. spin_relative     (primordial stellar rotation, 1.0 = Sol's value)
+      3. f_disc            (disc-to-star mass ratio at formation, fraction)
 
     Per planet:
-      5. r                 (orbital radius, in AU)
+      4. r                 (orbital radius, in AU)
+
+The grain-opacity parameter (GRAIN_OPACITY = 0.82) is a constant:
+calibrated on Sol and identical across every calibrated system.
 
 f_disc is independent of M_* — observations show wide scatter across systems
 of similar stellar mass (0.5–30%). It's set by formation history (cloud mass,
@@ -32,7 +34,10 @@ import math
 # ============================================================
 
 M_STAR_PRIMORDIAL = 1.14      # M_sun, before pre-MS mass loss
-GRAIN_LARGENESS = 0.82        # 0=small grains, 1=large grains (Mulders)
+GRAIN_OPACITY = 0.82          # grain-opacity parameter: 0=grain-grown, 1=ISM-like
+                              # (Mulders & Ciesla 2015 direction). Calibrated on Sol;
+                              # identical across all calibrated systems — uniform at
+                              # least across the local neighbourhood, treated as constant
 SPIN_RELATIVE = 1.00          # 1.0 = Sol's primordial rotation rate
 F_DISC = 0.0100               # disc-to-star mass ratio at formation
                               # Per-system parameter; not derived from M_*
@@ -138,7 +143,7 @@ def compression(M_star=M_STAR_PRIMORDIAL, spin=SPIN_RELATIVE):
     return alfven_radius(M_star, spin) / disc_radius(M_star, spin)
 
 
-def snow_line(M_star=M_STAR_PRIMORDIAL, grain_largeness=GRAIN_LARGENESS, f_disc_override=None):
+def snow_line(M_star=M_STAR_PRIMORDIAL, f_disc_override=None):
     """
     Snow line from viscous heating + grain opacity (Mulders et al.).
 
@@ -149,7 +154,7 @@ def snow_line(M_star=M_STAR_PRIMORDIAL, grain_largeness=GRAIN_LARGENESS, f_disc_
     Calibrated so Sol (M_*=1.14, g=0.82, fd=1%) → 2.7 AU.
     """
     r_small, r_large, q = 1.6, 3.3, 2.2
-    grain_term = r_small + (r_large - r_small) * (grain_largeness ** q)
+    grain_term = r_small + (r_large - r_small) * (GRAIN_OPACITY ** q)
     fd = f_disc(M_star, override=f_disc_override)
     fd_ratio = fd / 0.01    # ratio to Sol's calibrated 1%, for viscous heating scaling
     mass_factor = (M_star / SOL_M_PRIMORDIAL) ** 2.0
@@ -440,19 +445,25 @@ def hydrogen_capture(core_mass, t_form_myr, spin=SPIN_RELATIVE, r=None,
     2. Gas window — disc gas must still be present (t_form < t_disc)
     3. Wind suppression — fast-spin XUV blows hydrogen from close-in regions
 
+    Tanigawa-Ikoma (2007) gas accretion: dM_gas/dt ∝ M_core² during the
+    runaway phase. Integrating with exponentially-decaying disc gas
+    density gives M_gas = A_0 · M_core² · exp(-k·t_form) · wind_supp.
+    A_0 and k calibrated against Sol's Jupiter and Neptune (both
+    in-situ) under the geometric cascade ρ = 1 − √(ln 2)/2 ≈ 0.584.
+    k corresponds to disc-gas-dispersal e-folding time ~1.45 Myr.
+
     Disc dispersal time scales with disc mass (universal):
     low-mass discs disperse faster → outer planets in small-disc systems
     don't accrete envelopes even if their cores exceed threshold.
     """
     if core_mass < THRESHOLD_GAS:
         return 0.0
-    A_0 = 58.0
+    A_0 = 4.45  # units of 1/M_E (so M_core² · A_0 gives M_E)
     # Disc-mass-dependent decay rate: smaller discs lose gas faster.
     # k_eff = k_sol × (Sol_disc_mass / system_disc_mass)^2  (capped at Sol value)
     sol_disc = 0.01 * m_star_earth(SOL_M_PRIMORDIAL)
     system_disc = f_disc(M_star, f_disc_override) * m_star_earth(M_star)
-    k = 0.684 * max(1.0, (sol_disc / system_disc) ** 2)
-    dispersal_factor = 1.0
+    k = 0.691 * max(1.0, (sol_disc / system_disc) ** 2)
     amplification = A_0 * math.exp(-k * t_form_myr)
     spin_ref = 30.0
     r_ref = 0.5
@@ -461,7 +472,7 @@ def hydrogen_capture(core_mass, t_form_myr, spin=SPIN_RELATIVE, r=None,
     else:
         wind_term = (spin / spin_ref) * (r_ref / max(r, 0.01)) ** 2
     wind_suppression = 1.0 / (1.0 + wind_term)
-    return core_mass * amplification * wind_suppression * dispersal_factor
+    return core_mass * core_mass * amplification * wind_suppression
 
 
 # ============================================================
@@ -473,9 +484,10 @@ def cascade_slot_positions(M_star=M_STAR_PRIMORDIAL, spin=SPIN_RELATIVE):
     Cascade slot positions derived from the dam geometry, with COUNT
     determined by how many fit between R_disc and R_A.
 
-    The Anti-Alfven Dam (R_disc) anchors slot 0. Each inner slot is at
-    the Gaussian shoulder of the next-outer slot:
-        r_n = R_disc * (1 - 0.3 * sqrt(2*ln 2))^n  ≈ R_disc * 0.647^n
+    The Anti-Alfven Dam (R_disc) anchors slot 0. Each inner slot sits at
+    the half-amplitude-at-45°-projection (1/(2√2)) of the next-outer
+    slot's Gaussian accretion-zone HWHM (√(2 ln 2)):
+        r_n = R_disc * (1 - sqrt(ln 2)/2)^n  ≈ R_disc * 0.5837^n
 
     Slot count: keep adding slots until the NEXT slot would fall inside
     R_A (the magnetospheric void). Inverted regime (R_A >= R_disc):
@@ -483,7 +495,7 @@ def cascade_slot_positions(M_star=M_STAR_PRIMORDIAL, spin=SPIN_RELATIVE):
     """
     R_disc = disc_radius(M_star, spin)
     R_A = alfven_radius(M_star, spin)
-    ratio = 1.0 - 0.3 * math.sqrt(2.0 * math.log(2.0))
+    ratio = 1.0 - math.sqrt(math.log(2.0)) / 2.0
     if R_A >= R_disc:
         return [R_disc * (ratio ** n) for n in range(11)]
     n_slots = int(math.floor(math.log(R_A / R_disc) / math.log(ratio))) + 1
@@ -913,12 +925,12 @@ def auto_spin_from_outermost(planets, M_star=M_STAR_PRIMORDIAL, anchor_slot=0):
     # anchor_slot > 0: outermost observed sits at slot k, not slot 0.
     # Slots 0..k-1 are "missing" (ejected/scattered outer bodies).
     # R_disc shifts outward by ratio^-k so the outermost lands at slot k.
-    ratio = 1.0 - 0.3 * math.sqrt(2.0 * math.log(2.0))
+    ratio = 1.0 - math.sqrt(math.log(2.0)) / 2.0
     R_disc_target = max_r / (ratio ** anchor_slot)
     return (SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc_target) ** 2
 
 
-def _pick_anchor_slot(planets, disc_planets, M_star, grain, f_disc_override):
+def _pick_anchor_slot(planets, disc_planets, M_star, f_disc_override):
     """
     Iterate anchor_slot k=0..K. For each, compute:
       - positional residual: sum |log(r_obs / r_nearest_slot)|
@@ -1011,7 +1023,7 @@ def _pick_anchor_slot(planets, disc_planets, M_star, grain, f_disc_override):
 
 
 def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
-                   grain=GRAIN_LARGENESS, f_disc_override=None,
+                   f_disc_override=None,
                    bisect_tolerance=0.001, max_iterations=100,
                    auto_compress=True, use_observed_r=True):
     """
@@ -1052,7 +1064,7 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
     # k>0 implies slots 0..k-1 are ejected/scattered outer bodies.
     if auto_compress and spin is None:
         spin = _pick_anchor_slot(planets, disc_planets, M_star,
-                                  grain, f_disc_override)
+                                  f_disc_override)
     elif spin is None:
         spin = SPIN_RELATIVE
 
@@ -1125,6 +1137,14 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
     pebble = {n: (pebble_total * w / total_w if total_w > 0 else 0)
               for n, w in weights.items()}
 
+    # ISU (immutable) handling — matches index.html:
+    #  - If ANY planet is ISU, only ISU planets bisect t_form; non-ISU
+    #    use cascade-default t_form so observed vs primordial surfaces
+    #    post-formation modifications (impact loss, late delivery).
+    #  - If NO planet is ISU, all gas-eligible bisect t_form (no
+    #    diagnostic mode — just consensus fit to observed).
+    any_isu = any(p.get("immutable") for p in planet_by_slot.values())
+
     # For each slot, compute total mass with bisected t_form for gas-eligible
     results = []
     for slot in slot_data:
@@ -1150,6 +1170,10 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
         stripped = is_stripped(
             {"r": planet_r, "observed": mass_for_strip_gate}, M_star)
 
+        is_immutable = slot["filled"] and planet_by_slot[n].get("immutable",
+                                                                False)
+        should_bisect = (slot["filled"] and observed > 0
+                         and (is_immutable or not any_isu))
         if not gas_eligible:
             # Sub-threshold rocky planet: formation r = observed r (set by
             # fit_r). Cascade allocation at that r IS the primordial mass;
@@ -1159,7 +1183,7 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
             t_form = 0.10 * r / sl
             h_he = 0.0
             total = core
-        elif observed > 0 and slot["filled"]:
+        elif should_bisect:
             # Gas-eligible AND has observed mass. If core <= observed,
             # bisect t_form to fit the envelope contribution. If core
             # already exceeds observed, no envelope is possible — use
@@ -1185,7 +1209,10 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
                         t_form_hi = t_form
                     t_form = (t_form_lo + t_form_hi) / 2
         else:
-            # Gas-eligible but unobserved (lost planet): use cascade t_form
+            # Gas-eligible but unobserved (lost planet), or non-ISU planet
+            # in a system with ISU anchors: use cascade-default t_form.
+            # For non-ISU planets the observed-vs-predicted delta then
+            # surfaces post-formation modification diagnostics.
             t_form = 0.10 * r / sl
             h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc_override)
             total = core + h_he
@@ -1232,7 +1259,7 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
         slot_for_class["observed"] = observed
         slot_for_class["stripped"] = stripped
         slot_for_class["in_void"] = in_void
-        r_snow_now = snow_line(M_star, grain, f_disc_override)
+        r_snow_now = snow_line(M_star, f_disc_override=f_disc_override)
         # Pass bisected composition on slot_for_class for classification
         slot_for_class["predicted"] = total
         slot_for_class["rock"] = rock
@@ -1295,8 +1322,9 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
         #   v_esc(M)   = 11.186 · M^(1/3)     [km/s, M in M_E, rocky]
         #   retention = max(0.3, 1 - 0.37 · Δv/v_esc)
         # Calibrated:
-        #   Mercury (slot 10/11, r≈0.38, M≈0.18): retention ≈ 0.30
-        #   Tau Ceti e (slot 2/3, r≈0.54, M≈2.4): retention ≈ 0.81
+        #   Mercury–Vulcan (Sol slots 8/9, r≈0.41/0.24, combined ≈0.17 M_E):
+        #     Δv≈15.4 km/s, v_esc≈6.2 → ratio≈2.48 → retention=0.30 (floor)
+        #   Tau Ceti e (mild-end anchor): ratio≈0.53 → retention≈0.81
         if outer["slot_r"] > 0 and inner["slot_r"] > 0:
             v_orbit_out = 29.785 * math.sqrt(M_star / outer["slot_r"])
             v_orbit_in = 29.785 * math.sqrt(M_star / inner["slot_r"])
@@ -1366,25 +1394,26 @@ def slot_aware_fit(planets, M_star=M_STAR_PRIMORDIAL, spin=None,
 
     return {
         "slots": results,
-        "ratio": 1.0 - 0.3 * math.sqrt(2.0 * math.log(2.0)),
+        "ratio": 1.0 - math.sqrt(math.log(2.0)) / 2.0,
         "R_disc": disc_radius(M_star, spin),
         "spin": spin,
     }
 
 
 def predict_slots(M_star=M_STAR_PRIMORDIAL, spin=SPIN_RELATIVE,
-                  grain_largeness=GRAIN_LARGENESS, f_disc_override=None):
+                  f_disc_override=None):
     """
-    Predict the 11-slot geometric cascade: r_n = R_disc * 0.647^n.
+    Predict the geometric cascade: r_n = R_disc * 0.5837^n.
 
-    The ratio 0.647 = 1 - 0.3*sqrt(2*ln 2) is the Gaussian-shoulder FWHM
-    truncation; slot 0 sits at the Anti-Alfven Dam (R_disc) and slot 10
+    The ratio 0.5837 = 1 - sqrt(ln 2)/2 = 1 - (1/(2√2))·√(2 ln 2) is the
+    half-amplitude-at-45°-projection of the Gaussian accretion-zone HWHM;
+    slot 0 sits at the Anti-Alfven Dam (R_disc) and the innermost slot
     at the inner Alfven-Dam vicinity. See cascade_slot_positions().
 
     Returns a dict with 'inner' (r <= r_snow) and 'outer' (r > r_snow)
     slot lists in AU.
     """
-    r_snow = snow_line(M_star, grain_largeness, f_disc_override)
+    r_snow = snow_line(M_star, f_disc_override=f_disc_override)
     slots = cascade_slot_positions(M_star, spin)
     return {
         "inner": [r for r in slots if r <= r_snow * 1.05],
@@ -1393,43 +1422,25 @@ def predict_slots(M_star=M_STAR_PRIMORDIAL, spin=SPIN_RELATIVE,
 
 
 # ============================================================
-#   PLANET DEFINITIONS (only r is per-planet)
+#   PLANET DEFINITIONS (canonical Sol preset)
 # ============================================================
-# eta_ice and t_form are properties of formation history at each r;
-# in a fuller model they'd be derived from disc evolution timescales.
-
-# r values are PRIMORDIAL formation positions. Outer planets migrated to
-# current positions during Sol's first ~Gyr; the allocation rule applies at
-# formation, not now. t_form values are from the rocky-drift cascade
-# (t_form = 0.10 · r / slope) and match the paper's Table 1 calibration.
-#
-# Saturn Grand Tour (not Grand Tack): Jupiter formed at ~5.55 AU and barely
-# moved (current 5.20). Saturn formed at ~13.68 AU, swept inward to ~1.5 AU
-# (photoevaporation cavity), then outbound via Pierens-style resonance lock
-# with Jupiter to 9.58 AU. Saturn — not Jupiter — disrupted the inner disc.
-# Theia formed at the snow line (2.7 AU) as a would-be gas giant, was
-# stripped during Saturn's passage at ~4 Myr to a 0.1 M⊕ core, then impacted
-# Earth at ~100 Myr post-CAI.
+# Same data as exoplanets.js: NASA JPL J2000 mean orbital elements and
+# IAU mass values. r is the CURRENT (observed) AU; the slot-aware fit
+# derives formation positions from the cascade geometry. Venus and
+# Neptune are ISU (immutable) — they anchor the disc parameters; every
+# other planet's delta from cascade prediction is a post-formation
+# diagnostic (Vulcan merger, Theia delivery, Jupiter-driven slot 4-5
+# swarm dispersal — see README and paper).
 PLANETS = [
-    {"name": "Mercury", "r": 0.387,  "t_form": 0.127, "observed": 0.055},
-    {"name": "Venus",   "r": 0.720,  "t_form": 0.237, "observed": 0.815},  # migrated to 0.723
-    {"name": "Earth",   "r": 0.999,  "t_form": 0.329, "observed": 1.000},
-    {"name": "Mars",    "r": 1.524,  "t_form": 0.501, "observed": 0.107},
-    {"name": "Theia",   "r": 2.699,  "t_form": 0.888, "observed": 0.100},  # snow-line; merged into Earth
-    {"name": "Jupiter", "r": 5.553,  "t_form": 1.638, "observed": 317.83}, # migrated to 5.20
-    {"name": "Saturn",  "r": 13.681, "t_form": 3.784, "observed": 95.16},  # migrated to 9.58
-    {"name": "Uranus",  "r": 14.979, "t_form": 9.050, "observed": 14.54},  # migrated to 19.2
-    {"name": "Neptune", "r": 19.343, "t_form": 9.075, "observed": 17.15},  # migrated to 30.05
+    {"name": "Mercury", "r": 0.387099,  "observed": 0.055274},
+    {"name": "Venus",   "r": 0.723336,  "observed": 0.815004, "immutable": True},
+    {"name": "Earth",   "r": 1.0,       "observed": 1.0},
+    {"name": "Mars",    "r": 1.52371,   "observed": 0.107447},
+    {"name": "Jupiter", "r": 5.202887,  "observed": 317.828133},
+    {"name": "Saturn",  "r": 9.537,     "observed": 95.161398},
+    {"name": "Uranus",  "r": 19.189165, "observed": 14.535778},
+    {"name": "Neptune", "r": 30.069923, "observed": 17.149004, "immutable": True},
 ]
-
-# Post-formation modifications capture events outside the disc-allocation
-# model (Saturn-induced stripping, Theia merger, mantle ablation).
-MODIFICATIONS = {
-    "Mercury": {"delta": -0.0525, "reason": "mantle loss ~70% via Alfven Dam crack-burst vaporization (Cameron 1985, Fegley & Cameron 1987 silicate vaporization studies). Mercury original mass ~0.108 M_E with chondritic composition; bulk silicate mantle stripped to leave Fe-rich (~70% Fe) residual core (0.055 M_E). The 1/6 retention deficit at the inner dam mirrors the 1/6 truncation factor at the outer Anti-Alfven Dam (Neptune)."},
-    "Earth":   {"delta": +0.100,   "reason": "Theia terminal merger"},
-    "Mars":    {"delta": -0.9587,  "reason": "Saturn Grand Tour scattering"},
-    "Theia":   {"delta": -1.727,   "reason": "Saturn-induced outer-cloud stripping"},
-}
 
 
 # ============================================================
@@ -1438,88 +1449,54 @@ MODIFICATIONS = {
 
 def run():
     M_star = M_STAR_PRIMORDIAL
-    spin = SPIN_RELATIVE
-    grain = GRAIN_LARGENESS
-    f_disc_override = None
+    f_disc_override = F_DISC
 
-    print("=" * 78)
-    print("HYDROS PARADIGM — fundamental inputs only")
-    print("=" * 78)
+    fit = slot_aware_fit(PLANETS, M_star, spin=None,
+                         f_disc_override=f_disc_override)
+    spin = fit["spin"]
+
+    print("=" * 100)
+    print("HYDROS PARADIGM — slot-aware cascade fit (canonical Sol preset)")
+    print("=" * 100)
     print(f"  M_*_primordial   = {M_star} M_sun")
-    print(f"  grain_largeness  = {grain}")
-    print(f"  spin_relative    = {spin}  (1.0 = Sol's primordial rotation)")
+    print(f"  grain_opacity    = {GRAIN_OPACITY}  (universal constant)")
+    print(f"  spin_relative    = {spin:.4f}  (auto-derived: R_disc anchored to outermost observed planet)")
+    print(f"  f_disc           = {f_disc_override}")
     print("")
     print("Derived system properties:")
-    print(f"  R_disc          = {disc_radius(M_star, spin):.2f} AU")
-    print(f"  R_A             = {alfven_radius(M_star, spin):.3f} AU")
+    print(f"  R_disc          = {fit['R_disc']:.3f} AU")
+    print(f"  R_A             = {alfven_radius(M_star, spin):.4f} AU")
+    print(f"  Cascade ratio   = {fit['ratio']:.4f}  (1 - sqrt(ln 2)/2)")
     print(f"  Compression     = {compression(M_star, spin):.3f}  ({'INVERTED' if compression(M_star, spin) > 1 else 'normal'})")
-    print(f"  Snow line       = {snow_line(M_star, grain, f_disc_override):.2f} AU")
-    print(f"  sigma_AAF       = {slope(M_star):.4f} M_earth/AU  (Annulus Allocation Factor)")
+    print(f"  Snow line       = {snow_line(M_star, f_disc_override=f_disc_override):.2f} AU")
+    print(f"  sigma_AAF       = {slope(M_star, f_disc_override):.4f} M_earth/AU  (Annulus Allocation Factor)")
     print(f"  Intercept       = {intercept(M_star, spin):.3f} M_earth")
-    print("=" * 78)
+    print("=" * 100)
 
-    print(f"{'Planet':<8} {'r(AU)':>7} {'rock':>7} {'ice':>7} {'core':>7} {'H/He':>9} {'pred':>9} {'obs':>9} {'err%':>6}")
-    print("-" * 78)
-
-    # Pebble Flux Allocation budget and per-planet weights
-    pebble_total = total_pebble_bonus_budget(M_star, f_disc_override)
-    weights = {p["name"]: pebble_allocation_weight(p["r"], M_star, f_disc_override) for p in PLANETS}
-    total_w = sum(w for w in weights.values() if w > 0)
-    # Only allocate to gas-giant candidates (cores that cross threshold)
-
+    print(f"{'Body':<10} {'slot':>4} {'slot_r':>8} {'r_form':>8} {'t_form':>7} "
+          f"{'pred':>9} {'obs':>9} {'dm%':>7}  interpretation")
+    print("-" * 100)
     total_pred = 0.0
     total_obs = 0.0
-
-    # First pass: cores without pebble flux allocation
-    cores = {}
-    for p in PLANETS:
-        rock = rock_allocation(p["r"], M_star, spin)
-        ice = ice_allocation(p["r"], M_star, spin)
-        cores[p["name"]] = rock + ice
-
-    # Pebble Flux Allocation eligibility: body crossed threshold AND formed during gas window
-    eligible = [p["name"] for p in PLANETS
-                if cores[p["name"]] > THRESHOLD_GAS
-                and p["t_form"] < T_DISC_DISPERSAL_MYR]
-    eligible_w_sum = sum(weights[n] for n in eligible if weights[n] > 0)
-    pebble = {p["name"]: (pebble_total * weights[p["name"]] / eligible_w_sum
-                         if p["name"] in eligible and weights[p["name"]] > 0
-                         else 0.0)
-              for p in PLANETS}
-
-    for p in PLANETS:
-        rock = rock_allocation(p["r"], M_star, spin)
-        ice = ice_allocation(p["r"], M_star, spin)
-        core = rock + ice + pebble[p["name"]]
-        h_he = hydrogen_capture(core, p["t_form"], spin, p["r"], M_star)
-        raw = core + h_he
-
-        mod = MODIFICATIONS.get(p["name"], {"delta": 0.0})
-        predicted = raw + mod["delta"]
-        err = 100.0 * (predicted - p["observed"]) / p["observed"]
-
-        print(f"{p['name']:<8} {p['r']:>7.3f} {rock:>7.3f} {ice:>7.3f} "
-              f"{core:>7.2f} {h_he:>9.2f} "
-              f"{predicted:>9.3f} {p['observed']:>9.3f} {err:>+5.1f}%")
-
-        total_pred += predicted
-        total_obs += p["observed"]
-
-    print("-" * 78)
-    print(f"{'TOTAL':<8} {'':>7} {'':>7} {'':>7} {'':>7} {'':>9} {total_pred:>9.2f} {total_obs:>9.2f}")
-    print("=" * 78)
-
-    print(f"\nPebble Flux Allocation budget: {pebble_total:.2f} M_earth (= disc ice × capture eff)")
-    print(f"Eligible gas-giant accretors (t_form < {T_DISC_DISPERSAL_MYR} Myr + core > {THRESHOLD_GAS}):")
-    for n in eligible:
-        print(f"  {n:<8}  +{pebble[n]:.2f} M_earth  (allocation weight {weights[n]/eligible_w_sum:.2f})")
-
-    print("\nPost-formation modifications:")
-    for name, mod in MODIFICATIONS.items():
-        print(f"  {name:<8}  {mod['delta']:+.3f} M_earth   ({mod['reason']})")
+    for s in sorted(fit["slots"], key=lambda x: -x["slot_n"]):
+        name = s["name"] if s["filled"] else f"(slot {s['slot_n']})"
+        obs = f"{s['observed']:.3f}" if s["filled"] else "—"
+        if s["filled"] and s["observed"] > 0:
+            dm = 100.0 * (s["observed"] - s["predicted"]) / s["predicted"]
+            dm_str = f"{dm:+.1f}%"
+            total_obs += s["observed"]
+        else:
+            dm_str = "—"
+        total_pred += s["predicted"] if s["filled"] else s["primordial"]["total"]
+        print(f"{name:<10} {s['slot_n']:>4} {s['slot_r']:>8.3f} {s['r_used']:>8.3f} "
+              f"{s['t_form']:>7.2f} {s['predicted']:>9.3f} {obs:>9} {dm_str:>7}  "
+              f"{s['interpretation']}")
+    print("-" * 100)
+    print(f"{'TOTAL':<10} {'':>4} {'':>8} {'':>8} {'':>7} {total_pred:>9.2f} {total_obs:>9.2f}")
+    print("=" * 100)
 
 
-def run_system(name, M_star, spin, grain, planets, modifications=None,
+def run_system(name, M_star, spin, planets, modifications=None,
                use_formation_radius=False, f_disc_override=None):
     """Run the model for an arbitrary exoplanet system."""
     if modifications is None:
@@ -1531,7 +1508,7 @@ def run_system(name, M_star, spin, grain, planets, modifications=None,
     print(f"HYDROS — {name}")
     print("=" * 78)
     print(f"  M_*_primordial   = {M_star} M_sun")
-    print(f"  grain_largeness  = {grain}")
+    print(f"  grain_opacity    = {GRAIN_OPACITY}  (universal constant)")
     print(f"  spin_relative    = {spin}")
     print(f"  f_disc           = {fd_eff*100:.2f}%  {'(overridden)' if f_disc_override else '(scaled)'}")
     print("")
@@ -1539,7 +1516,7 @@ def run_system(name, M_star, spin, grain, planets, modifications=None,
     print(f"  R_disc          = {disc_radius(M_star, spin):.3f} AU")
     print(f"  R_A             = {alfven_radius(M_star, spin):.4f} AU")
     print(f"  Compression     = {compression(M_star, spin):.3f}  ({'INVERTED' if compression(M_star, spin) > 1 else 'normal'})")
-    print(f"  Snow line       = {snow_line(M_star, grain, f_disc_override):.3f} AU")
+    print(f"  Snow line       = {snow_line(M_star, f_disc_override=f_disc_override):.3f} AU")
     print(f"  sigma_AAF       = {slope(M_star, f_disc_override):.5f} M_earth/AU  (Annulus Allocation Factor)")
     print(f"  Intercept       = {intercept(M_star, spin):.4f} M_earth")
     print("=" * 78)
