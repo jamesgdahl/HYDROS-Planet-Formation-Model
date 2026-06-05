@@ -1,0 +1,12 @@
+{
+  "name": "hydros-planet-formation-model",
+  "version": "2.0.0",
+  "description": "HYDROS geometric-cascade planet formation model (static page; tsc dev-compile only)",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

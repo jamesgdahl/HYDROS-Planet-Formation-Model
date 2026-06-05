@@ -1,0 +1,1371 @@
+// Slot assignment, the slot-aware fit (with all post-formation detectors),
+// and the shared bestFit() used identically by the web UI and the CLI.
+// Global-script style: depends on constants, disc, allocation, cascade, classify.
+
+// LUGER LATTICE (half-step interstitial occupancy) gate. In the
+// INVERTED regime the disc lives inside the magnetosphere: magnetic
+// stiffening reduces shear and the compressed gas density crushes
+// solid random velocities, so low-mass bodies' feeding zones become
+// drag-limited — narrower than the geometric (Gaussian-HWHM) width
+// that lets rung bodies eat their midpoints in the normal regime.
+// The surviving midpoint material can consolidate at interstitial
+// sites r_n·√ρ, PROVIDED the resulting half-step lattice is
+// Hill-stable for the occupant: gap/R_H,mutual ≥ 7 (Lissauer).
+// Giants are Hill-limited, not drag-limited — their reach spans the
+// midpoint regardless of damping — so the gate excludes them
+// naturally. Named the Luger lattice after Luger et al. 2017, whose
+// TRAPPIST-1 resonant chain exhibited the complete structure:
+// full-ladder chains relax to 2:1 (period ρ^{-3/2} = 2.24; GJ 876,
+// HR 8799), Luger-lattice chains sit on 3:2 essentially at birth
+// (period ρ^{-3/4} = 1.497; TRAPPIST-1).
+function half_site_allowed(p: Planet, M_star: number): boolean {
+  const HALF_GAP = 1 / Math.sqrt(CASCADE_RATIO) - 1;  // 0.3089 of r
+  const m = Math.max(p.observed || 0, 1e-3);
+  const rh_mut = 1.154 * Math.pow((2 * m * (3e-6 / M_PRIM_TO_MSUN)) / (3 * M_star), 1 / 3);
+  return HALF_GAP / rh_mut >= 7.0;
+}
+
+interface CascadeSite { n: number; r: number; interstitial: boolean }
+
+// All candidate formation sites: the full rungs, plus (inverted regime
+// only) the interstitial midpoints at r_n·√ρ.
+function cascade_sites(M_star: number, spin: number,
+                       min_slots: number, omega?: number): CascadeSite[] {
+  const slots_r = cascade_slot_positions(M_star, spin, min_slots, omega);
+  const sites: CascadeSite[] = slots_r.map((r, n) =>
+    ({ n, r, interstitial: false }));
+  const inverted = alfven_radius(M_star, spin) >= disc_radius(M_star, spin);
+  if (inverted) {
+    const SQRT_RHO = Math.sqrt(CASCADE_RATIO);
+    for (let n = 0; n < slots_r.length - 1; n++) {
+      sites.push({ n: n + 0.5, r: slots_r[n] * SQRT_RHO, interstitial: true });
+    }
+  }
+  return sites;
+}
+
+function assign_planets_to_slots(planets: Planet[], M_star: number,
+                                 spin: number, f_disc: number,
+                                 omega?: number): AssignedSlot[] {
+  const observed = planets.filter(p => (p.observed || 0) > 0);
+  const sites = cascade_sites(M_star, spin, observed.length, omega);
+  const site_pred = sites.map(s => slot_predicted_mass(s.r, M_star, spin, f_disc, undefined, omega));
+
+  // Rocky inventory at each site (rock + ice). Used as match target for
+  // stripped iron-core planets.
+  const slot_rocky_inventory = sites.map(s =>
+    rock_allocation(s.r, M_star, spin, f_disc, omega)
+    + ice_allocation(s.r, M_star, spin, f_disc));
+  const slot_pred = site_pred;
+  const slots_r = sites.map(s => s.r);
+
+  const pair_score = (p: Planet, n: number): number => {
+    // Interstitial sites are open only to bodies below the Hill gate.
+    if (sites[n].interstitial && !half_site_allowed(p, M_star)) return 1e9;
+    const r_dist = Math.abs(Math.log(p.r) - Math.log(slots_r[n]));
+    let penalty = 0.0;
+    const stripped = is_stripped(p, M_star);
+    let mass_for_match: number, slot_target: number;
+    if (stripped) {
+      mass_for_match = effective_mass_for_assignment(p, M_star);
+      slot_target = slot_rocky_inventory[n];
+    } else {
+      mass_for_match = p.observed || 0;
+      slot_target = slot_pred[n];
+    }
+    if (slot_target > mass_for_match) penalty += OVERPRED_PENALTY;
+    // In-situ trust zone: a planet sitting essentially ON a site
+    // (within ~6% in radius) is not exiled for a mass mismatch ---
+    // position is primary and mass deltas are interpretable events
+    // (late delivery, impact loss). Dam-edge sites in particular have
+    // truncation-shaved allocations while dam-adjacent planets collect
+    // the edge pile-up (TRAPPIST-1 g at site 0.5: 1% positional match,
+    // 23x the shaved allocation). The envelope mass-ceiling penalty
+    // below still applies --- that one is physics, not narrative.
+    const IN_SITU_TRUST = 0.06;
+    if (slot_target > 0 && mass_for_match > slot_target * UNDERPRED_RATIO
+        && r_dist >= IN_SITU_TRUST) {
+      penalty += UNDERPRED_PENALTY;
+    }
+    // Mass-ceiling violation (envelope-dominated bodies only): a gas
+    // giant cannot exceed its slot's allocation ceiling — t_form
+    // bisection only SHRINKS the envelope from the primordial maximum.
+    // Penalty scales with the violation so a 4x overshoot cannot be
+    // bought back by position proximity (55 Cnc b at slot 4: 255 vs
+    // 63 M⊕ — it belongs at slot 2). Small rocky planets are exempt:
+    // late delivery legitimately puts observed above prediction
+    // (HD 20794 f at +310%).
+    const CEILING_EXEMPT_MASS = 50.0;  // M⊕ — below this, late delivery applies
+    const CEILING_TOLERANCE = 1.5;
+    if (slot_target > 0 && mass_for_match > CEILING_EXEMPT_MASS
+        && mass_for_match > slot_target * CEILING_TOLERANCE) {
+      penalty += UNDERPRED_PENALTY
+        * (Math.log(mass_for_match / slot_target) - Math.log(CEILING_TOLERANCE));
+    }
+    if (mass_for_match > GAS_OBS_THRESHOLD
+        && slots_r[n] < p.r
+        && r_dist > GAS_DECISIVE_DIST) {
+      penalty += GAS_INNER_PENALTY;
+    }
+    return r_dist + penalty;
+  };
+
+  const n_sites = sites.length;
+  const assignments: (string | null)[] = new Array(n_sites).fill(null);
+  const unassigned = observed.slice();
+  while (unassigned.length) {
+    let best: { score: number; planet: Planet; n: number } | null = null;
+    for (const p of unassigned) {
+      for (let n = 0; n < n_sites; n++) {
+        if (assignments[n] !== null) continue;
+        const s = pair_score(p, n);
+        if (s >= 1e9) continue;  // gated interstitial
+        if (best === null || s < best.score) best = { score: s, planet: p, n };
+      }
+    }
+    if (!best) break;
+    assignments[best.n] = best.planet.name;
+    unassigned.splice(unassigned.indexOf(best.planet), 1);
+  }
+
+  // Output: every full rung (filled or lost, as before) plus OCCUPIED
+  // interstitials. Empty interstitials are optional sites, not lost
+  // planets — they produce no rows and carry no score cost.
+  const out: AssignedSlot[] = [];
+  for (let n = 0; n < n_sites; n++) {
+    if (assignments[n] !== null) {
+      const p = planets.find(q => q.name === assignments[n])!;
+      out.push({
+        slot_n: sites[n].n, slot_r: sites[n].r, filled: true,
+        interstitial: sites[n].interstitial,
+        name: p.name, r_obs: p.r, observed: p.observed || 0,
+        slot_predicted_mass: slot_pred[n],
+      });
+    } else if (!sites[n].interstitial) {
+      out.push({
+        slot_n: sites[n].n, slot_r: sites[n].r, filled: false,
+        name: `slot_${sites[n].n}_lost`, r_obs: sites[n].r, observed: 0,
+        slot_predicted_mass: slot_pred[n],
+      });
+    }
+  }
+  out.sort((a, b) => a.slot_n - b.slot_n);
+  return out;
+}
+
+// Gravitational stripping (close stellar encounter editing).
+// A flyby at periapsis q by a perturber of mass M_pert truncates the
+// disc at the Breslau radius
+//   r_t = 0.28 · q · (M_pert/M_star)^(-0.32)
+// and edits the cascade in three zones (calibrated on the two flagged
+// systems, Proxima Centauri and HD 20794):
+//   destroyed (r > r_t):       slot inventory removed — predicted
+//                              planet mass zero; debris source
+//   stirred (0.5 r_t .. r_t):  graduated loss, up to STRIP_L0 at r_t
+//                              (HD 20794 g at -57%); loss feeds debris
+//   enriched (r < 0.5 r_t):    debris rains inward; the filled bodies
+//                              sweep it up in order (outermost first,
+//                              capture probability STRIP_SWEEP each),
+//                              total captured = STRIP_F_IN of the
+//                              freed inventory (Proxima needed
+//                              10-15%; HD 20794's ledger shows ~18%)
+interface StrippingConfig {
+  M_pert: number;          // perturber mass, M_sun
+  q: number | null;        // periapsis AU; null = bisect in bruteFit
+}
+const STRIP_RT_C = 0.28;
+const STRIP_RT_EXP = -0.32;  // Breslau et al. 2014
+const STRIP_STIR_IN = 0.5;   // stirred zone inner edge, fraction of r_t
+const STRIP_L0 = 0.6;        // max stirred-zone loss fraction (at r_t)
+const STRIP_F_IN = 0.15;     // fraction of freed inventory captured inward
+const STRIP_SWEEP = 0.8;     // per-body sweep-up capture probability
+
+function stripping_radius(M_star: number, cfg: StrippingConfig): number {
+  return STRIP_RT_C * (cfg.q as number)
+    * Math.pow(cfg.M_pert / M_star, STRIP_RT_EXP);
+}
+
+interface SlotAwareFitOpts {
+  auto_compress?: boolean;
+  bisect_tolerance?: number;
+  max_iterations?: number;
+  stripping?: StrippingConfig;   // requires q resolved (non-null)
+  // VICE inner-jaw rotation: owns R_A, the backstop intercept, and the
+  // wind term. Defaults to spin (the jaw-lock).
+  omega?: number;
+  // KINETIC regime (impact-generated natal disc, e.g. Earth/Luna):
+  // the disc is condensed silicate vapor, not nebula gas. The nebula
+  // composition machinery does not apply — allocation is fully
+  // condensable (the Z·F_ROCK·ETA_ROCK metallicity chain is undone),
+  // there is no ice, no pebble flux, no H/He capture, and the primary
+  // is a planet, not a protostar (fallback replaces consumption).
+  kinetic?: boolean;
+}
+
+function slot_aware_fit(planets: Planet[], M_star: number,
+                        spin: number | null | undefined, f_disc: number,
+                        opts?: SlotAwareFitOpts): FitResult {
+  opts = opts || {};
+  const auto_compress = (opts.auto_compress !== false);
+  const bisect_tol = opts.bisect_tolerance || 1e-5;
+  const max_iter = opts.max_iterations || 100;
+
+  // All observed bodies participate in the cascade — consistent with
+  // the framework's predicted-stellar-companion patterns (HD 60532, etc.).
+  // The stellar-mass label is preserved in classification but doesn't
+  // exclude bodies from cascade fitting.
+  const external_bodies: Planet[] = [];  // no bodies excluded by mass anymore
+  // KBO-class bodies (dam-exterior cohort, the Kuiper mechanism) are a
+  // DISTINCT population with independent inputs: they never enter the
+  // interior cascade fit. They are evaluated afterward against the
+  // exterior ladder anchored on the fitted dam.
+  const kbo_bodies = planets.filter(p => p.kbo && (p.observed || 0) >= 0);
+  const observed_all = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+
+  if (auto_compress && (spin === undefined || spin === null)) {
+    // Anchor search sees only the interior population — KBOs carry no
+    // weight in the cascade geometry.
+    spin = auto_spin_with_anchor_search(
+      planets.filter(p => !p.kbo), M_star, f_disc).spin;
+  } else if (spin === undefined || spin === null) {
+    spin = 1.0;
+  }
+
+  // Alfven-Dam interior exclusion (normal regime only): the
+  // magnetospheric void hosts no cascade slots, so planets observed at
+  // r < R_A cannot OCCUPY a formation slot there. They may well be cascade
+  // products delivered inward by scattering or migration (the mill
+  // flings bodies under the dam too); their formation slot is simply
+  // indeterminate from position. Reported as void-interior
+  // bodies rather than force-fitted to slots. In the inverted regime
+  // (R_A >= R_disc) the compressed reservoir lives inside R_A by
+  // construction, so no exclusion applies.
+  const omega = (opts.omega === undefined || opts.omega === null)
+    ? (spin as number) : opts.omega;
+  const R_A_now = alfven_radius(M_star, omega);
+  const inverted = R_A_now >= disc_radius(M_star, spin);
+  // Only the DEEP void (r < 0.5 R_A) is exclusion-eligible: the dam
+  // edge is not razor-sharp, and marginal cases remain fittable.
+  const VOID_DEPTH = 0.5;
+  const void_bodies = inverted ? []
+    : observed_all.filter(p => p.r < VOID_DEPTH * R_A_now);
+  const disc_planets = inverted ? observed_all
+    : observed_all.filter(p => p.r >= VOID_DEPTH * R_A_now);
+
+  const slot_data = assign_planets_to_slots(disc_planets, M_star, spin, f_disc, omega);
+  const planet_by_slot: Record<number, Planet> = {};
+  for (const s of slot_data) {
+    if (s.filled) {
+      planet_by_slot[s.slot_n] = disc_planets.find(q => q.name === s.name)!;
+    }
+  }
+  // fit_r: in-situ planets use observed r; migrants use slot_r
+  // (formation position, where cascade allocation applies). Nearest-site
+  // checks run over ALL candidate sites (rungs + inverted interstitials).
+  const sites_pre = cascade_sites(M_star, spin, disc_planets.length, omega);
+  const R_disc_local = sites_pre.length ? sites_pre[0].r : 0;
+  const nearest_site_n = (r_obs: number): number => {
+    const log_obs = Math.log(r_obs);
+    let nearest = sites_pre.length ? sites_pre[0].n : 0, best = Infinity;
+    for (const st of sites_pre) {
+      const d = Math.abs(log_obs - Math.log(st.r));
+      if (d < best) { best = d; nearest = st.n; }
+    }
+    return nearest;
+  };
+  const fit_r = (s: AssignedSlot): number => {
+    if (!s.filled) return s.slot_r;
+    const p = planet_by_slot[s.slot_n];
+    // Outward migrant: planet observed well beyond R_disc — it formed
+    // at its slot (inside the disc) and migrated outward to its current
+    // position. Use slot_r for cascade allocation.
+    if (R_disc_local > 0 && p.r > R_disc_local * 1.2) return s.slot_r;
+    return (nearest_site_n(p.r) !== s.slot_n) ? s.slot_r : p.r;
+  };
+
+  const sl = slope(M_star, f_disc);
+  const pebble_total = total_pebble_bonus_budget(M_star, f_disc);
+
+  // Pebble bonus allocation across gas-eligible slots
+  const cores: Record<number, number> = {};
+  for (const s of slot_data) {
+    const r = fit_r(s);
+    cores[s.slot_n] = rock_allocation(r, M_star, spin, f_disc, omega)
+                    + ice_allocation(r, M_star, spin, f_disc);
+  }
+  const weights: Record<number, number> = {};
+  for (const s of slot_data) {
+    const r = fit_r(s);
+    const tf_casc = 0.10 * r / sl;
+    const eligible = (cores[s.slot_n] > THRESHOLD_GAS) && (tf_casc < T_DISC_DISPERSAL_MYR);
+    weights[s.slot_n] = eligible ? pebble_allocation_weight(r, M_star, f_disc) : 0.0;
+  }
+  const total_w = Object.values(weights).reduce((a, b) => a + b, 0);
+  const pebble: Record<number, number> = {};
+  for (const s of slot_data) {
+    pebble[s.slot_n] = total_w > 0 ? pebble_total * weights[s.slot_n] / total_w : 0;
+  }
+
+  // First pass: identify migrants for MISSING-slot attribution.
+  // Nearest checks run over all candidate sites (rungs + interstitials).
+  const migrants: string[] = [];
+  for (const s of slot_data) {
+    if (!s.filled) continue;
+    const p = planet_by_slot[s.slot_n];
+    if (nearest_site_n(p.r) !== s.slot_n) migrants.push(p.name);
+  }
+
+  const results: FitSlot[] = [];
+  for (const s of slot_data) {
+    const n = s.slot_n;
+    const r = fit_r(s);
+    let rock = rock_allocation(r, M_star, spin, f_disc, omega);
+    let ice = ice_allocation(r, M_star, spin, f_disc);
+    let peb = pebble[n];
+    let core = rock + ice + peb;
+    const in_void = false;
+    const observed = s.filled ? s.observed : 0;
+    const gas_eligible = (core > THRESHOLD_GAS);
+    // Strip detection: filled slots use observed mass as escape gate;
+    // lost slots use primordial core mass (what would have been there).
+    // Lost-slot predictions then reflect post-strip survival mass.
+    const mass_for_strip_gate = s.filled ? (planet_by_slot[n].observed || 0) : core;
+    const strip_r = s.filled ? planet_by_slot[n].r : r;
+    const stripped = is_stripped({ r: strip_r, observed: mass_for_strip_gate }, M_star);
+
+    let t_form: number, h_he: number, total: number;
+    // Outward-migrant gas giants: t_form capped at the giant-pair
+    // destabilization window (~2 Myr).
+    const MIGRATION_T_FORM_CAP = 2.0;
+    const is_outward_migrant = s.filled
+      && R_disc_local > 0
+      && planet_by_slot[n]
+      && planet_by_slot[n].r > R_disc_local * 1.5;
+    const t_form_hi = is_outward_migrant ? MIGRATION_T_FORM_CAP : 50.0;
+    // ISU (immutable) handling:
+    //  - If ANY planet is ISU, only ISU planets bisect t_form; non-ISU
+    //    use cascade-default t_form so observed vs primordial surfaces
+    //    post-formation modifications (impact loss, late delivery).
+    //  - If NO planet is ISU, all gas-eligible bisect t_form (no
+    //    diagnostic mode — just consensus fit to observed).
+    const is_immutable_planet = s.filled
+      && planet_by_slot[n] && planet_by_slot[n].immutable;
+    const any_isu = Object.values(planet_by_slot).some(p => p && p.immutable);
+    const should_bisect_t_form = s.filled && observed > 0
+      && (is_immutable_planet || !any_isu);
+    if (!gas_eligible) {
+      // Sub-threshold rocky: total = core, t_form from cascade.
+      t_form = 0.10 * r / sl;
+      h_he = 0;
+      total = core;
+    } else if (should_bisect_t_form) {
+      // Bisect t_form to fit observed exactly.
+      let lo = 0.01, hi = t_form_hi;
+      t_form = (lo + hi) / 2;
+      h_he = 0; total = core;
+      for (let i = 0; i < max_iter; i++) {
+        h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
+        total = core + h_he;
+        const err = (total - observed) / observed;
+        if (Math.abs(err) < bisect_tol) break;
+        if (total > observed) lo = t_form; else hi = t_form;
+        t_form = (lo + hi) / 2;
+      }
+      if (is_outward_migrant && t_form >= MIGRATION_T_FORM_CAP * 0.99) {
+        t_form = MIGRATION_T_FORM_CAP;
+        h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
+        total = core + h_he;
+      }
+    } else {
+      t_form = 0.10 * r / sl;
+      h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
+      total = core + h_he;
+    }
+
+    // Snapshot PRIMORDIAL composition (with cascade-default t_form, no
+    // bisection, no stripping) — used by classifier for diagnostic tags.
+    const t_form_p = 0.10 * r / sl;
+    const h_he_p = gas_eligible
+      ? hydrogen_capture(core, t_form_p, spin, r, M_star, f_disc, omega) : 0;
+    const primordial: Composition = {
+      rock, ice, pebble: peb, h_he: h_he_p,
+      core, total: core + h_he_p,
+    };
+
+    // Apply mantle stripping: small rocky planets inside the strip zone
+    // lose envelope, ice, and mantle down to the iron-core floor.
+    if (stripped) {
+      const [rk2, ic2, pb2, hh2] = apply_mantle_stripping(
+        rock, ice, peb, h_he, strip_r, M_star);
+      rock = rk2; ice = ic2; peb = pb2; h_he = hh2;
+      core = rock + ice + peb;
+      total = core + h_he;
+    }
+
+    const err_pct = observed > 0 ? ((total - observed) / observed * 100) : 0;
+    const implied_dM = (s.filled && observed > 0) ? (observed - total) : 0;
+
+    // Migration detection for classifier
+    let migrated_flag = false;
+    let r_used_class = s.slot_r;
+    if (s.filled) {
+      const p = planet_by_slot[n];
+      r_used_class = p.r;
+      // Outward migrant beyond R_disc: planet observed outside the cascade.
+      if (R_disc_local > 0 && p.r > R_disc_local * 1.2) {
+        migrated_flag = true;
+      } else {
+        migrated_flag = (nearest_site_n(p.r) !== n);
+      }
+    }
+    const r_snow_now = snow_line(M_star, f_disc);
+    const interpretation = classify_slot(
+      {
+        filled: s.filled, slot_r: s.slot_r, r_used: r_used_class,
+        observed, stripped, predicted: total,
+        rock, ice, pebble: peb, h_he,
+      },
+      primordial, r_snow_now, migrated_flag, migrants);
+
+    results.push({
+      slot_n: n, slot_r: s.slot_r, r_used: r,
+      filled: s.filled, name: s.name,
+      interstitial: s.interstitial,
+      rock, ice, pebble: peb, core, t_form, h_he,
+      predicted: total, observed, err_pct, implied_dM, stripped,
+      in_void, primordial, interpretation,
+    });
+  }
+
+  // KINETIC-regime transform: an impact disc is condensed rock vapor.
+  // Undo the nebula metallicity chain (the disc IS condensables), and
+  // zero the nebula-only channels (ice, pebbles, H/He).
+  if (opts.kinetic) {
+    const KIN = 1 / (Z_METALLICITY * F_ROCK * ETA_ROCK);
+    for (const s of results) {
+      if (s.external) continue;
+      s.rock = s.rock * KIN;
+      s.ice = 0; s.pebble = 0; s.h_he = 0;
+      s.core = s.rock;
+      s.predicted = s.rock;
+      s.primordial = { rock: s.rock, ice: 0, pebble: 0, h_he: 0,
+                       core: s.rock, total: s.rock };
+      if (s.filled && s.observed > 0) {
+        s.err_pct = (s.predicted - s.observed) / s.observed * 100;
+        s.implied_dM = s.observed - s.predicted;
+      }
+    }
+  }
+
+  // Gravitational stripping transform (flagged systems only): edit
+  // the baseline predictions in the encounter's three zones, then
+  // recompute residual bookkeeping. Runs BEFORE the dynamical
+  // detectors (they should see the post-encounter state) and before
+  // protostellar consumption (innermost slots are far below r_stir).
+  let stripping_freed = 0;  // freed encounter inventory (void rows read it)
+  if (opts.stripping && opts.stripping.q !== null
+      && opts.stripping.q !== undefined) {
+    const r_t = stripping_radius(M_star, opts.stripping);
+    const r_stir = STRIP_STIR_IN * r_t;
+    let freed = 0;
+    for (const s of results) {
+      if (s.external || s.remnant) continue;
+      if (s.slot_r > r_t) {
+        if (!s.filled) {
+          freed += s.predicted;
+          s.predicted = 0;
+          s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
+          s.interpretation = "stripped by stellar encounter (exterior to"
+            + " r_t = " + r_t.toFixed(2) + " AU; inventory removed)";
+        } else {
+          s.interpretation += " [exterior to encounter truncation r_t = "
+            + r_t.toFixed(2) + " AU — survival requires post-encounter"
+            + " arrival or a wide periapsis]";
+        }
+      } else if (s.slot_r > r_stir) {
+        const L = STRIP_L0 * (s.slot_r - r_stir) / (r_t - r_stir);
+        const loss = s.predicted * L;
+        freed += loss;
+        const keep = 1 - L;
+        s.predicted *= keep;
+        s.rock *= keep; s.ice *= keep; s.pebble *= keep;
+        s.core *= keep; s.h_he *= keep;
+        if (!s.filled) {
+          s.interpretation += " (encounter-stirred: "
+            + (L * 100).toFixed(0) + "% lost)";
+        }
+      }
+    }
+    // Asymmetric-split fragment: the freed inventory follows the
+    // 5%/95% inward/outward rule (the same split that delivers Theia
+    // and the Mars survivor in Sol), and the inward share can arrive
+    // as a single coherent fragment flung far below its source. A
+    // small filled body near/under the Alfvén dam, far inside its
+    // assigned site, whose mass sits at the inward share of the freed
+    // total (4-10%) IS that fragment — its mass and position are
+    // encounter output, not fit error (remnant semantics).
+    // HD 20794 b: 2.7 M⊕ = 4.6% of the 58 M⊕ freed inventory, parked
+    // at 0.121 AU = 0.89 R_A, at 0.23x its nearest site.
+    const R_A_here = alfven_radius(M_star, omega);
+    for (const s of results) {
+      if (!s.filled || s.external || s.remnant) continue;
+      const m = s.observed;
+      if (m <= 0 || freed <= 0) continue;
+      const frac = m / freed;
+      const p_obj = planet_by_slot[s.slot_n];
+      const r_obs = p_obj ? p_obj.r : s.r_used;
+      if (r_obs < 1.2 * R_A_here && r_obs < 0.4 * s.slot_r
+          && frac >= 0.04 && frac <= 0.10) {
+        s.remnant = true;
+        s.predicted = m;
+        s.err_pct = 0;
+        s.implied_dM = 0;
+        s.interpretation = "encounter fragment: ~"
+          + (frac * 100).toFixed(1) + "% of the stripped inventory ("
+          + freed.toFixed(1) + " M⊕) — the inward share of the 5%/95%"
+          + " split, flung under the dam to " + r_obs + " AU";
+      }
+    }
+
+    // Debris rains inward; filled bodies inside r_stir sweep it up in
+    // order, outermost first.
+    const gainers = results
+      .filter(s => !s.external && !s.remnant && s.filled
+        && s.slot_r <= r_stir)
+      .sort((a, b) => b.slot_r - a.slot_r);
+    if (gainers.length > 0 && freed > 0) {
+      const shares = gainers.map((_, i) =>
+        STRIP_SWEEP * Math.pow(1 - STRIP_SWEEP, i));
+      const tot = shares.reduce((a, b) => a + b, 0);
+      const budget = STRIP_F_IN * freed;
+      gainers.forEach((s, i) => {
+        const dm = budget * shares[i] / tot;
+        s.predicted += dm; s.rock += dm; s.core += dm;
+      });
+    }
+    for (const s of results) {
+      if (s.external || s.remnant) continue;
+      s.err_pct = s.observed > 0
+        ? ((s.predicted - s.observed) / s.observed * 100) : 0;
+      s.implied_dM = (s.filled && s.observed > 0)
+        ? (s.observed - s.predicted) : 0;
+    }
+    stripping_freed = freed;
+  }
+
+  // Impact-merger detection — retention scales with impact energy,
+  // and impact energy scales with orbital velocity difference between
+  // outer and inner slots. Adjacent slots → low energy → high retention
+  // (clean merger). Distant slots → high energy → low retention (iron-
+  // enriched survivor, mantle stripped).
+  const IMPACT_MASS_TOLERANCE = 0.20;
+  for (let i = 0; i < results.length - 1; i++) {
+    const outer = results[i], inner = results[i + 1];
+    if (!outer.filled || inner.filled) continue;
+    if (outer.observed <= 0) continue;
+    const rocky_combined =
+      outer.primordial.rock + outer.primordial.ice + outer.primordial.pebble +
+      inner.primordial.rock + inner.primordial.ice + inner.primordial.pebble;
+    if (rocky_combined <= 0) continue;
+    // Impact retention model:
+    //   v_orbit(r) = 29.785 · √(M_star/r)  [km/s; r in AU, M_star in M_sun]
+    //   v_esc(M)   = 11.186 · M^(1/3)      [km/s; M in M_E, rocky]
+    //   retention = max(0.3, 1 - 0.37 · Δv/v_esc)
+    // Calibrated against:
+    //   Mercury–Vulcan (Sol slots 8/9, r≈0.41/0.24 AU, combined ≈0.17 M_E):
+    //     Δv≈15.4 km/s, v_esc≈6.2 → ratio≈2.48 → retention=0.30 (floor)
+    //   Tau Ceti e (mild-end calibration anchor):
+    //     ratio≈0.53 → retention≈0.81 (partial merger)
+    const v_orbit_r = (r: number) => (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / r);
+    const dv = Math.abs(v_orbit_r(inner.slot_r) - v_orbit_r(outer.slot_r));
+    const v_esc = 11.186 * Math.pow(rocky_combined, 1.0 / 3.0);
+    const retention_model = v_esc > 0
+      ? Math.max(0.3, 1.0 - 0.37 * dv / v_esc)
+      : 0.3;
+    const expected = retention_model * rocky_combined;
+    const merge_err = Math.abs(expected - outer.observed) / outer.observed;
+    if (merge_err < IMPACT_MASS_TOLERANCE) {
+      const retention_obs = outer.observed / rocky_combined;
+      inner.interpretation = `impacted ${outer.name}`;
+      const suffix = retention_obs < 0.5 ? ", iron-enriched" : "";
+      outer.interpretation = `merger (absorbed slot ${inner.slot_n}${suffix})`;
+    }
+  }
+
+  // Mutual-eviction detection: adjacent MISSING slots both predicting
+  // brown-dwarf-or-larger mass cannot coexist (Sep/R_H,mutual << 3.5).
+  const M_BROWN_DWARF_LOCAL = 4131.0;
+  for (let i = 0; i < results.length - 1; i++) {
+    const outer = results[i], inner = results[i + 1];
+    if (outer.filled || inner.filled) continue;
+    if (outer.predicted < M_BROWN_DWARF_LOCAL
+        || inner.predicted < M_BROWN_DWARF_LOCAL) continue;
+    const m_sum = outer.predicted + inner.predicted;
+    const a_avg = (outer.slot_r + inner.slot_r) / 2;
+    const R_H_mutual = a_avg * Math.pow(m_sum * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
+    const sep = outer.slot_r - inner.slot_r;
+    if (sep / R_H_mutual < 3.5) {
+      outer.interpretation = `${outer.interpretation.split(' (')[0]} (mutually evicted with slot ${inner.slot_n})`;
+      inner.interpretation = `${inner.interpretation.split(' (')[0]} (mutually evicted with slot ${outer.slot_n})`;
+    }
+  }
+
+  // Lissauer-instability detection: an unfilled slot adjacent to a
+  // filled larger neighbor with sep/R_H,mutual < 7 (Lissauer stability
+  // limit) was destabilized by mutual Hill instability.
+  const LISSAUER_THRESHOLD = 7.0;
+  const EJECTION_MASS_FLOOR = 100;  // M⊕; gas-giant scale for ejection
+  for (let i = 0; i < results.length; i++) {
+    const target = results[i];
+    if (target.filled || target.external) continue;
+    if (!target.slot_r || target.slot_r <= 0) continue;
+    if (target.predicted < 0.05) continue;
+    for (let j = 0; j < results.length; j++) {
+      if (i === j) continue;
+      const neighbor = results[j];
+      if (!neighbor.filled || neighbor.external) continue;
+      if (Math.abs(neighbor.slot_n - target.slot_n) > 1) continue;  // adjacent only
+      const m_n = Math.max(neighbor.observed, neighbor.predicted);
+      const m_t = target.predicted;
+      if (m_n <= m_t) continue;  // neighbor must be larger
+      const a_avg = (target.slot_r + neighbor.slot_r) / 2;
+      const R_H_mutual = a_avg
+        * Math.pow((m_n + m_t) * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
+      const sep = Math.abs(target.slot_r - (neighbor.r_used || neighbor.slot_r));
+      if (sep / R_H_mutual >= LISSAUER_THRESHOLD) continue;
+      // Δv ≈ v_orbital × √(m_smaller/m_larger), cumulative over encounters
+      const v_orbital = (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / a_avg);  // km/s
+      const dv_per_encounter = v_orbital * Math.sqrt(m_t / m_n);
+      const v_esc = (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.SQRT2 * Math.sqrt(M_star / a_avg);
+      const dv_cumulative = 2.5 * dv_per_encounter;
+      const ejected = (m_t >= EJECTION_MASS_FLOOR && dv_cumulative > v_esc);
+      const base = target.interpretation.split(' (')[0];
+      if (ejected) {
+        target.interpretation = `${base} (Lissauer-destabilized by ${neighbor.name}, ejected to interstellar)`;
+      } else {
+        target.interpretation = `${base} (Lissauer-destabilized by ${neighbor.name}, scattered within system)`;
+      }
+      break;
+    }
+  }
+
+  // Embryo-swarm scattering detection: any cascade slot within ~10 R_H of
+  // a much larger perturber slot has its pre-consolidation embryo swarm
+  // dispersed by asymmetric Jupiter-style scattering.
+  //
+  // Quantitative predictions for the inner-scattered survivor:
+  //   - Position: r_survivor ≈ r_perturber − 11·R_H (Sol: Jupiter at
+  //     5.20 AU, R_H ≈ 0.34 AU → 1.46 AU; Mars observed at 1.524 AU).
+  //   - Mass: ~5-10% of the slot's primordial cascade allocation.
+  const SCATTER_MASS_RATIO = 10;
+  const SCATTER_RH_THRESHOLD = 10;
+  const SURVIVOR_FRACTION_MAX = 0.15;
+  const SURVIVOR_N_SAFETY = 11;
+  const SURVIVOR_MASS_FRAC_MIN = 0.05;
+  const SURVIVOR_MASS_FRAC_MAX = 0.10;
+  interface ScatterMatch {
+    perturber: FitSlot; sep: number; R_H: number;
+    perturber_r: number; target_r: number; target: FitSlot;
+  }
+  const target_perturbers = new Map<number, ScatterMatch[]>();
+  for (let i = 0; i < results.length; i++) {
+    const target = results[i];
+    if (!target.slot_r || target.slot_r <= 0) continue;
+    if (target.external) continue;
+    if (target.predicted < 0.05) continue;
+    const target_r = (target.filled && target.r_used > 0)
+      ? target.r_used : target.slot_r;
+    const matches: ScatterMatch[] = [];
+    for (let j = 0; j < results.length; j++) {
+      if (i === j) continue;
+      const perturber = results[j];
+      if (!perturber.slot_r || perturber.slot_r <= 0) continue;
+      if (perturber.external) continue;
+      const m_perturber = perturber.filled
+        ? Math.max(perturber.observed, perturber.predicted)
+        : perturber.predicted;
+      if (m_perturber < target.predicted * SCATTER_MASS_RATIO) continue;
+      const perturber_r = (perturber.filled && perturber.r_used > 0)
+        ? perturber.r_used : perturber.slot_r;
+      const R_H = perturber_r
+        * Math.pow(m_perturber * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
+      const sep = Math.abs(target_r - perturber_r);
+      if (sep / R_H >= SCATTER_RH_THRESHOLD) continue;
+      matches.push({ perturber, sep, R_H, perturber_r, target_r, target });
+    }
+    if (matches.length > 0) target_perturbers.set(i, matches);
+  }
+
+  // Group single-perturber targets by perturber for the energy-ordering
+  // settled-survivor attribution; multi-perturber targets are obliterated.
+  //
+  // Hill-space compression for distant perturbers: the absolute
+  // sep < 10 R_H membership criterion degenerates for massive, distant
+  // perturbers — once R_H ≥ a_p/10 (m ≳ 3e-3 M_star), the annulus
+  // reaches r = 0 and the entire interior gets attributed (55 Cnc d at
+  // 5.96 AU "dispersing" slots at 0.03-0.09 AU). Physically a single
+  // perturber's chaotic zone is LOCAL to its orbit; deep-interior
+  // orbits are dynamically decoupled (Holman-Wiegert-like interior
+  // stability at ~0.27 a_p — the floor preserves Mars at
+  // r/r_J = 0.293 with margin). MULTI-perturber targets are exempt:
+  // chain relaxation destroys through eccentric excursions whose
+  // members physically traverse the interior (HR 8799, Beta Pic, the
+  // stellar triples), not through static reach.
+  const SCATTER_INTERIOR_FLOOR = 0.27;
+  const scatter_groups = new Map<string, ScatterMatch[]>();
+  const multi_perturbed: ScatterMatch[][] = [];
+  for (const matches of target_perturbers.values()) {
+    if (matches.length >= 2) {
+      multi_perturbed.push(matches);
+    } else {
+      const m = matches[0];
+      if (m.target_r < m.perturber_r
+          && m.target_r / m.perturber_r < SCATTER_INTERIOR_FLOOR) {
+        continue;  // deep-interior: outside the perturber's chaotic zone
+      }
+      const key = m.perturber.name;
+      if (!scatter_groups.has(key)) scatter_groups.set(key, []);
+      scatter_groups.get(key)!.push(m);
+    }
+  }
+
+  // Single-perturber attribution: the FURTHEST-from-perturber slot hosts
+  // the settled survivor; closer slots are scattered deeper.
+  for (const [perturberName, group] of scatter_groups) {
+    if (group.length === 0) continue;
+    let settled = group[0];
+    for (const g of group) {
+      if (Math.abs(g.target_r - g.perturber_r)
+          > Math.abs(settled.target_r - settled.perturber_r)) {
+        settled = g;
+      }
+    }
+    const r_boundary = settled.perturber_r - SURVIVOR_N_SAFETY * settled.R_H;
+    const boundary_valid = r_boundary > 0;
+    for (const g of group) {
+      const target = g.target;
+      const base = target.interpretation.split(' (')[0];
+      const m_survivor_min = target.predicted * SURVIVOR_MASS_FRAC_MIN;
+      const m_survivor_max = target.predicted * SURVIVOR_MASS_FRAC_MAX;
+      const is_settled_slot = (g === settled);
+      if (!target.filled) {
+        if (is_settled_slot && boundary_valid) {
+          target.interpretation = `${base} (swarm scattered by ${perturberName}; survivor predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
+        } else if (!boundary_valid) {
+          target.interpretation = `${base} (swarm scattered by ${perturberName}, fully dispersed)`;
+        } else {
+          target.interpretation = `${base} (swarm scattered by ${perturberName}; inner-system impactors, no settled survivor)`;
+        }
+      } else if (target.observed > 0
+                 && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
+        const pct = Math.round(target.observed / target.predicted * 100);
+        if (is_settled_slot && boundary_valid) {
+          target.interpretation = `${base} (inner-scattered survivor: ~${pct}% of slot, scattered by ${perturberName}; predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
+        } else {
+          target.interpretation = `${base} (scattered by ${perturberName}, only ~${pct}% remains)`;
+        }
+      }
+    }
+  }
+
+  // Multi-perturber attribution: simultaneous scattering by 2+ massive
+  // bodies leaves no stable region. Total obliteration of the swarm.
+  for (const matches of multi_perturbed) {
+    const target = matches[0].target;
+    const base = target.interpretation.split(' (')[0];
+    const perturberNames = matches.map(m => m.perturber.name).join(', ');
+    if (!target.filled) {
+      target.interpretation = `${base} (totally obliterated by simultaneous scattering: ${perturberNames})`;
+    } else if (target.observed > 0
+               && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
+      const pct = Math.round(target.observed / target.predicted * 100);
+      target.interpretation = `${base} (anomalous remnant ~${pct}%; multi-perturber scattering: ${perturberNames})`;
+    }
+  }
+
+  // Void-interior bodies — observed inside the Alfven Dam, where no
+  // cascade slot exists. A body cannot have FORMED there, but a small
+  // one (bare-core mass range, no surviving envelope) may be a
+  // Martian-type scatter remnant: a survivor retaining ~5-10% of its
+  // slot's parent (Mars retains ~8% of its slot prediction in Sol),
+  // stripped and flung under the dam. If an UNFILLED slot's predicted
+  // mass puts the orphan inside that band, bind it to the slot: the
+  // mass delta and the delivered position are both scatter OUTPUT —
+  // a satisfied fit (excluded from the f-bisection target and the
+  // position score), exactly as Mars' -92% counts as diagnostic, not
+  // error. Otherwise the body stays a void row.
+  const REMNANT_MAX_MASS = 30.0;  // M⊕ — above this it kept an envelope
+  for (const p of void_bodies) {
+    const m_obs = p.observed || 0;
+    const is_small = m_obs > 0 && m_obs <= REMNANT_MAX_MASS;
+    let bound: FitSlot | null = null;
+    if (is_small) {
+      let best_d = Infinity;
+      for (const s of results) {
+        if (s.filled || s.external || s.predicted <= 0) continue;
+        const frac = m_obs / s.predicted;
+        if (frac < SURVIVOR_MASS_FRAC_MIN || frac > SURVIVOR_MASS_FRAC_MAX) continue;
+        const d = Math.abs(Math.log(frac
+          / Math.sqrt(SURVIVOR_MASS_FRAC_MIN * SURVIVOR_MASS_FRAC_MAX)));
+        if (d < best_d) { best_d = d; bound = s; }
+      }
+    }
+    if (bound) {
+      const pct = Math.round(m_obs / bound.predicted * 100);
+      bound.filled = true;
+      bound.name = p.name;
+      bound.observed = m_obs;
+      bound.err_pct = (bound.predicted - m_obs) / m_obs * 100;
+      bound.implied_dM = m_obs - bound.predicted;
+      bound.remnant = true;
+      bound.stripped = is_stripped(p, M_star);
+      bound.interpretation = `Martian-type scatter remnant: ~${pct}% of the slot ${bound.slot_n} parent (${bound.predicted.toFixed(0)} M⊕), stripped and flung under the dam to ${p.r} AU`;
+      continue;
+    }
+    results.push({
+      slot_n: -1, slot_r: p.r, r_used: p.r,
+      filled: true, name: p.name,
+      rock: 0, ice: 0, pebble: 0, core: 0,
+      t_form: 0, h_he: 0,
+      predicted: m_obs, observed: m_obs,
+      err_pct: 0, implied_dM: 0,
+      stripped: is_stripped(p, M_star), in_void: true, external: true,
+      primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
+      interpretation: (is_small && stripping_freed > 0
+          && m_obs / stripping_freed >= 0.04
+          && m_obs / stripping_freed <= 0.12)
+        ? `interior to Alfven Dam (encounter fragment: ~${(m_obs / stripping_freed * 100).toFixed(1)}% of the ${stripping_freed.toFixed(1)} M⊕ encounter-stripped inventory — the inward share of the 5%/95% split, flung under the dam)`
+        : is_small
+        ? `interior to Alfven Dam (Martian-type scatter remnant: ~5-10% of a ${(m_obs / SURVIVOR_MASS_FRAC_MAX).toFixed(0)}-${(m_obs / SURVIVOR_MASS_FRAC_MIN).toFixed(0)} M⊕ parent, stripped and flung under the dam; parent slot indeterminate)`
+        : "interior to Alfven Dam (void: no slot at observed r — delivered inward by scattering or migration; formation slot indeterminate)",
+    });
+  }
+
+  // KBO-class population (the Kuiper mechanism): a distinct entity
+  // with independent inputs. Each body is evaluated against the
+  // exterior ladder r = R_dam·(1/ρ)^n — half-integer rungs, the Luger
+  // lattice continued outward through the dam (rung 0.5's period ratio
+  // 1.497 ≈ 3:2 is the plutino resonance). Geometry is the test; the
+  // exterior mass calculus is independent and deferred, so rows are
+  // satisfied (predicted := observed) and carry no fit cost.
+  if (kbo_bodies.length > 0) {
+    const R_dam = R_disc_local > 0 ? R_disc_local
+      : disc_radius(M_star, spin as number);
+    const KBO_TOL = 0.035;  // |ln(r/rung)| in-situ acceptance
+    for (const p of kbo_bodies) {
+      const n_raw = Math.log(p.r / R_dam) / Math.log(1 / CASCADE_RATIO);
+      const n = Math.max(0.5, Math.round(n_raw * 2) / 2);
+      const rung_r = R_dam * Math.pow(1 / CASCADE_RATIO, n);
+      const dlog = Math.log(p.r / rung_r);
+      const dr_pct = ((p.r / rung_r - 1) * 100).toFixed(1);
+      const on_rung = Math.abs(dlog) <= KBO_TOL;
+      results.push({
+        slot_n: -n, slot_r: rung_r, r_used: p.r,
+        filled: true, name: p.name,
+        rock: 0, ice: 0, pebble: 0, core: 0,
+        t_form: 0, h_he: 0,
+        predicted: p.observed || 0, observed: p.observed || 0,
+        err_pct: 0, implied_dM: 0,
+        stripped: false, in_void: false, exterior: true,
+        primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
+                      total: p.observed || 0 },
+        interpretation: on_rung
+          ? `dam-exterior cohort: IN SITU on exterior rung ${n} (${rung_r.toPrecision(4)} AU, Δr ${dr_pct}%) — formed against the Davis Dam's outer face (Kuiper mechanism; independent mass calculus deferred)`
+          : `dam-exterior object: off-rung (nearest exterior rung ${n} at ${rung_r.toPrecision(4)} AU, Δr ${dr_pct}%) — inter-rung belt member or scattered (Kuiper mechanism; independent mass calculus deferred)`,
+      });
+    }
+  }
+
+  // Append external (stellar) bodies as informational entries — bound
+  // but not products of the primary's protoplanetary disc.
+  for (const p of external_bodies) {
+    results.push({
+      slot_n: -1, slot_r: p.r, r_used: p.r,
+      filled: true, name: p.name,
+      rock: 0, ice: 0, pebble: 0, core: 0,
+      t_form: 0, h_he: 0,
+      predicted: p.observed || 0, observed: p.observed || 0,
+      err_pct: 0, implied_dM: 0,
+      stripped: false, in_void: false, external: true,
+      primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: p.observed || 0 },
+      interpretation: (p.observed || 0) >= M_STELLAR_BOUNDARY
+        ? "stellar companion (bound, not formed in disc)"
+        : "external body",
+    });
+  }
+
+  // Gravity-purge detection: brown dwarfs and stellar-class bodies
+  // clear their inner slots. Compare by r rather than slot_n since
+  // external bodies have slot_n=-1.
+  const purgers = results.filter(s => s.filled
+    && (s.interpretation.includes("brown dwarf")
+        || s.interpretation.includes("-class star")));
+  for (const victim of results) {
+    if (victim.filled) continue;
+    for (const purger of purgers) {
+      if (purger.slot_r <= victim.slot_r) continue;
+      const old = victim.interpretation;
+      const base = old.includes("(destroyed by")
+        ? old.split(" (destroyed by")[0] : old;
+      victim.interpretation = `${base} (purged by ${purger.name})`;
+      break;
+    }
+  }
+
+  // Protostellar consumption: during the disc era the star sits on its
+  // Hayashi track, bloated far beyond its main-sequence radius ---
+  //   R_HT(t) ≈ 2.3 R☉ · (M/M☉)^(2/3) · (t/Myr)^(-1/3)
+  // (near-constant T_eff contraction, calibrated to the Sun's ~2.3 R☉
+  // at 1 Myr; clock floored at 0.5 Myr, roughly the birthline). The
+  // inverted regime's ladder, projected inward from the dam with
+  // scale-free geometry, can place slots INSIDE this photosphere ---
+  // their allocation is real but its destination is the star. Such
+  // slots are consumed, not lost: the strongest interpretation,
+  // applied after all dynamical detectors. A FILLED slot inside the
+  // protostellar radius is a contradiction for in-situ formation; the
+  // occupant must be a later arrival (cf. GJ 367b-class USP planets).
+  const R_SUN_AU = 0.00465;
+  const hayashi_radius = (t_myr: number) =>
+    2.3 * R_SUN_AU * Math.pow(M_star * M_PRIM_TO_MSUN, 2 / 3)
+    * Math.pow(Math.max(t_myr, 0.5), -1 / 3);
+  // Terminology and physics switch by PRIMARY CLASS, decided by mass:
+  // below the hydrogen-burning threshold the primary is a planet, not
+  // a protostar — it has no Hayashi track, and slots beneath its
+  // physical surface are FALLBACK, debris pulled back into the
+  // primary trying to reach seats below the ground.
+  const SUBSTELLAR_M_PRIM = 0.075 / M_PRIM_TO_MSUN; // H-burning limit
+  if (M_star < SUBSTELLAR_M_PRIM) {
+    // gas-giant-class primaries are puffier than rocky ones
+    const RHO_PRIMARY = (M_star * M_PRIM_TO_MSUN * 332946 * 1.14 > 10)
+      ? 1300 : 5500; // kg/m^3
+    const Mkg_prim = M_star * M_PRIM_TO_MSUN * 1.989e30;
+    const R_prim_AU = Math.pow(3 * Mkg_prim / (4 * Math.PI * RHO_PRIMARY), 1 / 3) / 1.496e11;
+    for (const s of results) {
+      if (s.external || !s.slot_r || s.slot_r <= 0) continue;
+      if (s.slot_r >= R_prim_AU) continue;
+      if (!s.filled) {
+        const eaten = s.predicted;
+        s.predicted = 0;
+        s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
+        s.interpretation = "fallback: slot lies beneath the primary's"
+          + " surface (slot radius " + s.slot_r.toFixed(5)
+          + " AU vs primary radius " + R_prim_AU.toFixed(5) + " AU; "
+          + (eaten * 1000).toFixed(2) + " mE allocation re-accreted"
+          + " by the primary; predicted body mass: zero)";
+      } else {
+        s.interpretation += " [slot beneath the primary's surface"
+          + " — in-situ origin impossible; delivered or migrated]";
+      }
+    }
+  } else
+  for (const s of results) {
+    if (s.external || !s.slot_r || s.slot_r <= 0) continue;
+    const R_HT = hayashi_radius(s.t_form);
+    if (s.slot_r >= R_HT) continue;
+    if (!s.filled) {
+      // The model PREDICTS ZERO PLANET MASS here: the allocation is
+      // real, but its destination is the star. Zeroing the prediction
+      // also zeroes the slot's missing-planet cost in the brute score
+      // — predicting absence where nothing is observed is a success,
+      // not a loss.
+      const eaten = s.predicted;
+      s.predicted = 0;
+      s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
+      s.interpretation = "consumed by the protostar (slot radius "
+        + s.slot_r.toFixed(4) + " AU inside the Hayashi-track photosphere "
+        + R_HT.toFixed(4) + " AU at formation; "
+        + eaten.toFixed(2) + " M⊕ allocation accreted by the star;"
+        + " predicted planet mass: zero)";
+    } else {
+      s.interpretation += " [slot inside protostellar radius at formation"
+        + " — in-situ origin excluded; delivered or late-formed]";
+    }
+  }
+
+  // Roche-forbidden zone: every primary has a fluid Roche limit,
+  //   d = 2.44 · (3 M / 4π ρ_s)^(1/3)
+  // (mass-only form — the primary's radius cancels), inside which no
+  // body can consolidate. Slot allocations there are real but persist
+  // as RINGS and feed material rather than planets/moons: Jupiter's
+  // main-ring edge (~1.86 R_J) and Saturn's A-ring edge (~2.2 R_S)
+  // sit at their primaries' fluid Roche limits — the forbidden slots'
+  // allocations, visible. For stars the Hayashi photosphere normally
+  // swallows this zone (consumption is checked first and wins); the
+  // Roche parameter bites when the primary is compact during
+  // formation: gas giants and the kinetic (impact-disc) regime, where
+  // Luna's slots 2+ fall inside Earth's 2.9 R⊕ limit. ρ_s = rock
+  // (3000 kg/m³); satellites of ice-zone primaries are dirtier but
+  // the cube root forgives.
+  const RHO_SAT = 3000; // kg/m^3
+  const M_kg = M_star * M_PRIM_TO_MSUN * 1.989e30;
+  const d_roche_AU = 2.44
+    * Math.pow(3 * M_kg / (4 * Math.PI * RHO_SAT), 1 / 3) / 1.496e11;
+  for (const s of results) {
+    if (s.external || s.exterior || !s.slot_r || s.slot_r <= 0) continue;
+    if (s.slot_r >= d_roche_AU) continue;
+    if (s.predicted <= 0 && !s.filled) continue; // already consumed
+    if (!s.filled) {
+      const shredded = s.predicted;
+      s.predicted = 0;
+      s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
+      s.interpretation = "Roche-forbidden (slot radius "
+        + s.slot_r.toFixed(5) + " AU inside the primary's fluid Roche"
+        + " limit " + d_roche_AU.toFixed(5) + " AU; "
+        + (shredded * 1000).toFixed(2) + " mE allocation cannot"
+        + " consolidate — persists as ring/feed material;"
+        + " predicted body mass: zero)";
+    } else {
+      s.interpretation += " [inside the fluid Roche limit ("
+        + d_roche_AU.toFixed(5) + " AU) — rigid-body survivor,"
+        + " ring shepherd, or later arrival]";
+    }
+  }
+
+  return {
+    slots: results,
+    ratio: CASCADE_RATIO,
+    R_disc: disc_radius(M_star, spin),
+    spin,
+  };
+}
+
+// ============================================================
+//  bestFit — the calibration entry point shared by UI and CLI.
+//  One pass = anchor search (spin) followed by f_disc bisection
+//  (driving sum(predicted - observed) → 0 over the ISU subset, or
+//  over all filled slots when no ISU planets exist). Iterated to a
+//  fixed point so spin and f_disc are mutually consistent.
+// ============================================================
+function bestFit(planets: Planet[], M_star: number, f_disc_initial: number,
+                 max_outer_iterations?: number): BestFitResult {
+  let f_disc = f_disc_initial;
+  let spin: number | null = null;
+  let anchor_slot = 0;
+  let fit: FitResult | null = null;
+  let converged = false;
+  let iterations = 0;
+  let target_residual = 0;
+  let target_names: string[] = [];
+  const max_outer = max_outer_iterations || 8;
+
+  const immutable_names = new Set(
+    planets.filter(p => p.immutable).map(p => p.name));
+  const sel = (f: FitResult): FitSlot[] => (immutable_names.size > 0
+    ? f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior && immutable_names.has(s.name))
+    : f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior));
+
+  for (let iter = 0; iter < max_outer; iter++) {
+    iterations = iter + 1;
+    const ar = auto_spin_with_anchor_search(
+      planets.filter(p => !p.kbo), M_star, f_disc);
+    const spin_new = ar.spin;
+    anchor_slot = ar.anchor_slot;
+    fit = slot_aware_fit(planets, M_star, spin_new, f_disc, { auto_compress: false });
+    const totalErr = (f: FitResult): number =>
+      sel(f).reduce((a, s) => a + (s.predicted - s.observed), 0);
+    const totalTarget = sel(fit).reduce((a, s) => a + s.observed, 0);
+    let f_new = f_disc;
+    if (totalTarget > 0) {
+      let lo = 0.0005, hi = 2.0;
+      // Tolerance: tight enough that the smallest target planet's
+      // individual error stays below ~0.1% of ITS observed mass.
+      const smallest = sel(fit).reduce((m, s) => Math.min(m, s.observed), Infinity);
+      const tol = Math.max(1e-6, 0.001 * smallest);
+      for (let i = 0; i < 60; i++) {
+        const fm = Math.sqrt(lo * hi);
+        const f2 = slot_aware_fit(planets, M_star, spin_new, fm, { auto_compress: false });
+        const e = totalErr(f2);
+        f_new = fm; fit = f2;
+        if (Math.abs(e) < tol) break;
+        if (e > 0) hi = fm; else lo = fm;
+      }
+      target_residual = Math.abs(totalErr(fit)) / totalTarget;
+    }
+    const conv = spin !== null
+      && Math.abs(f_new - f_disc) / Math.max(f_disc, 1e-12) < 1e-3
+      && Math.abs(spin_new - spin) / Math.max(spin_new, 1e-12) < 1e-3;
+    spin = spin_new;
+    f_disc = f_new;
+    if (conv) { converged = true; break; }
+  }
+  target_names = sel(fit!).map(s => s.name);
+  return {
+    spin: spin!, f_disc, anchor_slot, iterations, converged,
+    target_residual, target_names, fit: fit!,
+  };
+}
+
+// ============================================================
+//  bruteFit — exhaustive joint optimization over the discrete anchor
+//  family (outermost planet at slot k = 0..11, plus the Stage-2
+//  outward-migrant variants), with the EXACT canonical f_disc
+//  bisection solved inside each candidate. Joint scanning removes the
+//  limit-cycle failure mode of bestFit's alternating loop while
+//  preserving the canonical fits bit-for-bit (the same anchor scoring
+//  and the same f objective are used — they are simply no longer
+//  evaluated against a stale partner value).
+//
+//  HARD CONSTRAINT from the observed planet count: a valid candidate
+//  must provide at least as many cascade slots as observed planets.
+//  Slot count depends on spin alone (M_star cancels in
+//  C = R_A/R_disc ∝ Ω^(15/14)), so the planet count partitions the
+//  spin axis a priori — a slow normal-regime branch and an
+//  inverted-regime branch (11 slots), with a forbidden band between.
+// ============================================================
+interface BruteFitResult extends BestFitResult {
+  score: number;
+  stripping_q?: number | null;   // fitted (or given) encounter periapsis
+  stripping_rt?: number | null;  // Breslau truncation radius at that q
+}
+
+function bruteFit(planets: Planet[], M_star: number,
+                  stripping?: StrippingConfig | null,
+                  vice?: boolean): BruteFitResult {
+  const BIG = 1e6;
+  const K_PENALTY = 1.5;
+  const STAGE2_PENALTY = 2.0;
+
+  // KBO-class bodies are a distinct population: they never anchor the
+  // cascade and never count toward the interior planet census.
+  const obs_disc = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+  const n_obs = obs_disc.length;
+  const immutable_names = new Set(
+    planets.filter(p => p.immutable).map(p => p.name));
+  const sel = (f: FitResult): FitSlot[] => (immutable_names.size > 0
+    ? f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior && immutable_names.has(s.name))
+    : f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior));
+  const by_name: Record<string, Planet> = {};
+  for (const p of planets) by_name[p.name] = p;
+
+  // Canonical f_disc bisection at a fixed spin: drive the target-sum
+  // objective sum(predicted - observed) → 0 (ISU subset, or all filled).
+  // When stripping is flagged, q is threaded into every fit evaluation.
+  const fit_opts = (q: number | null, omega?: number): SlotAwareFitOpts => {
+    const o: SlotAwareFitOpts = { auto_compress: false };
+    if (stripping && q !== null) o.stripping = { M_pert: stripping.M_pert, q };
+    if (omega !== undefined) o.omega = omega;
+    return o;
+  };
+  const bisectF = (spin: number, q: number | null = null,
+                   omega?: number):
+      { f: number; fit: FitResult; residual: number } => {
+    let f = 0.01;
+    let fit = slot_aware_fit(planets, M_star, spin, f, fit_opts(q, omega));
+    const totalTarget = sel(fit).reduce((a, s) => a + s.observed, 0);
+    if (totalTarget <= 0) return { f, fit, residual: 0 };
+    let lo = 0.0005, hi = 2.0;
+    const smallest = sel(fit).reduce((m, s) => Math.min(m, s.observed), Infinity);
+    const tol = Math.max(1e-6, 0.001 * smallest);
+    let e = Infinity;
+    for (let i = 0; i < 60; i++) {
+      const fm = Math.sqrt(lo * hi);
+      const f2 = slot_aware_fit(planets, M_star, spin, fm, fit_opts(q, omega));
+      e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
+      f = fm; fit = f2;
+      if (Math.abs(e) < tol) break;
+      if (e > 0) hi = fm; else lo = fm;
+    }
+    return { f, fit, residual: Math.abs(e) / totalTarget };
+  };
+
+  // Anchor-family score of a fitted candidate (canonical convention):
+  // unassigned·BIG + position residual + missing cost (+ penalties),
+  // with stellar-mass empty slots rejected via BIG.
+  const scoreFit = (fit: FitResult, penalty: number): number => {
+    let score = penalty;
+    let n_filled = 0;
+    for (const s of fit.slots) {
+      if (s.external) continue;
+      if (s.filled) {
+        n_filled++;
+        // Remnant binding: mass and position are scatter output — a
+        // satisfied fit contributes no residual (REMNANT_PENALTY in
+        // consider() carries the parsimony cost instead). KBO rows are
+        // a distinct population with independent inputs — zero cost.
+        if (s.remnant || s.exterior) continue;
+        const p = by_name[s.name];
+        if (p) score += Math.abs(Math.log(p.r / s.slot_r));
+      } else {
+        if (s.predicted >= M_STELLAR_BOUNDARY) score += BIG;
+        else score += Math.log10(1 + Math.max(0, s.predicted));
+      }
+    }
+    // Unassigned = observed, non-void planets without a slot. Void-
+    // interior bodies are external rows, not unassigned failures.
+    const n_void_now = fit.slots.filter(s => s.external && s.in_void).length;
+    score += BIG * Math.max(0, (n_obs - n_void_now) - n_filled);
+    return score;
+  };
+
+  let best: { score: number; spin: number; f: number; k: number;
+              fit: FitResult; residual: number;
+              q: number | null; omega: number | null;
+              penalty_base?: number } | null = null;
+  let q_pin: number | null = null;  // fixed-point pass-2 periapsis
+  const VOID_PENALTY = 5.0;    // per planet relegated to the deep Alfven void
+  const REMNANT_PENALTY = 2.0; // per void orphan bound to a parent slot
+  // VICE mode: geometry (spin = the density dial, anchor k, stripping q)
+  // is selected by the LOCKED scan exactly as in the default mode; omega
+  // (inner jaw: R_A, intercept, wind) then refines WITHIN the winning
+  // geometry over a breakup-bounded grid. This keeps every validated
+  // geometry (Beta Pic 28.4 AU dam, Sol ladder, ...) while letting the
+  // physical rotation decouple from the environmental squeeze.
+  const evalCandidate = (spin: number, k: number, penalty: number,
+                         omega?: number) => {
+    // Physicality floor: spin < 0.02 means D < 0.003 — a cloud more
+    // diffuse than any star-forming medium, reached only by runaway
+    // deep-k anchors on wide stellar companions. Reject.
+    if (spin < 0.02) return null;
+    const om_eff = (omega === undefined) ? spin : omega;
+    const R_A_try = alfven_radius(M_star, om_eff);
+    const inv_try = alfven_radius(M_star, spin) >= disc_radius(M_star, spin);
+    const n_void_pre = inv_try ? 0
+      : planets.filter(p => (p.observed || 0) > 0 && p.r < 0.5 * R_A_try).length;
+    const n_eff = n_obs - n_void_pre;
+    if (n_eff < 1) return null;
+    if (cascade_slot_positions(M_star, spin, n_eff, omega).length < n_eff) return null;
+    // Resolve the stripping periapsis: given q used directly; null q
+    // golden-sectioned (in log space) to minimize the mean PER-PLANET
+    // |log(pred/obs)| — exactly the quantity the consensus f-bisection
+    // cannot see, which is what encounter editing must close.
+    const perPlanetJ = (f2: FitResult): number => {
+      const rows = f2.slots.filter(s => s.filled && !s.external
+        && !s.remnant && s.observed > 0 && s.predicted > 0);
+      if (!rows.length) return 0;
+      return rows.reduce((a, s) =>
+        a + Math.abs(Math.log(s.predicted / s.observed)), 0) / rows.length;
+    };
+    let f: number, fit: FitResult, residual: number;
+    let q_used: number | null = null, J = 0;
+    if (!stripping) {
+      ({ f, fit, residual } = bisectF(spin, null, omega));
+      if (vice) J = perPlanetJ(fit);
+    } else if (stripping.q !== null && stripping.q !== undefined) {
+      q_used = stripping.q;
+      ({ f, fit, residual } = bisectF(spin, q_used, omega));
+      J = perPlanetJ(fit);
+    } else if (q_pin !== null) {
+      // Fixed-point second pass: all candidates compete at the first
+      // pass's winning periapsis.
+      q_used = q_pin;
+      ({ f, fit, residual } = bisectF(spin, q_used, omega));
+      J = perPlanetJ(fit);
+    } else {
+      const GR = 0.6180339887;
+      let lo_q = Math.log(1.0), hi_q = Math.log(300.0);
+      const evalQ = (lq: number) => {
+        const r = bisectF(spin, Math.exp(lq), omega);
+        return { ...r, J: perPlanetJ(r.fit) };
+      };
+      let x1 = hi_q - GR * (hi_q - lo_q), x2 = lo_q + GR * (hi_q - lo_q);
+      let e1 = evalQ(x1), e2 = evalQ(x2);
+      for (let i = 0; i < 22; i++) {
+        if (e1.J <= e2.J) {
+          hi_q = x2; x2 = x1; e2 = e1;
+          x1 = hi_q - GR * (hi_q - lo_q); e1 = evalQ(x1);
+        } else {
+          lo_q = x1; x1 = x2; e1 = e2;
+          x2 = lo_q + GR * (hi_q - lo_q); e2 = evalQ(x2);
+        }
+      }
+      const win = e1.J <= e2.J ? { lq: x1, e: e1 } : { lq: x2, e: e2 };
+      q_used = Math.exp(win.lq);
+      f = win.e.f; fit = win.e.fit; residual = win.e.residual; J = win.e.J;
+    }
+    // Void accounting AFTER the fit: an orphan bound to a parent slot
+    // as a Martian-type remnant is an explained body (cheap), not a
+    // void relegation (expensive) — geometries that can name the
+    // parent beat geometries that cannot.
+    const n_void_rows = fit.slots.filter(s => s.external && s.in_void).length;
+    const n_remn = fit.slots.filter(s => s.remnant).length;
+    const pen = penalty + VOID_PENALTY * n_void_rows + REMNANT_PENALTY * n_remn;
+    // Residual term: candidates whose f-bisection cannot reach the mass
+    // target are penalized in proportion (10 × fractional residual), so
+    // position alone cannot carry an unfittable configuration. For
+    // stripped systems the per-planet term joins the score: encounter
+    // editing exists to close individual masses, not just the sum.
+    const score = scoreFit(fit, pen) + 10 * residual + 2 * J;
+    return { score, spin, f, k, fit, residual, q: q_used,
+             omega: (omega === undefined) ? null : omega, penalty_base: penalty };
+  };
+  const consider = (spin: number, k: number, penalty: number) => {
+    const r = evalCandidate(spin, k, penalty, undefined);
+    if (r && (best === null || r.score < best.score)) best = r;
+  };
+
+  const runStages = () => {
+    // Stage 1: outermost INTERIOR planet anchored at slot k (KBO-class
+    // bodies are exterior-ladder citizens and never anchor the dam).
+    for (let k = 0; k < 12; k++) {
+      const spin = auto_spin_from_outermost(obs_disc, M_star, k);
+      consider(spin, k, K_PENALTY * k);
+    }
+    // Stage 2: outward-migrant variants (cascade rooted by the
+    // second-outermost planet at slot k1; outermost beyond R_disc).
+    if (obs_disc.length >= 2) {
+      const ordered = [...obs_disc].sort((a, b) => b.r - a.r);
+      const outermost = ordered[0], second = ordered[1];
+      for (let k1 = 1; k1 <= 5; k1++) {
+        const R_disc = second.r / Math.pow(CASCADE_RATIO, k1);
+        if (outermost.r <= R_disc) continue;
+        if ((outermost.observed || 0) > GAS_OBS_THRESHOLD) {
+          const spin_check = Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc, 2);
+          const wind_term = (spin_check / 30.0) * Math.pow(0.5 / Math.max(R_disc, 0.01), 2);
+          if (1.0 / (1.0 + wind_term) < 0.1) continue;
+        }
+        const spin = Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc, 2);
+        consider(spin, 0, STAGE2_PENALTY + 1.0 * (k1 - 1));
+      }
+    }
+  };
+  runStages();
+  // Stripping fixed-point pass: per-candidate golden-section finds
+  // LOCAL q optima on a rugged (anchor, q) landscape — pin the winning
+  // q and let every anchor family compete at it, so the result is
+  // idempotent under q round-tripping (fit(q=null) agrees with
+  // fit(q=q*)).
+  if (stripping && (stripping.q === null || stripping.q === undefined)
+      && best !== null && (best as { q: number | null }).q !== null) {
+    q_pin = (best as { q: number | null }).q;
+    best = null;
+    runStages();
+  }
+
+  // VICE omega refinement: breakup-bounded inner-jaw grid evaluated at
+  // the locked winner's geometry (spin, k, and its base penalty).
+  if (vice && best !== null) {
+    const bw = best as { spin: number; k: number; penalty_base?: number;
+                         score: number };
+    const ob = breakup_spin(M_star);
+    for (const frac of [0.1, 0.2, 0.4, 0.65, 1.0]) {
+      const r = evalCandidate(bw.spin, bw.k, bw.penalty_base || 0, ob * frac);
+      if (r && r.score < (best as { score: number }).score) best = r;
+    }
+  }
+
+  if (best === null) {
+    // No candidate satisfied the slot-count constraint; fall back to
+    // the inverted-regime spin that the outermost-anchor would give.
+    const spin = auto_spin_from_outermost(obs_disc, M_star, 0);
+    const { f, fit, residual } = bisectF(spin);
+    best = { score: Infinity, spin, f, k: 0, fit, residual, q: null,
+             omega: null, penalty_base: 0 };
+  }
+  const b = best as { score: number; spin: number; f: number; k: number;
+                      fit: FitResult; residual: number; q: number | null;
+                      omega: number | null };
+  return {
+    spin: b.spin,
+    nebula_density: nebula_density_from_spin(b.spin),
+    omega_rot: b.omega,
+    f_disc: b.f, anchor_slot: b.k,
+    iterations: 1, converged: true,
+    target_residual: b.residual,
+    target_names: sel(b.fit).map(s => s.name),
+    fit: b.fit, score: b.score,
+    stripping_q: b.q,
+    stripping_rt: (stripping && b.q !== null)
+      ? stripping_radius(M_star, { M_pert: stripping.M_pert, q: b.q })
+      : null,
+  };
+}
