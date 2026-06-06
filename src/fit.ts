@@ -709,6 +709,11 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   interface ScatterMatch {
     perturber: FitSlot; sep: number; R_H: number;
     perturber_r: number; target_r: number; target: FitSlot;
+    // final (observed) position of the perturber: survivors settle
+    // relative to where the perturber ENDS UP, and migrants threaten
+    // their arrival neighborhood, not just their birth one.
+    final_r: number; final_RH: number; epoch: string;
+    form_r: number; form_RH: number;
   }
   const target_perturbers = new Map<number, ScatterMatch[]>();
   for (let i = 0; i < results.length; i++) {
@@ -716,8 +721,9 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     if (!target.slot_r || target.slot_r <= 0) continue;
     if (target.external) continue;
     if (target.predicted < 0.05) continue;
-    const target_r = (target.filled && target.r_used > 0)
-      ? target.r_used : target.slot_r;
+    const tp_obs = planet_by_slot[target.slot_n];
+    const target_r = (target.filled && tp_obs && tp_obs.r > 0)
+      ? tp_obs.r : target.slot_r;
     const matches: ScatterMatch[] = [];
     for (let j = 0; j < results.length; j++) {
       if (i === j) continue;
@@ -728,13 +734,34 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         ? Math.max(perturber.observed, perturber.predicted)
         : perturber.predicted;
       if (m_perturber < target.predicted * SCATTER_MASS_RATIO) continue;
-      const perturber_r = (perturber.filled && perturber.r_used > 0)
-        ? perturber.r_used : perturber.slot_r;
-      const R_H = perturber_r
+      // TWO EPOCHS: a perturber threatens at its formation seat AND at
+      // its observed (arrival) position — a migrated giant murders its
+      // new neighborhood too.
+      const pp_obs = planet_by_slot[perturber.slot_n];
+      const hill = (r: number) => r
         * Math.pow(m_perturber * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
-      const sep = Math.abs(target_r - perturber_r);
-      if (sep / R_H >= SCATTER_RH_THRESHOLD) continue;
-      matches.push({ perturber, sep, R_H, perturber_r, target_r, target });
+      const epochs: { r: number; epoch: string }[] =
+        [{ r: perturber.slot_r, epoch: 'formation' }];
+      if (perturber.filled && pp_obs && pp_obs.r > 0
+          && Math.abs(pp_obs.r - perturber.slot_r) / perturber.slot_r > 0.02) {
+        epochs.push({ r: pp_obs.r, epoch: 'arrival' });
+      }
+      const final_r = (perturber.filled && pp_obs && pp_obs.r > 0)
+        ? pp_obs.r : perturber.slot_r;
+      const final_RH = hill(final_r);
+      const form_r = perturber.slot_r;
+      const form_RH = hill(form_r);
+      let bm: ScatterMatch | null = null;
+      for (const ep of epochs) {
+        const R_H = hill(ep.r);
+        const sep = Math.abs(target_r - ep.r);
+        if (sep / R_H >= SCATTER_RH_THRESHOLD) continue;
+        if (!bm || sep / R_H < bm.sep / bm.R_H) {
+          bm = { perturber, sep, R_H, perturber_r: ep.r, target_r, target,
+                 final_r, final_RH, epoch: ep.epoch, form_r, form_RH };
+        }
+      }
+      if (bm) matches.push(bm);
     }
     if (matches.length > 0) target_perturbers.set(i, matches);
   }
@@ -783,8 +810,16 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         settled = g;
       }
     }
-    const r_boundary = settled.perturber_r - SURVIVOR_N_SAFETY * settled.R_H;
-    const boundary_valid = r_boundary > 0;
+    // Survivors settle inside the band SWEPT by the perturber's zone
+    // edge as it moved from formation to final position: the parking
+    // spot froze somewhere mid-sweep (Sol: Jupiter's edge swept
+    // 1.68 -> 1.46 AU; Mars sits at 1.52).
+    const edge_form = settled.form_r - SURVIVOR_N_SAFETY * settled.form_RH;
+    const edge_final = settled.final_r - SURVIVOR_N_SAFETY * settled.final_RH;
+    const rb_lo = Math.min(edge_form, edge_final);
+    const rb_hi = Math.max(edge_form, edge_final);
+    const r_boundary = (rb_lo + rb_hi) / 2;
+    const boundary_valid = rb_hi > 0;
     for (const g of group) {
       const target = g.target;
       const base = target.interpretation.split(' (')[0];
@@ -793,7 +828,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       const is_settled_slot = (g === settled);
       if (!target.filled) {
         if (is_settled_slot && boundary_valid) {
-          target.interpretation = `${base} (planet scattered outward by ${perturberName}; sibling survivor predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
+          target.interpretation = `${base} (planet scattered outward by ${perturberName}; sibling survivor predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${rb_lo.toFixed(2)}-${rb_hi.toFixed(2)} AU, the zone edge's swept band)`;
         } else if (!boundary_valid) {
           target.interpretation = `${base} (planet + siblings scattered outward by ${perturberName}, fully dispersed)`;
         } else {
@@ -803,7 +838,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
                  && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
         const pct = Math.round(target.observed / target.predicted * 100);
         if (is_settled_slot && boundary_valid) {
-          target.interpretation = `${base} (sibling survivor ~${pct}% of slot — its planet scattered outward by ${perturberName}; sibling predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
+          target.interpretation = `${base} (sibling survivor ~${pct}% of slot — its planet scattered outward by ${perturberName}; sibling predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${rb_lo.toFixed(2)}-${rb_hi.toFixed(2)} AU, the zone edge's swept band)`;
         } else {
           target.interpretation = `${base} (zone dispersed by ${perturberName}, only ~${pct}% remains)`;
         }
@@ -816,7 +851,8 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   for (const matches of multi_perturbed) {
     const target = matches[0].target;
     const base = target.interpretation.split(' (')[0];
-    const perturberNames = matches.map(m => m.perturber.name).join(', ');
+    const perturberNames = matches.map(m =>
+      m.perturber.name + (m.epoch === 'arrival' ? ' (on arrival)' : '')).join(', ');
     if (!target.filled) {
       target.interpretation = `${base} (totally obliterated by simultaneous scattering: ${perturberNames})`;
     } else if (target.observed > 0
