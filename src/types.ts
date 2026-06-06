@@ -10,6 +10,10 @@ interface Planet {
   observed?: number;
   /** ISU (in-situ unchanged): mass+position treated as absolute truth. */
   immutable?: boolean;
+  /** KBO-class only: slot number of the interior body that CAPTURED
+   *  this factory product (Triton: 0 = Neptune, co-orbital at the
+   *  gate). Display resolves the slot to its occupant's name. */
+  captured?: number;
   /** Dam-exterior cohort object (Kuiper mechanism): a DISTINCT
    *  population with independent inputs — excluded from the interior
    *  cascade fit entirely (no anchor influence, no penalties), then

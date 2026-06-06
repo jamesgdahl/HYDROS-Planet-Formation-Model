@@ -982,11 +982,17 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             : disc_radius(M_star, spin);
         // product-mass law, Sol-anchored at the dam face
         const SIGMA_SOL = 0.0103830 * m_star_earth(1.0) / Math.pow(30.07, 2);
-        const M_EXT_SOL = 0.00218;
+        // anchor = TRITON, the firstborn: captured by the dam-keeper at
+        // the gate, it is the true at-dam product (zero displacement).
+        // Pluto and Eris are lighter -> minted slightly farther out.
+        const M_EXT_SOL = 0.00359;
         const sigma_dam = f_disc * m_star_earth(M_star) / (R_dam * R_dam);
         const m_at_dam = M_EXT_SOL * Math.pow(sigma_dam / SIGMA_SOL, 2);
         const t_disc_myr = gas_dispersal_time(M_star, f_disc);
         const R_cliff = 1.6 * R_dam, BETA = 0.138;
+        // assembly-line order: earliest vintage first (bigger product =
+        // denser supply = earlier; onset ties resolve by mass descending)
+        kbo_bodies.sort((a, b) => (b.observed || 0) - (a.observed || 0));
         for (const p of kbo_bodies) {
             const m_obs_k = p.observed || 0;
             const onset = m_obs_k >= m_at_dam * 0.999;
@@ -1002,9 +1008,23 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
                 vintage = `~${((t_disc_myr + 3) * Math.pow(R_birth / R_cliff, 1 / BETA)).toFixed(0)} Myr (retreat era)`;
             }
             const disp = (p.r - R_birth) / R_birth;
-            const where = Math.abs(disp) < 0.15 ? 'in situ at its stance'
-                : disp > 0 ? 'displaced outward (combed/scattered)'
-                    : 'displaced inward (rained back / captured)';
+            let where;
+            if (p.captured !== undefined) {
+                const captor = results.find(s => s.filled && !s.exterior && !s.external && s.slot_n === p.captured);
+                where = `CAPTURED by ${captor ? captor.name : 'slot ' + p.captured}`
+                    + (Math.abs(disp) < 0.15 ? ' at the gate (co-orbital, zero displacement)' : '');
+            }
+            else {
+                where = Math.abs(disp) < 0.15 ? 'in situ at its stance'
+                    : disp > 0 ? 'displaced outward (combed/scattered)'
+                        : 'displaced inward (rained back / captured)';
+            }
+            // THE SIZE-CLOCK IS THE MAPPING: observed mass IS the vintage.
+            // Current AU is post-history and carries no assignment weight —
+            // a KBO is judged by what the factory minted, never by where it
+            // has drifted since. predicted := observed (exact by inversion);
+            // the falsifiable content is the vintage chronology itself, the
+            // census counts, and the undiscovered-cohort rows.
             results.push({
                 slot_n: -Math.max(0.01, Math.log(R_birth / R_dam) / Math.log(1 / CASCADE_RATIO)),
                 slot_r: R_birth, r_used: p.r,
@@ -1012,11 +1032,70 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
                 rock: 0, ice: 0, pebble: 0, core: 0,
                 t_form: 0, h_he: 0,
                 predicted: m_obs_k, observed: m_obs_k,
-                err_pct: 0, implied_dM: 0,
+                err_pct: 0,
+                implied_dM: 0,
                 stripped: false, in_void: false, exterior: true,
                 primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
                     total: m_obs_k },
                 interpretation: `factory product, vintage ${vintage} — minted at the dam's outer face when it stood at ${R_birth.toFixed(1)} AU (size-clock); ${where}`,
+            });
+        }
+        // PER-VINTAGE COUNT AUDIT: the census law (stance stock / product
+        // mass) gives the expected member count of each represented
+        // vintage bin; catalogued members within the x2.5 mass mapping
+        // fill it. A shortfall is a SIBLING DEFICIT — same vintage, more
+        // members predicted, hiding where the survival law says survivors
+        // hide (scattered: high inclination, far from perihelion).
+        const C_STOCK = 5.1e-6;
+        const stock = C_STOCK * f_disc * m_star_earth(M_star);
+        {
+            const binned = new Set();
+            for (const p of kbo_bodies) {
+                if (binned.has(p))
+                    continue;
+                const members = kbo_bodies.filter(pp => Math.abs(Math.log((pp.observed || 1e-12) / (p.observed || 1e-12)))
+                    < Math.log(2.5));
+                members.forEach(pp => binned.add(pp));
+                const N_exp = Math.max(1, Math.round(stock / (p.observed || 1e-12)));
+                const deficit = N_exp - members.length;
+                if (deficit > 0) {
+                    const row = results.find(s => s.exterior && s.name === p.name);
+                    if (row) {
+                        // search range: scattered-class siblings ride Eris/Sedna-
+                        // grade orbits — semi-major axis from the birth stance out
+                        // to ~9x it, perihelion pinned outside the dam
+                        const a_lo = row.slot_r, a_hi = 9 * row.slot_r;
+                        row.interpretation += ` — VINTAGE BIN AUDIT: ~${N_exp} expected at this grade, ${members.length} catalogued: ${deficit} sibling${deficit > 1 ? 's' : ''} predicted undiscovered (scattered-class: high inclination, far from perihelion; search a ≈ ${a_lo.toFixed(0)}-${a_hi.toFixed(0)} AU, q ≳ ${R_dam.toFixed(0)} AU)`;
+                    }
+                }
+            }
+        }
+        // WORTH-MENTIONING cutoff: 0.05 mE (~660 km at icy density —
+        // Ceres-class and up; Vesta borderline). Cohorts below it are
+        // grindings, not predictions worth a row.
+        const MENTION_CUTOFF = 5e-5;
+        let t_epoch = (t_disc_myr + 3) * 4;
+        for (let k = 0; k < 5 && t_epoch < 6000; k++, t_epoch *= 4) {
+            const R_t = R_cliff * Math.pow(t_epoch / (t_disc_myr + 3), BETA);
+            const m_t = m_at_dam * Math.pow(R_dam / R_t, 4);
+            if (m_t < MENTION_CUTOFF)
+                continue;
+            const matched = kbo_bodies.some(pp => Math.abs(Math.log((pp.observed || 1e-12) / m_t)) < Math.log(2.5));
+            if (matched)
+                continue;
+            const N = Math.max(1, Math.round(stock / m_t));
+            results.push({
+                slot_n: -Math.log(R_t / R_dam) / Math.log(1 / CASCADE_RATIO),
+                slot_r: R_t, r_used: R_t,
+                filled: false, name: `(vintage ~${t_epoch.toFixed(0)} Myr)`,
+                rock: 0, ice: 0, pebble: 0, core: 0,
+                t_form: 0, h_he: 0,
+                predicted: m_t, observed: 0,
+                err_pct: 0, implied_dM: 0,
+                stripped: false, in_void: false, exterior: true,
+                primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
+                    total: m_t },
+                interpretation: `PREDICTED cohort, undiscovered: ~${m_t < 0.01 ? (m_t * 1000).toPrecision(3) + ' mE' : m_t.toFixed(1) + ' M⊕'} products minted ~${t_epoch.toFixed(0)} Myr at ${R_t.toFixed(1)} AU; N~${N} expected at this stance, none catalogued`,
             });
         }
     }
@@ -1326,7 +1405,7 @@ function bruteFit(planets, M_star, stripping, vice) {
         let score = penalty;
         let n_filled = 0;
         for (const s of fit.slots) {
-            if (s.external)
+            if (s.external || s.exterior)
                 continue;
             if (s.filled) {
                 n_filled++;
@@ -1445,6 +1524,19 @@ function bruteFit(planets, M_star, stripping, vice) {
         // unremovable dominant ghost with calm bystanders is a
         // contradiction, not a story.
         const m_max_obs = obs_disc.reduce((a, p) => Math.max(a, p.observed || 0), 0);
+        // THE LARGEST BODY MUST BE OBSERVED: a hypothesis that conjures an
+        // unobserved body exceeding every observed member is rejected
+        // OUTRIGHT — removed-overlord stories are not stories. (Removed
+        // PEERS — ghosts at or below the observed maximum — remain
+        // arguable through the exemptions below.)
+        for (const g of fit.slots) {
+            if (g.filled || g.external || g.exterior)
+                continue;
+            if (g.predicted > m_max_obs) {
+                score += BIG;
+                break;
+            }
+        }
         for (const g of fit.slots) {
             if (g.filled || g.external || g.exterior)
                 continue;
@@ -1481,11 +1573,22 @@ function bruteFit(planets, M_star, stripping, vice) {
                     continue;
                 if (m_g < 10 * Math.max(p.observed || 0, s.predicted))
                     continue;
-                if (Math.abs(p.r - g.slot_r) >= 11 * RH)
-                    continue;
-                if (p.r < g.slot_r && p.r / g.slot_r < 0.27)
-                    continue;
                 if ((p.observed || 0) <= 0.15 * Math.max(s.predicted, 1e-12))
+                    continue;
+                // TWO EPOCHS: the bystander must be justified at its observed
+                // position AND at its formation seat — migrating out of the
+                // ghost's zone afterwards does not explain surviving birth
+                // inside it at full mass.
+                let threatened = false;
+                for (const rb of [p.r, s.slot_r]) {
+                    if (Math.abs(rb - g.slot_r) >= 11 * RH)
+                        continue;
+                    if (rb < g.slot_r && rb / g.slot_r < 0.27)
+                        continue;
+                    threatened = true;
+                    break;
+                }
+                if (!threatened)
                     continue;
                 score += BIG; // unjustified existence under this hypothesis
                 break;
@@ -1637,6 +1740,18 @@ function bruteFit(planets, M_star, stripping, vice) {
                 }
                 const spin = Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc, 2);
                 consider(spin, 0, STAGE2_PENALTY + 1.0 * (k1 - 1));
+            }
+            // EVERY OBSERVED BODY IS A CANDIDATE DAM-ANCHOR: stage 2 assumes
+            // the outermost vacated slot 0, but an evicted body may have
+            // left ANY seat while the dam-keeper never moved (Alpha Cen: B
+            // holds the dam, Proxima left slot 1). Anchor each body's
+            // observed radius at slot 0 and let allocation-matched
+            // assignment seat the rest.
+            for (const pl of obs_disc) {
+                const spin_anchor = Math.pow(30.07 * M_star / pl.r, 2);
+                if (!(spin_anchor > 0.02 && spin_anchor < 1e7))
+                    continue;
+                consider(spin_anchor, 0, 0.5);
             }
         }
     };

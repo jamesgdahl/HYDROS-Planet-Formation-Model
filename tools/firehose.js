@@ -46,7 +46,7 @@ const RHO = 1 - Math.sqrt(Math.log(2)) / 2;
 
 // Sol anchors
 const SIGMA_SOL = 0.0103830 * m_star_earth(1.0) / Math.pow(30.07, 2);
-const M_EXT_SOL = 0.00218;           // Pluto, rung 0.5 cohort [M_E]
+const M_EXT_SOL = 0.00359;           // TRITON, the firstborn at-dam product [M_E]
 const FIREHOSE_SOL = 660;            // throughput [M_E]
 
 const cls = m => m >= 25400 ? 'STELLAR'
@@ -107,6 +107,22 @@ for (const sys of ctx.window.EXOPLANETS) {
       console.log('  dam-keeper: ' + keeper.name + ' (' + keeper.observed
         + ' M_E), chaos reach ' + (reach * R).toFixed(1) + ' AU ('
         + (1 + reach).toFixed(2) + ' R_disc)');
+      // THE FIRSTBORN PREDICTION: the first product mints co-orbital
+      // with the keeper at maximal capture cross-section; an in-situ
+      // keeper should hold a captured RETROGRADE companion of the
+      // at-dam product mass (Sol: Triton, 3.59 mE — the calibration's
+      // physically pinned anchor, da = 0.00).
+      if (Math.abs(Math.log(keeper.r / R)) < 0.2) {
+        console.log('  FIRSTBORN: keeper sits on the dam -> predicted captured'
+          + ' retrograde companion ~'
+          + (m_ext < 0.01 ? (m_ext * 1000).toPrecision(3) + ' mE' : m_ext.toFixed(1) + ' M_E')
+          + ' (Triton-analog)');
+      } else {
+        console.log('  FIRSTBORN: keeper displaced from the dam -> its'
+          + ' Triton-analog (~'
+          + (m_ext < 0.01 ? (m_ext * 1000).toPrecision(3) + ' mE' : m_ext.toFixed(1) + ' M_E')
+          + ') was lost, scattered, or carried off in the displacement');
+      }
       // UNDISCOVERED CENSUS: stance stock is supply-proportional and
       // therefore ~constant per stance, C*f*M with C = 5.1e-6
       // (calibrated on Sol's cold-classical stock, ~0.02 M_E/stance).

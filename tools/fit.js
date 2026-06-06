@@ -46,10 +46,11 @@ const doWrite = args.includes('--write');
 // still block); informational flags don't. Alpha Centauri is excluded
 // pending the seating ruling.
 const writeAll = args.includes('--all');
-// upsand: energy-ledger override (the brute winner is the corpse-free
-// parsimony twin; the stored configuration closes the eviction energy
-// books — see preset note). Excluded until eviction-energy scoring lands.
-const WRITE_EXCLUDE = new Set(['alphacen', 'upsand']);
+// No exclusions: the catalog is fully self-governing. The overlord
+// rule + dam-anchor candidates carry Alpha Cen (B-on-the-dam /
+// Proxima-evicted) and Upsilon And (companion-completed, B sourced on
+// the dam) natively.
+const WRITE_EXCLUDE = new Set([]);
 const doBrute = !args.includes('--iterated'); // brute (joint scan) is the default
 const doVice = args.includes('--vice'); // decouple the vice jaws (omega grid)
 const bruteFit = ctx.bruteFit;
@@ -77,7 +78,7 @@ function fitSystem(sys) {
   const targets = new Set(r.target_names);
   let n_diag = 0;
   for (const s of r.fit.slots) {
-    if (!s.filled || s.external || targets.has(s.name)) continue;
+    if (!s.filled || s.external || s.exterior || targets.has(s.name)) continue;
     if (closedNames.has(s.name)) continue;
     if (s.observed > 0 && Math.abs(s.err_pct) > LATE_DELIVERY_PCT) n_diag++;
   }
@@ -102,7 +103,7 @@ function fitSystem(sys) {
   if (!anyISU && !anyRockyTarget) flags.push('F_UNCONSTRAINED');
   // Degenerate cascade: fitted spin yields fewer slots than observed
   // planets, so some planets were silently dropped from the target.
-  const n_obs = planets.filter(p => (p.observed || 0) > 0).length;
+  const n_obs = planets.filter(p => !p.kbo && (p.observed || 0) > 0).length;
   const n_void = r.fit.slots.filter(s => s.external && s.in_void).length;
   const n_remn = r.fit.slots.filter(s => s.remnant).length;
   if (n_void > 0) flags.push('VOID:' + n_void);
@@ -135,9 +136,11 @@ function fitSystem(sys) {
   if (minPack < 7) flags.push('PACKED:' + minPack.toFixed(1));
   // KBO-class population (distinct entity, independent inputs):
   // n on-rung / n total exterior bodies.
-  const ext_rows = r.fit.slots.filter(s => s.exterior);
+  const ext_rows = r.fit.slots.filter(s => s.exterior && s.filled);
   if (ext_rows.length > 0) {
-    const on = ext_rows.filter(s => s.interpretation.includes('IN SITU')).length;
+    const on = ext_rows.filter(s =>
+      s.interpretation.includes('in situ at its stance')
+      || s.interpretation.includes('CAPTURED by')).length;
     flags.push('KBO:' + on + '/' + ext_rows.length);
   }
   if (doVice && r.omega_rot != null) flags.push('OMEGA:' + r.omega_rot.toFixed(2));
@@ -161,10 +164,10 @@ function printSlotTable(sys, r) {
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
   for (const s of [...r.fit.slots].sort((a, b) => b.slot_n - a.slot_n)) {
-    const name = s.filled ? s.name : `(slot ${s.slot_n})`;
+    const name = (s.filled || s.exterior) ? s.name : `(slot ${s.slot_n})`;
     const lbl = s.exterior ? 'ext' : String(s.slot_n);
     const obs = s.observed > 0 ? fmtMass(s.observed) : '—';
-    const pred = s.exterior ? '(indep)' : fmtMass(s.predicted);
+    const pred = fmtMass(s.predicted);
     const dm = (s.filled && s.observed > 0 && !s.exterior)
       ? ((s.observed - s.predicted) / s.predicted * 100).toFixed(1) + '%' : '—';
     const sr = s.slot_r < 0.01 ? s.slot_r.toExponential(3) : s.slot_r.toFixed(3);

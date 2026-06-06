@@ -49,6 +49,20 @@ interface ForensicsZone {
 
 interface ForensicsClosure { name: string; reason: string; }
 
+// Water ledger: ocean equivalents of the inward deliveries. Material
+// carries its SOURCE ZONE's ice fraction, so every receipt prices
+// delivered water directly, and a zone's unaccounted residual prices
+// an UPPER BOUND for every other interior rocky body it crossed.
+// Delivery is not retention: Earth's 1 surface + 1-10 mantle oceans
+// and Mars's geological <~1-ocean record are what each body HELD of
+// what arrived — escape and sequestration take the rest.
+interface WaterRow {
+  name: string; kind: 'receipt' | 'bound'; zoneSlot: number;
+  ice_frac: number; ret: number;
+  water_lo: number; water_hi: number;     // delivered water [M_E]
+  oceans_lo: number; oceans_hi: number;   // 1 ocean = 2.3e-4 M_E
+}
+
 interface Forensics {
   k: number;
   tstar: number | null;
@@ -56,12 +70,56 @@ interface Forensics {
   neverGassed: ForensicsBareCore[];
   sources: ForensicsSource[];
   zones: ForensicsZone[];
+  water: WaterRow[];
   hypotheses: ForensicsHypothesis[];
   verdict: ForensicsRow[] | null;
   // EVENT CLOSURES: bodies whose deviation is fully explained by an
   // identified, budget-closed event. A closed deviation is model
   // OUTPUT, not fit error: closed bodies count as perfect fits.
   closures: ForensicsClosure[];
+}
+
+// THE FIRSTBORN FORECAST (product-mass law, Triton-anchored): the
+// first factory product mints co-orbital with the dam-keeper at
+// maximal capture cross-section. A keeper still on its seat should
+// hold a captured RETROGRADE companion of the at-dam product mass
+// (Sol: Triton, 3.59 mE, da = 0.00 — the law's physically pinned
+// anchor). A displaced keeper lost its firstborn (ups And: the
+// corpse, ~5,600 M_E, sunk to pay the eviction).
+interface FirstbornForecast {
+  keeper: string; onDam: boolean; m_ext: number;
+  observed: string | null; observedMass: number;
+}
+
+function firstborn_forecast(all_slots: FitSlot[], planets: Planet[],
+                            M_star: number, spin: number,
+                            f_disc: number): FirstbornForecast | null {
+  const R = disc_radius(M_star, spin);
+  const C = alfven_radius(M_star, spin) / R;
+  if (C >= 1) return null;            // inverted regime: no boundary density
+  const SIGMA_SOL = 0.0103830 * m_star_earth(1.0) / Math.pow(30.07, 2);
+  const sigma = f_disc * m_star_earth(M_star) / (R * R);
+  const m_ext = 0.00359 * Math.pow(sigma / SIGMA_SOL, 2);
+  // keeper: stellar member if any, else the body nearest the dam
+  let keeper: Planet | null = null, kd = Infinity;
+  for (const pl of planets) {
+    if (pl.kbo || !(pl.observed && pl.observed > 0)) continue;
+    if (pl.observed >= 25400) { keeper = pl; break; }
+    const d = Math.abs(Math.log(pl.r / R));
+    if (d < kd) { kd = d; keeper = pl; }
+  }
+  if (!keeper) return null;
+  const onDam = Math.abs(Math.log(keeper.r / R)) < 0.2;
+  // observed match: a captured KBO, or any KBO within x2 of m_ext
+  let obs: Planet | null =
+    planets.find(pl => pl.kbo && pl.captured !== undefined) || null;
+  if (!obs) {
+    obs = planets.find(pl => pl.kbo && (pl.observed || 0) > 0
+      && Math.abs(Math.log((pl.observed || 1) / m_ext)) < Math.log(2)) || null;
+  }
+  return { keeper: keeper.name, onDam, m_ext,
+           observed: obs ? obs.name : null,
+           observedMass: obs ? (obs.observed || 0) : 0 };
 }
 
 function impact_forensics(all_slots: FitSlot[], planets: Planet[],
@@ -149,6 +207,55 @@ function impact_forensics(all_slots: FitSlot[], planets: Planet[],
       const known = z.survivor + z.delivered;
       z.residual_lo = Math.max(0, z.lo - known);
       z.residual_hi = Math.max(0, z.hi - known);
+    }
+  }
+
+  // --- water ledger: ocean equivalents of the inward deliveries ------
+  const OCEAN_ME = 2.3e-4;                       // one Earth ocean [M_E]
+  const ICE_SURV_LO = 0.5, ICE_SURV_HI = 1.0;    // ice surviving the impact
+  const W_PHI_LO = 0.35, W_PHI_HI = 0.70;        // residual share launched
+                                                 //   at one body (Sol gauge)
+  const water: WaterRow[] = [];
+  for (const z of zones) {
+    const zr = slots.find(x => x.slot_n === z.slot);
+    if (!zr) continue;
+    const ztot = zr.rock + zr.ice + zr.pebble;
+    const ice_frac = ztot > 0 ? zr.ice / ztot : 0;
+    if (ice_frac <= 0.01) continue;              // dry zone: no water line
+    // identified receipts: the receiver's retained excess IS the
+    // delivered bulk; its water content is the zone's ice fraction
+    for (const rc of z.receivers) {
+      const w_lo = rc.excess * ice_frac * ICE_SURV_LO;
+      const w_hi = rc.excess * ice_frac * ICE_SURV_HI;
+      water.push({ name: rc.name, kind: 'receipt', zoneSlot: z.slot,
+        ice_frac, ret: rc.ret, water_lo: w_lo, water_hi: w_hi,
+        oceans_lo: w_lo / OCEAN_ME, oceans_hi: w_hi / OCEAN_ME });
+    }
+    // the unaccounted residual crossed every interior rocky orbit:
+    // price an UPPER BOUND at each body the zone has not receipted
+    // (Mars's ancient surface water is slot-4 crossing debris)
+    if (z.residual_hi <= 0.005) continue;
+    for (const s of slots) {
+      if (!s.filled || s.observed <= 0) continue;
+      const core_s = s.rock + s.ice + s.pebble;
+      if (core_s > 3.0) continue;                // rocky receivers only
+      if (s.slot_r >= zr.slot_r) continue;
+      if (z.receivers.some(rc => rc.name === s.name)) continue;
+      const r0 = zr.slot_r, rt = s.slot_r;
+      const qa = 0.85 * rt, ao = (qa + r0) / 2, ee = (r0 - qa) / (r0 + qa);
+      const vc = 29.785 * Math.sqrt(1.14 * M_star / rt);
+      const vv = Math.sqrt(2 - rt / ao);
+      const vt = Math.sqrt(ao * (1 - ee * ee) / rt);
+      const vr = Math.sqrt(Math.max(0, vv * vv - vt * vt));
+      const dv = vc * Math.sqrt((vt - 1) ** 2 + vr * vr);
+      const vesc = 11.186 * Math.pow(Math.max(s.observed, 0.01), 1 / 3);
+      const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
+      const w_lo = ret * W_PHI_LO * z.residual_lo * ice_frac * ICE_SURV_LO;
+      const w_hi = ret * W_PHI_HI * z.residual_hi * ice_frac * ICE_SURV_HI;
+      if (w_hi / OCEAN_ME < 0.1) continue;       // below mention grade
+      water.push({ name: s.name, kind: 'bound', zoneSlot: z.slot,
+        ice_frac, ret, water_lo: w_lo, water_hi: w_hi,
+        oceans_lo: w_lo / OCEAN_ME, oceans_hi: w_hi / OCEAN_ME });
     }
   }
 
@@ -268,6 +375,6 @@ function impact_forensics(all_slots: FitSlot[], planets: Planet[],
     }
   }
 
-  return { k, tstar, datings, neverGassed, sources, zones, hypotheses, verdict,
-           closures };
+  return { k, tstar, datings, neverGassed, sources, zones, water,
+           hypotheses, verdict, closures };
 }

@@ -100,6 +100,18 @@ if (F.hypotheses.length) {
   }
 }
 
+if (F.water && F.water.length) {
+  console.log('\nwater ledger (ocean equivalents; 1 ocean = 2.3e-4 M_E;');
+  console.log('  delivered, not retained — escape + sequestration set what each body holds):');
+  for (const w of F.water) {
+    console.log(`  ${w.name.padEnd(8)} ${w.kind === 'receipt' ? 'RECEIPT' : 'BOUND  '}`
+      + ` from slot ${w.zoneSlot} (${(w.ice_frac * 100).toFixed(0)}% ice), ret ${w.ret.toFixed(2)}:`
+      + ` ${w.water_lo.toFixed(4)}-${w.water_hi.toFixed(4)} M_E water`
+      + ` = ${w.oceans_lo < 10 ? w.oceans_lo.toFixed(1) : w.oceans_lo.toFixed(0)}-${w.oceans_hi < 10 ? w.oceans_hi.toFixed(1) : w.oceans_hi.toFixed(0)} oceans`
+      + (w.kind === 'bound' ? ' (upper bound: crossing-band share)' : ''));
+  }
+}
+
 console.log('\ninward mass ledger (5-10% of each dispersed allocation):');
 // Sinks are engine-identified generically (settled survivor + positive
 // delivery excesses on interior rocky bodies). Residuals predict
