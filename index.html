@@ -420,7 +420,18 @@ function calculate() {
     ? { auto_compress: false, stripping: strip }
     : { auto_compress: false };
   if (window.CURRENT_KINETIC) fitOpts.kinetic = true;
-  const fit = slot_aware_fit(planets, M_star, spin, f_disc, fitOpts);
+  let fit = slot_aware_fit(planets, M_star, spin, f_disc, fitOpts);
+  // Devour-aware second pass: wrecking migrants refit to formation
+  // mass (observed - meals); the gain is post-prediction output.
+  const credits = {};
+  let anyCredit = false;
+  for (const s of fit.slots) {
+    if (s.filled && s.devoured > 0.1) { credits[s.name] = s.devoured; anyCredit = true; }
+  }
+  if (anyCredit) {
+    fit = slot_aware_fit(planets, M_star, spin, f_disc,
+                         Object.assign({}, fitOpts, { devour_credit: credits }));
+  }
   try { renderForensics(fit, planets, M_star, f_disc); } catch (e) { console.warn('forensics:', e); }
 
   const tbody = document.getElementById("result-rows");

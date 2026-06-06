@@ -91,6 +91,10 @@ interface FitSlot {
   // POST-H/He accumulation (heavy-element enrichment; not fed into the
   // core² gas term). The Thorngren-class M_Z excess prediction.
   devoured?: number;
+  // Devour credit APPLIED to this slot's t_form bisection: the
+  // formation seat is fit to (observed - credit), the meals being
+  // post-prediction mass. Set when opts.devour_credit names this body.
+  devoured_credit?: number;
   primordial: Composition;
   interpretation: string;
 }

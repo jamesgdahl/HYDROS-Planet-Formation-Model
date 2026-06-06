@@ -146,7 +146,7 @@ window.EXOPLANETS = [
     "id": "gj876",
     "name": "GJ 876",
     "ly": 15.34,
-    "inputs": {"M_star": 0.37, "spin": 1107.6315734059801, "f_disc": 0.8579684371429108},
+    "inputs": {"M_star": 0.37, "spin": 1107.6315734059801, "f_disc": 0.8579480782512955},
     "notes": "Compacted Sol homolog (inverted regime, 11 slots inside R_disc = 0.334 AU \u2014 ~90x compression; f_disc formally unconstrained). Fit: gas-giant pair b (slot 1) and c (slot 2) in situ \u2014 the Jupiter-Saturn analog; TWO Martian-band survivors: d retains 7.6% of its slot-5 prediction, e retains 9.4% of slot 0 (Mars retains 8.1% in Sol \u2014 neither band placement is forced by the fit); b's swarm dispersal shreds slots 8-10. Mass ledger: d+e shed 223 M\u2295, b+c gained 223 M\u2295 \u2014 the scattered inventory fed the adjacent giants (Sol's coupled-events pattern, compressed). Born packed at P = 3.8 (vs Jupiter-Saturn's 7.2) but e-b-c occupy three ADJACENT rungs whose natural period ratio is 2.24:1 \u2014 convergent settling locked them into the observed 4:2:1 Laplace chain: the resonance is the predicted survival mode for a born-packed chain, not an accident. Effective-spin caveat: 848 is a magnetic-compression parameter, not a literal rotation period.",
     "planets": [
       { "name": "GJ876-d", "r": 0.0208, "observed": 6.83 },
@@ -159,7 +159,7 @@ window.EXOPLANETS = [
     "id": "hd20794",
     "name": "HD 20794 / 82 G. Eridani",
     "ly": 19.7,
-    "inputs": {"M_star": 0.81, "spin": 10.300074697306185, "f_disc": 0.009454798505386995, "stripping": {"M_pert": 0.499999, "q": 15.8}},
+    "inputs": {"M_star": 0.81, "spin": 10.300074697306185, "f_disc": 0.009426124337129003, "stripping": {"M_pert": 0.499999, "q": 15.8}},
     "notes": "G6V nearby Sun-like star — GRAVITATIONAL STRIPPING flagged (anonymous cluster-era flyby; default 0.5 M☉ perturber). Fitted q = 15.8 AU → Breslau truncation r_t = 5.17 AU. The packing index forbids internal demolition (quiet chain, P = 14-22, no giants), yet the ledger shows violence — the Proxima syllogism: editing was external. Under the fitted encounter: slot 0 (7.59 AU) stripped, freeing 33.6 M⊕ with the stirred-zone losses; b (2.7 M⊕ at 0.12 AU, under the dam) is the ENCOUNTER FRAGMENT — 8.0% of the freed inventory, the inward share of the 5%/95% split, flung into a much lower orbit by the encounter; g (stirred zone) at -23%; f closes at -10% (late-delivery band) after sweeping the inward debris — its raw +310% surplus was the encounter's debris signature, Proxima-scale, far beyond Sol-style late delivery. d's +80% remains the residual open item (sits at the stirred/enriched boundary). Capture fraction ~18%, consistent with Proxima's 10-15%.",
     "planets": [
       { "name": "HD 20794 b", "r": 0.1207, "observed": 2.7 },
@@ -225,7 +225,7 @@ window.EXOPLANETS = [
     "id": "55cnc",
     "name": "55 Cancri",
     "ly": 41.06,
-    "inputs": {"M_star": 0.95, "spin": 455.8510209224499, "f_disc": 0.15765451362333477},
+    "inputs": {"M_star": 0.95, "spin": 455.8510209224499, "f_disc": 0.14655522398793489},
     "notes": "Compressed disaster zone (~10 Gyr old): spin 349 packs 11 slots inside R_disc = 1.34 AU; the giant region is born-hot (P = 5.1 at d-f, 7.2 at f-slot2 and slot2-c). Fit: b formed at slot 2 (0.456 AU, pred 253.7 vs obs 255.4 \u2014 0.7%) and swept inward to 0.113 AU, capturing c near the observed 3:1 commensurability on the way past (c displaced -10% from slot 3, merger product of slots 3+4 cores at 0.0%); d driven outward 1.34 \u2192 5.96 AU (0.0%); f in situ at slot 1 (0.0%); e the innermost survivor, ground to a bare core (-17.5% vs its slot, core-remnant tag). Every target closes individually \u2014 no consensus cancellation. Debris field NOT visible, as predicted: wreckage visibility is age-gated (Beta Pic 20 Myr glows; 10-Gyr wrecks keep only dynamical scars), and early dust-ring claims here were never confirmed.",
     "planets": [
       { "name": "55Cnc-e", "r": 0.0154, "observed": 7.99 },
@@ -346,7 +346,7 @@ window.EXOPLANETS = [
     "id": "kep90",
     "name": "Kepler-90",
     "ly": 2790.0,
-    "inputs": {"M_star": 1.13, "spin": 1131.8236680468467, "f_disc": 0.03563568747167933},
+    "inputs": {"M_star": 1.13, "spin": 1131.8236680468467, "f_disc": 0.03563343256743123},
     "notes": "(BEYOND 100 LY \u2014 distance 2790.0 ly). 8 planets \u2014 Sol's planet-count twin, inverted regime (spin 867). MIXED OCCUPANCY, exactly as the interstitial Hill gate predicts: giants h and g hold full rungs (slot 0 at 1.01 AU = R_disc, 0.0%; slot 1, +19%) \u2014 too massive for half-steps \u2014 while the six small inner planets occupy interstitial half-step sites (e at 1.5, d at 2.5, f at 3, i at 4, b at 4.5, c at 5.5). Inner members show systematic -10 to -37% deficits (impact loss / core-remnant tags): a milled inner system under two intact giants. The system demonstrates both occupancy harmonics in one architecture.",
     "planets": [
       { "name": "Kep90-c", "r": 0.0478, "observed": 5.0 },

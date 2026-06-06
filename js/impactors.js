@@ -202,6 +202,9 @@ function impact_forensics(all_slots, planets, M_star, f_disc) {
         if (/sibling survivor/.test(s.interpretation)) {
             close(s.name, 'dispersal survivor (within the 5-10% band)');
         }
+        if (s.devoured && s.devoured > 0.1) {
+            close(s.name, `wrecking migrant (formation ${(s.observed - s.devoured).toFixed(0)} + devoured ${s.devoured.toFixed(0)} = observed, budget-closed)`);
+        }
     }
     if (verdict && tstar !== null) {
         for (const v of verdict) {

@@ -303,7 +303,12 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             total = core;
         }
         else if (should_bisect_t_form) {
-            // Bisect t_form to fit observed exactly.
+            // Bisect t_form to fit the FORMATION mass: observed minus any
+            // devour credit (meals are post-prediction mass — a migrant fit
+            // to its post-meal total would be an invalid formation).
+            const credit_n = (opts.devour_credit && s.filled
+                && opts.devour_credit[s.name]) || 0;
+            const target_mass = Math.max(core * 1.0001, observed - credit_n);
             let lo = 0.01, hi = t_form_hi;
             t_form = (lo + hi) / 2;
             h_he = 0;
@@ -311,10 +316,10 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             for (let i = 0; i < max_iter; i++) {
                 h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
                 total = core + h_he;
-                const err = (total - observed) / observed;
+                const err = (total - target_mass) / target_mass;
                 if (Math.abs(err) < bisect_tol)
                     break;
-                if (total > observed)
+                if (total > target_mass)
                     lo = t_form;
                 else
                     hi = t_form;
@@ -373,7 +378,10 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             observed, stripped, predicted: total,
             rock, ice, pebble: peb, h_he,
         }, primordial, r_snow_now, migrated_flag, migrants);
+        const credit_applied = (opts.devour_credit && s.filled
+            && opts.devour_credit[s.name]) || 0;
         results.push({
+            devoured_credit: credit_applied || undefined,
             slot_n: n, slot_r: s.slot_r, r_used: r,
             filled: s.filled, name: s.name,
             interstitial: s.interstitial,
@@ -1156,6 +1164,9 @@ function bestFit(planets, M_star, f_disc_initial, max_outer_iterations) {
     const sel = (f) => (immutable_names.size > 0
         ? f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior && immutable_names.has(s.name))
         : f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior));
+    // Objective mass of a slot: formation prediction plus any devour
+    // credit (the meals close the books against observed).
+    const objMass = (s) => s.predicted + (s.devoured_credit || 0);
     for (let iter = 0; iter < max_outer; iter++) {
         iterations = iter + 1;
         const ar = auto_spin_with_anchor_search(planets.filter(p => !p.kbo), M_star, f_disc);
@@ -1214,18 +1225,24 @@ function bruteFit(planets, M_star, stripping, vice) {
     const sel = (f) => (immutable_names.size > 0
         ? f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior && immutable_names.has(s.name))
         : f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior));
+    // Objective mass of a slot: formation prediction plus any devour
+    // credit (the meals close the books against observed).
+    const objMass = (s) => s.predicted + (s.devoured_credit || 0);
     const by_name = {};
     for (const p of planets)
         by_name[p.name] = p;
     // Canonical f_disc bisection at a fixed spin: drive the target-sum
     // objective sum(predicted - observed) → 0 (ISU subset, or all filled).
     // When stripping is flagged, q is threaded into every fit evaluation.
+    let devour_credit = null;
     const fit_opts = (q, omega) => {
         const o = { auto_compress: false };
         if (stripping && q !== null)
             o.stripping = { M_pert: stripping.M_pert, q };
         if (omega !== undefined)
             o.omega = omega;
+        if (devour_credit)
+            o.devour_credit = devour_credit;
         return o;
     };
     const bisectF = (spin, q = null, omega) => {
@@ -1241,7 +1258,7 @@ function bruteFit(planets, M_star, stripping, vice) {
         for (let i = 0; i < 60; i++) {
             const fm = Math.sqrt(lo * hi);
             const f2 = slot_aware_fit(planets, M_star, spin, fm, fit_opts(q, omega));
-            e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
+            e = sel(f2).reduce((a, s) => a + (objMass(s) - s.observed), 0);
             f = fm;
             fit = f2;
             if (Math.abs(e) < tol)
@@ -1491,7 +1508,30 @@ function bruteFit(planets, M_star, stripping, vice) {
         best = { score: Infinity, spin, f, k: 0, fit, residual, q: null,
             omega: null, penalty_base: 0 };
     }
-    const b = best;
+    let b = best;
+    // SECOND PASS — devour-aware refit. If the chosen fit contains
+    // wrecking migrants with meals, the migrants' formation seats must
+    // be refit to (observed - retained): a migrant fit to its post-meal
+    // total is an invalid formation and does not justify its observed
+    // existence. Harvest the meals, refit at the chosen (spin, k, q)
+    // with credits applied, and iterate once more so the meal masses
+    // themselves converge (victims' predictions shift with f).
+    for (let pass = 0; pass < 2; pass++) {
+        const credits = {};
+        let any = false;
+        for (const s of b.fit.slots) {
+            if (s.filled && s.devoured && s.devoured > 0.1) {
+                credits[s.name] = s.devoured;
+                any = true;
+            }
+        }
+        if (!any)
+            break;
+        devour_credit = credits;
+        const { f, fit, residual } = bisectF(b.spin, b.q, b.omega ?? undefined);
+        b = { ...b, f, fit, residual };
+    }
+    devour_credit = null;
     return {
         spin: b.spin,
         nebula_density: nebula_density_from_spin(b.spin),
