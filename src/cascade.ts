@@ -81,6 +81,41 @@ function auto_spin_from_outermost(planets: Planet[], M_star: number, anchor_slot
   return Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc_target, 2);
 }
 
+// EXISTENCE JUSTIFICATION (fit gate): every observed body must have a
+// dynamically consistent story under the hypothesis. A fit positing an
+// unobserved GHOST whose chaotic zone contains a calm, full-mass
+// observed body refutes itself: that body would have been scattered
+// and would not hold its observed mass. Accepted stories: survivor
+// depletion (observed <= 15% of its own slot prediction), observed
+// position outside the zone (it moved), or deep-interior decoupling
+// (< 0.27 of the ghost's radius). Observed-observed packing is NOT
+// gated here (real resonant chains prove protection exists; PACKED
+// flags it informationally).
+function ghost_refuted(slots: number[], assignment: Record<number, Planet>,
+                       M_star: number, spin_try: number,
+                       f_disc_eval: number): boolean {
+  for (let g = 0; g < slots.length; g++) {
+    if (assignment[g]) continue;                       // ghosts only
+    const m_ghost = slot_predicted_mass(slots[g], M_star, spin_try, f_disc_eval);
+    if (m_ghost <= 0) continue;
+    const r_g = slots[g];
+    const RH = r_g * Math.pow(m_ghost * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
+    for (let n = 0; n < slots.length; n++) {
+      const p = assignment[n];
+      if (!p || (p.observed || 0) <= 0) continue;
+      const m_pred_n = slot_predicted_mass(slots[n], M_star, spin_try, f_disc_eval);
+      // ghost must DOMINATE the bystander to be a threat
+      if (m_ghost < 10 * Math.max(p.observed || 0, m_pred_n)) continue;
+      const r_obs = p.r;                               // observed position
+      if (Math.abs(r_obs - r_g) >= 11 * RH) continue;  // outside the zone
+      if (r_obs < r_g && r_obs / r_g < 0.27) continue; // decoupled interior
+      if ((p.observed || 0) <= 0.15 * Math.max(m_pred_n, 1e-12)) continue; // survivor
+      return true;   // calm full-mass body inside the ghost's chaos zone
+    }
+  }
+  return false;
+}
+
 function auto_spin_with_anchor_search(planets: Planet[], M_star: number, f_disc: number): AnchorResult {
   // Iterate anchor_slot k=0..K. For each, compute positional residual,
   // missing-slot count, AND reject any k where a MISSING slot would
@@ -131,6 +166,7 @@ function auto_spin_with_anchor_search(planets: Planet[], M_star: number, f_disc:
       missing_cost += Math.log10(1 + Math.max(0, m_pred));
     }
     if (stellar_missing) continue;
+    if (ghost_refuted(slots, assignment, M_star, spin_try, f_disc_eval)) continue;
     // Anchor must be in-situ: run the actual mass-scored assignment and
     // verify the outermost observed planet ends up at slot k. If the
     // mass scoring moves the anchor planet elsewhere, this k is unreliable.
@@ -225,6 +261,7 @@ function auto_spin_with_anchor_search(planets: Planet[], M_star: number, f_disc:
         missing_cost_s2 += Math.log10(1 + Math.max(0, m_pred));
       }
       if (stellar_missing_s2) continue;
+      if (ghost_refuted(slots, assignment, M_star, spin_try, f_disc_eval)) continue;
       // Stage 2 base penalty: invoking a migration story is itself a cost.
       const STAGE2_PENALTY = 2.0;
       // k1 penalty: more vacated outer slots cost more.

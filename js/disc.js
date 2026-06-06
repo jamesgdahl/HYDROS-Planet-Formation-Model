@@ -19,6 +19,25 @@ function disc_radius(M_star, spin) {
 // bisection expressed through the lock. In the inverted regime D_eff
 // exceeds any static cloud (TRAPPIST ~5e4): the outer jaw there
 // includes more than birth pressure — the decoupled-jaw signature.
+// Habitable zone, ASYMMETRIC empirical bounds scaled by sqrt(L):
+//   inner 0.72 AU — the recent-Venus limit (Kopparapu et al. 2013):
+//     a delivered Venus is hot but habitable; the delivery receipt,
+//     not the thermostat, is the framework's discriminator.
+//   outer 1.37 AU — the first-CO2-condensation limit (Kasting et
+//     al. 1993): beyond it CO2 clouds defeat the greenhouse. Mars
+//     (1.52) is the empirical cold case — too cold even Earth-sized
+//     with oceans and atmosphere — so the edge sits INSIDE its orbit.
+// L defaults to the main-sequence mass-luminosity estimate (M^4
+// above 0.43 M_sun; 0.23 M^2.3 for M dwarfs); pass the system's
+// measured luminosity when known (preset inputs.L) — real stars
+// scatter around the M-L law (ACen B: true 0.50 vs estimate 0.41).
+function habitable_zone(M_star, L_obs) {
+    const L = (L_obs && L_obs > 0) ? L_obs
+        : M_star > 0.43 ? Math.pow(M_star, 4)
+            : 0.23 * Math.pow(M_star, 2.3);
+    const s = Math.sqrt(L);
+    return [0.72 * s, 1.37 * s];
+}
 function nebula_density_from_spin(spin) {
     return Math.pow(spin, 1.5);
 }

@@ -28,7 +28,7 @@ const load = (rel) => vm.runInContext(
 
 load('exoplanets.js');
 for (const f of ['constants.js', 'disc.js', 'allocation.js',
-                 'classify.js', 'cascade.js', 'fit.js']) {
+                 'classify.js', 'cascade.js', 'fit.js', 'impactors.js']) {
   load(path.join('js', f));
 }
 
@@ -42,6 +42,15 @@ const SKIP = new Set(['sol_progenitor', 'crab_progenitor',
 const args = process.argv.slice(2);
 const onlyId = args.includes('--system') ? args[args.indexOf('--system') + 1] : null;
 const doWrite = args.includes('--write');
+// --all: write every CONVERGED fit (rails/non-convergence/unassigned
+// still block); informational flags don't. Alpha Centauri is excluded
+// pending the seating ruling.
+const writeAll = args.includes('--all');
+// No exclusions: the catalog is fully self-governing. The overlord
+// rule + dam-anchor candidates carry Alpha Cen (B-on-the-dam /
+// Proxima-evicted) and Upsilon And (companion-completed, B sourced on
+// the dam) natively.
+const WRITE_EXCLUDE = new Set([]);
 const doBrute = !args.includes('--iterated'); // brute (joint scan) is the default
 const doVice = args.includes('--vice'); // decouple the vice jaws (omega grid)
 const bruteFit = ctx.bruteFit;
@@ -56,15 +65,25 @@ function fitSystem(sys) {
   const r = doBrute
     ? bruteFit(planets, sys.inputs.M_star, stripping, doVice)
     : bestFit(planets, sys.inputs.M_star, sys.inputs.f_disc);
-  // Diagnostic count: filled non-target planets whose |dm%| exceeds the
-  // late-delivery floor — these are interpreted post-formation events.
+  // EVENT CLOSURES: bodies whose deviation is explained by an
+  // identified, budget-closed event (impact/merger/survivor/delivery)
+  // count as PERFECT fits — the deviation is model output, not error.
+  // n_diag counts only the OPEN (unexplained) deviations.
+  let closures = [];
+  try {
+    const F = ctx.impact_forensics(r.fit.slots, planets, sys.inputs.M_star, r.f_disc);
+    closures = F.closures || [];
+  } catch (e) { /* forensics unavailable: all deviations stay open */ }
+  const closedNames = new Set(closures.map(c => c.name));
   const targets = new Set(r.target_names);
   let n_diag = 0;
   for (const s of r.fit.slots) {
-    if (!s.filled || s.external || targets.has(s.name)) continue;
+    if (!s.filled || s.external || s.exterior || targets.has(s.name)) continue;
+    if (closedNames.has(s.name)) continue;
     if (s.observed > 0 && Math.abs(s.err_pct) > LATE_DELIVERY_PCT) n_diag++;
   }
   const flags = [];
+  if (closures.length) flags.push('CLOSED:' + closures.length);
   if (r.f_disc <= 0.0006) flags.push('F_LO_RAIL');
   if (r.f_disc >= 1.9) flags.push('F_HI_RAIL');
   if (r.f_disc > 1.0) flags.push('F_EXTREME'); // disc heavier than star
@@ -84,7 +103,7 @@ function fitSystem(sys) {
   if (!anyISU && !anyRockyTarget) flags.push('F_UNCONSTRAINED');
   // Degenerate cascade: fitted spin yields fewer slots than observed
   // planets, so some planets were silently dropped from the target.
-  const n_obs = planets.filter(p => (p.observed || 0) > 0).length;
+  const n_obs = planets.filter(p => !p.kbo && (p.observed || 0) > 0).length;
   const n_void = r.fit.slots.filter(s => s.external && s.in_void).length;
   const n_remn = r.fit.slots.filter(s => s.remnant).length;
   if (n_void > 0) flags.push('VOID:' + n_void);
@@ -117,9 +136,11 @@ function fitSystem(sys) {
   if (minPack < 7) flags.push('PACKED:' + minPack.toFixed(1));
   // KBO-class population (distinct entity, independent inputs):
   // n on-rung / n total exterior bodies.
-  const ext_rows = r.fit.slots.filter(s => s.exterior);
+  const ext_rows = r.fit.slots.filter(s => s.exterior && s.filled);
   if (ext_rows.length > 0) {
-    const on = ext_rows.filter(s => s.interpretation.includes('IN SITU')).length;
+    const on = ext_rows.filter(s =>
+      s.interpretation.includes('in situ at its stance')
+      || s.interpretation.includes('CAPTURED by')).length;
     flags.push('KBO:' + on + '/' + ext_rows.length);
   }
   if (doVice && r.omega_rot != null) flags.push('OMEGA:' + r.omega_rot.toFixed(2));
@@ -132,25 +153,30 @@ function fitSystem(sys) {
 
 // Mass display: sub-cascade moons live at micro-Earth masses where
 // .toFixed(3) collapses to 0.000 — switch to milliEarths (suffix m)
-// below 0.1 M⊕. Internal math stays in M⊕ (doubles carry 16 digits;
-// only the DISPLAY needed rescuing).
+// below 0.01 M⊕ (single-digit mE and down). Internal math stays in
+// M⊕ (doubles carry 16 digits; only the DISPLAY needed rescuing).
 function fmtMass(m) {
   if (!(m > 0)) return '—';
-  return m < 0.1 ? (m * 1000).toPrecision(4) + 'm' : m.toFixed(3);
+  return m < 0.01 ? (m * 1000).toPrecision(4) + 'm' : m.toFixed(3);
 }
 function printSlotTable(sys, r) {
   console.log(`\n${sys.name}  (M*=${sys.inputs.M_star})`);
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
   for (const s of [...r.fit.slots].sort((a, b) => b.slot_n - a.slot_n)) {
-    const name = s.filled ? s.name : `(slot ${s.slot_n})`;
-    const lbl = s.exterior ? `ext ${-s.slot_n}` : String(s.slot_n);
+    const name = (s.filled || s.exterior) ? s.name : `(slot ${s.slot_n})`;
+    const lbl = s.exterior ? 'ext' : String(s.slot_n);
     const obs = s.observed > 0 ? fmtMass(s.observed) : '—';
-    const pred = s.exterior ? '(indep)' : fmtMass(s.predicted);
+    const pred = fmtMass(s.predicted);
     const dm = (s.filled && s.observed > 0 && !s.exterior)
       ? ((s.observed - s.predicted) / s.predicted * 100).toFixed(1) + '%' : '—';
     const sr = s.slot_r < 0.01 ? s.slot_r.toExponential(3) : s.slot_r.toFixed(3);
-    console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  slot_r=${sr.padStart(9)}  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
+    // On-slot doctrine: r_form = slot; da = r_obs - r_slot is the
+    // post-formation displacement (the event ledger).
+    const pl = s.filled ? sys.planets.find(pp => pp.name === s.name) : null;
+    const robs = pl ? (pl.r < 0.01 ? pl.r.toExponential(3) : pl.r.toFixed(3)) : '—';
+    const da = pl ? ((pl.r - s.slot_r >= 0 ? '+' : '') + (pl.r - s.slot_r).toFixed(2)) : '—';
+    console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  r_form=${sr.padStart(9)}  r_obs=${robs.padStart(9)}  da=${da.padStart(6)}  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
   }
 }
 
@@ -196,10 +222,16 @@ if (doWrite) {
   let src = fs.readFileSync(path.join(root, 'exoplanets.js'), 'utf8');
   let written = 0;
   for (const o of results) {
-    const blocking = o.flags.filter(f => !f.startsWith('VOID:')
-      && !f.startsWith('REMNANT:') && !f.startsWith('PACKED:')
-      && !f.startsWith('STRIPPED:'));
-    if (o.error || blocking.length) continue; // only write clean fits (VOID/REMNANT/PACKED/STRIPPED are informational)
+    const blocking = writeAll
+      ? o.flags.filter(f => f === 'NO_CONV' || f === 'RESID'
+          || f === 'UNASSIGNED' || f === 'F_LO_RAIL' || f === 'F_HI_RAIL'
+          || f === 'F_EXTREME')
+      : o.flags.filter(f => !f.startsWith('VOID:')
+          && !f.startsWith('REMNANT:') && !f.startsWith('PACKED:')
+          && !f.startsWith('STRIPPED:') && !f.startsWith('KBO:')
+          && !f.startsWith('OMEGA:') && !f.startsWith('CLOSED:'));
+    if (o.error || blocking.length) continue; // only write converged fits
+    if (WRITE_EXCLUDE.has(o.sys.id)) continue;
     // Inputs may contain one nested object (the stripping config) —
     // match braces one level deep, and preserve/refresh the flag.
     const re = new RegExp(`("id": "${o.sys.id}",[\\s\\S]*?"inputs": )\\{(?:[^{}]|\\{[^{}]*\\})*\\}`);

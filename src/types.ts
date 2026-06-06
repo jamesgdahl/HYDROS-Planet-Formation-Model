@@ -10,6 +10,10 @@ interface Planet {
   observed?: number;
   /** ISU (in-situ unchanged): mass+position treated as absolute truth. */
   immutable?: boolean;
+  /** KBO-class only: slot number of the interior body that CAPTURED
+   *  this factory product (Triton: 0 = Neptune, co-orbital at the
+   *  gate). Display resolves the slot to its occupant's name. */
+  captured?: number;
   /** Dam-exterior cohort object (Kuiper mechanism): a DISTINCT
    *  population with independent inputs — excluded from the interior
    *  cascade fit entirely (no anchor influence, no penalties), then
@@ -86,6 +90,15 @@ interface FitSlot {
   // is the fit; mass calculus deferred (predicted := observed) —
   // excluded from f-bisection target. slot_n = -n (negative rung).
   exterior?: boolean;
+  // Wrecking-class ledger: condensables of the interior slots this
+  // migrant traversed and ate en route to its parking seat. Arrives
+  // POST-H/He accumulation (heavy-element enrichment; not fed into the
+  // core² gas term). The Thorngren-class M_Z excess prediction.
+  devoured?: number;
+  // Devour credit APPLIED to this slot's t_form bisection: the
+  // formation seat is fit to (observed - credit), the meals being
+  // post-prediction mass. Set when opts.devour_credit names this body.
+  devoured_credit?: number;
   primordial: Composition;
   interpretation: string;
 }

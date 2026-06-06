@@ -105,10 +105,13 @@ function hydrogen_capture(core_mass, t_form_myr, spin, r, M_star, f_disc, omega)
     // Tanigawa-Ikoma (2007) gas accretion: dM_gas/dt ∝ M_core² during
     // runaway phase. Integrating with exponentially-decaying disc gas
     // density gives M_gas = A_0 · M_core² · exp(-k·t_form) · wind_supp.
-    // A_0 and k calibrated against Sol's Jupiter and Neptune (both
-    // in-situ) under the geometric cascade ρ = 1 − √(ln 2)/2 ≈ 0.584.
-    // k corresponds to disc-gas-dispersal e-folding time ~1.45 Myr.
-    const A_0 = 4.45; // units of 1/M_E (so M_core² · A_0 gives M_E)
+    // A_0 and k calibrated against Sol's Jupiter and Neptune under the
+    // geometric cascade ρ = 1 − √(ln 2)/2 ≈ 0.584, with allocation at
+    // SLOT radii (on-slot doctrine: Jupiter at its formation slot
+    // 5.981 AU, not its displaced 5.203 AU — the old value 4.45 carried
+    // that conflation). k corresponds to disc-gas-dispersal e-folding
+    // time ~1.45 Myr.
+    const A_0 = 4.3899; // units of 1/M_E (so M_core² · A_0 gives M_E)
     const sol_disc = 0.01 * m_star_earth(SOL_M_PRIMORDIAL);
     const system_disc = f_disc * m_star_earth(M_star);
     const k = 0.691 * Math.max(1.0, Math.pow(sol_disc / system_disc, 2.0));
