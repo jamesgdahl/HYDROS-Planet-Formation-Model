@@ -436,10 +436,12 @@ function calculate() {
 
     let name, r_form, dr_au, dm, predicted, observed, interp;
     name = s.filled ? s.name : `(slot ${s.slot_n} lost)`;
-    // r_form = the formation r: observed r for in-situ planets, slot
-    // center for migrants. r_used already encodes this distinction.
-    // KBO rows: r_form = the exterior rung; Δr = offset from it.
-    r_form = s.filled ? (s.exterior ? s.slot_r : s.r_used) : s.slot_r;
+    // ON-SLOT DOCTRINE: planets form at their slots exactly. r_form is
+    // the slot radius, and Δr = r_obs − r_slot is post-formation
+    // displacement — the event ledger (Jupiter/Saturn sank paying the
+    // swarm-ejection bill, Uranus rose on the hand-down exchange,
+    // Neptune holds the dam seat). KBO rows: the exterior rung.
+    r_form = s.slot_r;
     predicted = s.predicted;
     if (s.filled) {
       observed = s.observed;

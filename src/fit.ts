@@ -259,9 +259,11 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       planet_by_slot[s.slot_n] = disc_planets.find(q => q.name === s.name)!;
     }
   }
-  // fit_r: in-situ planets use observed r; migrants use slot_r
-  // (formation position, where cascade allocation applies). Nearest-site
-  // checks run over ALL candidate sites (rungs + inverted interstitials).
+  // fit_r: ON-SLOT DOCTRINE — planets form at their slots exactly, so
+  // cascade allocation is evaluated at slot_r for everyone. Observed
+  // minus slot position is post-formation displacement (the event
+  // ledger), not a formation input. Nearest-site machinery retained for
+  // migration tagging.
   const sites_pre = cascade_sites(M_star, spin, disc_planets.length, omega);
   const R_disc_local = sites_pre.length ? sites_pre[0].r : 0;
   const nearest_site_n = (r_obs: number): number => {
@@ -273,15 +275,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     }
     return nearest;
   };
-  const fit_r = (s: AssignedSlot): number => {
-    if (!s.filled) return s.slot_r;
-    const p = planet_by_slot[s.slot_n];
-    // Outward migrant: planet observed well beyond R_disc — it formed
-    // at its slot (inside the disc) and migrated outward to its current
-    // position. Use slot_r for cascade allocation.
-    if (R_disc_local > 0 && p.r > R_disc_local * 1.2) return s.slot_r;
-    return (nearest_site_n(p.r) !== s.slot_n) ? s.slot_r : p.r;
-  };
+  const fit_r = (s: AssignedSlot): number => s.slot_r;
 
   const sl = slope(M_star, f_disc);
   const pebble_total = total_pebble_bonus_budget(M_star, f_disc);
@@ -567,21 +561,24 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       outer.primordial.rock + outer.primordial.ice + outer.primordial.pebble +
       inner.primordial.rock + inner.primordial.ice + inner.primordial.pebble;
     if (rocky_combined <= 0) continue;
-    // Impact retention model:
+    // Impact retention model (on-slot calibration):
     //   v_orbit(r) = 29.785 · √(M_star/r)  [km/s; r in AU, M_star in M_sun]
     //   v_esc(M)   = 11.186 · M^(1/3)      [km/s; M in M_E, rocky]
-    //   retention = max(0.3, 1 - 0.37 · Δv/v_esc)
-    // Calibrated against:
-    //   Mercury–Vulcan (Sol slots 8/9, r≈0.41/0.24 AU, combined ≈0.17 M_E):
-    //     Δv≈15.4 km/s, v_esc≈6.2 → ratio≈2.48 → retention=0.30 (floor)
-    //   Tau Ceti e (mild-end calibration anchor):
-    //     ratio≈0.53 → retention≈0.81 (partial merger)
+    //   retention = max(0.05, 0.969 - 0.605 · Δv/v_esc)
+    // Two anchors, two constants, both at SLOT-radius allocations:
+    //   Mercury–Vulcan (Sol slots 8/9, combined 0.789 M_E primordial):
+    //     Δv≈15.4 km/s, v_esc≈10.3 → ratio≈1.49 → retention 0.070
+    //   Tau Ceti e (slots 1.5/2, combined 4.90 M_E primordial):
+    //     ratio≈0.275 → retention 0.803
+    // Intercept 0.969 < 1: even the gentlest merger sheds percent-level
+    // ejecta. The old (0.3 floor, 0.37 slope) carried the observed-radius
+    // conflation and underestimated primordial masses.
     const v_orbit_r = (r: number) => (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / r);
     const dv = Math.abs(v_orbit_r(inner.slot_r) - v_orbit_r(outer.slot_r));
     const v_esc = 11.186 * Math.pow(rocky_combined, 1.0 / 3.0);
     const retention_model = v_esc > 0
-      ? Math.max(0.3, 1.0 - 0.37 * dv / v_esc)
-      : 0.3;
+      ? Math.max(0.05, 0.969 - 0.605 * dv / v_esc)
+      : 0.05;
     const expected = retention_model * rocky_combined;
     const merge_err = Math.abs(expected - outer.observed) / outer.observed;
     if (merge_err < IMPACT_MASS_TOLERANCE) {

@@ -150,7 +150,12 @@ function printSlotTable(sys, r) {
     const dm = (s.filled && s.observed > 0 && !s.exterior)
       ? ((s.observed - s.predicted) / s.predicted * 100).toFixed(1) + '%' : '—';
     const sr = s.slot_r < 0.01 ? s.slot_r.toExponential(3) : s.slot_r.toFixed(3);
-    console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  slot_r=${sr.padStart(9)}  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
+    // On-slot doctrine: r_form = slot; da = r_obs - r_slot is the
+    // post-formation displacement (the event ledger).
+    const pl = s.filled ? sys.planets.find(pp => pp.name === s.name) : null;
+    const robs = pl ? (pl.r < 0.01 ? pl.r.toExponential(3) : pl.r.toFixed(3)) : '—';
+    const da = pl ? ((pl.r - s.slot_r >= 0 ? '+' : '') + (pl.r - s.slot_r).toFixed(2)) : '—';
+    console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  r_form=${sr.padStart(9)}  r_obs=${robs.padStart(9)}  da=${da.padStart(6)}  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
   }
 }
 
