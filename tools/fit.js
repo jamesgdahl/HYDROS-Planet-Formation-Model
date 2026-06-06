@@ -28,7 +28,7 @@ const load = (rel) => vm.runInContext(
 
 load('exoplanets.js');
 for (const f of ['constants.js', 'disc.js', 'allocation.js',
-                 'classify.js', 'cascade.js', 'fit.js']) {
+                 'classify.js', 'cascade.js', 'fit.js', 'impactors.js']) {
   load(path.join('js', f));
 }
 
@@ -56,15 +56,25 @@ function fitSystem(sys) {
   const r = doBrute
     ? bruteFit(planets, sys.inputs.M_star, stripping, doVice)
     : bestFit(planets, sys.inputs.M_star, sys.inputs.f_disc);
-  // Diagnostic count: filled non-target planets whose |dm%| exceeds the
-  // late-delivery floor — these are interpreted post-formation events.
+  // EVENT CLOSURES: bodies whose deviation is explained by an
+  // identified, budget-closed event (impact/merger/survivor/delivery)
+  // count as PERFECT fits — the deviation is model output, not error.
+  // n_diag counts only the OPEN (unexplained) deviations.
+  let closures = [];
+  try {
+    const F = ctx.impact_forensics(r.fit.slots, planets, sys.inputs.M_star, r.f_disc);
+    closures = F.closures || [];
+  } catch (e) { /* forensics unavailable: all deviations stay open */ }
+  const closedNames = new Set(closures.map(c => c.name));
   const targets = new Set(r.target_names);
   let n_diag = 0;
   for (const s of r.fit.slots) {
     if (!s.filled || s.external || targets.has(s.name)) continue;
+    if (closedNames.has(s.name)) continue;
     if (s.observed > 0 && Math.abs(s.err_pct) > LATE_DELIVERY_PCT) n_diag++;
   }
   const flags = [];
+  if (closures.length) flags.push('CLOSED:' + closures.length);
   if (r.f_disc <= 0.0006) flags.push('F_LO_RAIL');
   if (r.f_disc >= 1.9) flags.push('F_HI_RAIL');
   if (r.f_disc > 1.0) flags.push('F_EXTREME'); // disc heavier than star

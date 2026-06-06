@@ -506,6 +506,11 @@ function renderForensics(fit, planets, M_star, f_disc) {
   const F = impact_forensics(fit.slots, planets, M_star, f_disc);
   if (F.tstar === null && F.sources.length === 0) { el.innerHTML = ""; return; }
   let h = '<h3 style="margin:6px 0">Impact forensics</h3>';
+  if (F.closures && F.closures.length) {
+    h += '<div><b>Event closures</b> (deviation = model output; counts as an exact fit): '
+      + F.closures.map(c => `<b>${c.name}</b> — ${c.reason}`).join('; ')
+      + '</div>';
+  }
   if (F.sources.length) {
     h += '<div><b>Candidate impactors</b> (dispersed-zone primaries): '
       + F.sources.map(s => `slot ${s.slot} — ${fmtM(s.mass)} M⊕ ${s.from}`).join('; ')

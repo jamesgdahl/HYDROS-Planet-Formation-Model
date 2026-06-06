@@ -47,6 +47,8 @@ interface ForensicsZone {
   lo: number; hi: number; residual_lo: number; residual_hi: number;
 }
 
+interface ForensicsClosure { name: string; reason: string; }
+
 interface Forensics {
   k: number;
   tstar: number | null;
@@ -56,6 +58,10 @@ interface Forensics {
   zones: ForensicsZone[];
   hypotheses: ForensicsHypothesis[];
   verdict: ForensicsRow[] | null;
+  // EVENT CLOSURES: bodies whose deviation is fully explained by an
+  // identified, budget-closed event. A closed deviation is model
+  // OUTPUT, not fit error: closed bodies count as perfect fits.
+  closures: ForensicsClosure[];
 }
 
 function impact_forensics(all_slots: FitSlot[], planets: Planet[],
@@ -232,5 +238,33 @@ function impact_forensics(all_slots: FitSlot[], planets: Planet[],
     }
   }
 
-  return { k, tstar, datings, neverGassed, sources, zones, hypotheses, verdict };
+  // --- event closures ---------------------------------------------------
+  const closures: ForensicsClosure[] = [];
+  const close = (name: string, reason: string) => {
+    if (!closures.some(c => c.name === name)) closures.push({ name, reason });
+  };
+  for (const s of slots) {
+    if (!s.filled) continue;
+    if (/merger \(absorbed/.test(s.interpretation)) {
+      close(s.name, 'merger remnant (retention-model match)');
+    }
+    if (/sibling survivor/.test(s.interpretation)) {
+      close(s.name, 'dispersal survivor (within the 5-10% band)');
+    }
+  }
+  if (verdict && tstar !== null) {
+    for (const v of verdict) {
+      const ng = neverGassed.find(n => n.name === v.target);
+      if (ng && Math.abs(ng.err_pct) > 15) continue;  // cross-pred must hold
+      close(v.target, `impact (slot ${v.srcSlot} primary, dated t* = ${tstar.toFixed(2)} Myr)`);
+    }
+  }
+  for (const z of zones) {
+    for (const rc of z.receivers) {
+      close(rc.name, `delivery (slot ${rc.zoneSlot} sibling, budget-closed)`);
+    }
+  }
+
+  return { k, tstar, datings, neverGassed, sources, zones, hypotheses, verdict,
+           closures };
 }

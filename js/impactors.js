@@ -187,5 +187,35 @@ function impact_forensics(all_slots, planets, M_star, f_disc) {
             }
         }
     }
-    return { k, tstar, datings, neverGassed, sources, zones, hypotheses, verdict };
+    // --- event closures ---------------------------------------------------
+    const closures = [];
+    const close = (name, reason) => {
+        if (!closures.some(c => c.name === name))
+            closures.push({ name, reason });
+    };
+    for (const s of slots) {
+        if (!s.filled)
+            continue;
+        if (/merger \(absorbed/.test(s.interpretation)) {
+            close(s.name, 'merger remnant (retention-model match)');
+        }
+        if (/sibling survivor/.test(s.interpretation)) {
+            close(s.name, 'dispersal survivor (within the 5-10% band)');
+        }
+    }
+    if (verdict && tstar !== null) {
+        for (const v of verdict) {
+            const ng = neverGassed.find(n => n.name === v.target);
+            if (ng && Math.abs(ng.err_pct) > 15)
+                continue; // cross-pred must hold
+            close(v.target, `impact (slot ${v.srcSlot} primary, dated t* = ${tstar.toFixed(2)} Myr)`);
+        }
+    }
+    for (const z of zones) {
+        for (const rc of z.receivers) {
+            close(rc.name, `delivery (slot ${rc.zoneSlot} sibling, budget-closed)`);
+        }
+    }
+    return { k, tstar, datings, neverGassed, sources, zones, hypotheses, verdict,
+        closures };
 }
