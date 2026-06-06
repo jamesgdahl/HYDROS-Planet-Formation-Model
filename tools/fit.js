@@ -42,6 +42,11 @@ const SKIP = new Set(['sol_progenitor', 'crab_progenitor',
 const args = process.argv.slice(2);
 const onlyId = args.includes('--system') ? args[args.indexOf('--system') + 1] : null;
 const doWrite = args.includes('--write');
+// --all: write every CONVERGED fit (rails/non-convergence/unassigned
+// still block); informational flags don't. Alpha Centauri is excluded
+// pending the seating ruling.
+const writeAll = args.includes('--all');
+const WRITE_EXCLUDE = new Set(['alphacen']);
 const doBrute = !args.includes('--iterated'); // brute (joint scan) is the default
 const doVice = args.includes('--vice'); // decouple the vice jaws (omega grid)
 const bruteFit = ctx.bruteFit;
@@ -211,11 +216,16 @@ if (doWrite) {
   let src = fs.readFileSync(path.join(root, 'exoplanets.js'), 'utf8');
   let written = 0;
   for (const o of results) {
-    const blocking = o.flags.filter(f => !f.startsWith('VOID:')
-      && !f.startsWith('REMNANT:') && !f.startsWith('PACKED:')
-      && !f.startsWith('STRIPPED:') && !f.startsWith('KBO:')
-      && !f.startsWith('OMEGA:'));
-    if (o.error || blocking.length) continue; // only write clean fits (VOID/REMNANT/PACKED/STRIPPED are informational)
+    const blocking = writeAll
+      ? o.flags.filter(f => f === 'NO_CONV' || f === 'RESID'
+          || f === 'UNASSIGNED' || f === 'F_LO_RAIL' || f === 'F_HI_RAIL'
+          || f === 'F_EXTREME')
+      : o.flags.filter(f => !f.startsWith('VOID:')
+          && !f.startsWith('REMNANT:') && !f.startsWith('PACKED:')
+          && !f.startsWith('STRIPPED:') && !f.startsWith('KBO:')
+          && !f.startsWith('OMEGA:') && !f.startsWith('CLOSED:'));
+    if (o.error || blocking.length) continue; // only write converged fits
+    if (WRITE_EXCLUDE.has(o.sys.id)) continue;
     // Inputs may contain one nested object (the stripping config) —
     // match braces one level deep, and preserve/refresh the flag.
     const re = new RegExp(`("id": "${o.sys.id}",[\\s\\S]*?"inputs": )\\{(?:[^{}]|\\{[^{}]*\\})*\\}`);

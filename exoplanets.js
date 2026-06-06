@@ -122,7 +122,7 @@ window.EXOPLANETS = [
     "id": "gj667",
     "name": "GJ 667 A",
     "ly": 23.62,
-    "inputs": {"M_star": 0.73, "spin": 0.792046, "f_disc": 0.194067},
+    "inputs": {"M_star": 0.73, "spin": 1.0341473394073246, "f_disc": 0.2514866859365871},
     "notes": "Nearby triple system. GJ 667 A (K3V, 0.73 M_sun) primary; companion GJ 667 B (K5V, 0.69 M_sun = 229,748 M_E) at semi-major axis 12.6 AU, e=0.58. GJ 667 C (M1.5V, 0.327 M_sun = 108,881 M_E) at wide separation (~230 AU) — hosts planet C c in HZ. Fit (spin 0.792, R_disc 21.6 AU; f_disc formally unconstrained): B formed at the dam edge (slot 0, 21.6 AU) and settled inward -9.0 AU to the observed 12.6 AU A-B separation; C formed at slot 1 (12.6 AU) and was flung out +217 AU to 230. Packing index B-C = 0.7 (overlapping Hill spheres at birth) forces the relaxation; mass-ordered kick rule executed exactly: lightweight C takes the big ejection, heavyweight B the small settle (mirror of Alpha Cen B's +9 AU). Slot 2 predicts a 0.46 M_sun K-class star and slot 3 a 17.5 M_J brown dwarf, MUTUALLY EVICTED and ejected: GJ 667 was born a quadruple plus a brown dwarf and fired two runaways into the interstellar field.",
     "planets": [
       { "name": "GJ 667 B", "r": 12.6, "observed": 229748 },
@@ -146,7 +146,7 @@ window.EXOPLANETS = [
     "id": "gj876",
     "name": "GJ 876",
     "ly": 15.34,
-    "inputs": {"M_star": 0.37, "spin": 848.327, "f_disc": 0.961900},
+    "inputs": {"M_star": 0.37, "spin": 1107.6315734059801, "f_disc": 0.8579684371429108},
     "notes": "Compacted Sol homolog (inverted regime, 11 slots inside R_disc = 0.334 AU \u2014 ~90x compression; f_disc formally unconstrained). Fit: gas-giant pair b (slot 1) and c (slot 2) in situ \u2014 the Jupiter-Saturn analog; TWO Martian-band survivors: d retains 7.6% of its slot-5 prediction, e retains 9.4% of slot 0 (Mars retains 8.1% in Sol \u2014 neither band placement is forced by the fit); b's swarm dispersal shreds slots 8-10. Mass ledger: d+e shed 223 M\u2295, b+c gained 223 M\u2295 \u2014 the scattered inventory fed the adjacent giants (Sol's coupled-events pattern, compressed). Born packed at P = 3.8 (vs Jupiter-Saturn's 7.2) but e-b-c occupy three ADJACENT rungs whose natural period ratio is 2.24:1 \u2014 convergent settling locked them into the observed 4:2:1 Laplace chain: the resonance is the predicted survival mode for a born-packed chain, not an accident. Effective-spin caveat: 848 is a magnetic-compression parameter, not a literal rotation period.",
     "planets": [
       { "name": "GJ876-d", "r": 0.0208, "observed": 6.83 },
@@ -186,7 +186,7 @@ window.EXOPLANETS = [
     "id": "hd192310",
     "name": "HD 192310",
     "ly": 28.7,
-    "inputs": {"M_star": 0.85000001, "spin": 41.71891043164291, "f_disc": 0.027891805689149382},
+    "inputs": {"M_star": 0.85000001, "spin": 469.1789068422425, "f_disc": 0.053104185175023716},
     "notes": "K2V. Two Neptune-mass planets discovered by HARPS RV.",
     "planets": [
       { "name": "HD 192310 b", "r": 0.32, "observed": 16.9 },
@@ -213,7 +213,7 @@ window.EXOPLANETS = [
     "id": "hd69830",
     "name": "HD 69830",
     "ly": 40.7,
-    "inputs": {"M_star": 0.85999999, "spin": 1684.924423, "f_disc": 0.028607},
+    "inputs": {"M_star": 0.85999999, "spin": 1684.9244231979153, "f_disc": 0.02907398212751819},
     "notes": "The catalog's most extreme inverted disc (D_eff = 69,200, compression 19, R_disc = 0.63 AU, 11 slots) and its bloodiest self-destruction. Fit residual 0.01%: d is the dam resident, in situ at slot 0 = 0.630 AU exactly (18.1 predicted vs 18.1 observed); c and b survive on LUGER HALF-SITES — c in situ at interstitial 2.5 (+0.9%), b at interstitial 3.5, nudged 0.018 AU inward (-1.1%). Every integer slot from 1 to 7 is empty: seven rock giants totaling ~70 M_E, born practically touching in the packed chain, mutually shredded — and HD 69830 is precisely the system famous for its anomalously massive warm debris disk (Beichman et al. 2005, Spitzer), whose dust spectrum matches a disrupted asteroid (Lisse et al. 2007). The model independently predicts ~70 M_E of pulverized rocky inventory in the inner AU; the observed belt is its remnant. The survivors are the bodies OFF the integer lattice — the interstitial niches rode out the destruction of the main chain, plus the dam resident at the protected edge. Slots 8-10 (~9.6 M_E allocation) formed inside the Hayashi-track photosphere: consumed by the protostar. (f_disc formally unconstrained — all survivors gas-eligible.)",
     "planets": [
       { "name": "HD69830-b", "r": 0.078, "observed": 10.2 },
@@ -239,7 +239,7 @@ window.EXOPLANETS = [
     "id": "upsand",
     "name": "Upsilon Andromedae",
     "ly": 43.9,
-    "inputs": {"M_star": 1.27, "spin": 7.10505617287286, "f_disc": 0.5},
+    "inputs": {"M_star": 1.27, "spin": 53.01284219968904, "f_disc": 0.2514866859365871},
     "notes": "F8V. The disc-formation cascade is a clean 2-slot system: ups And d (slot 1, 2.51 AU) and e (slot 0, 5.245 AU) both fit in-situ at their cascade positions to machine precision. Both flagged ISU. The shorter-period bodies ups And b (0.06 AU) and c (0.83 AU) sit interior to R_A and are not products of the disc-cascade — they are scattered or migrated bodies arriving in the inner system via separate dynamics. Their inclusion would over-constrain the fit; they are listed here as observed bodies but not as cascade members.",
     "planets": [
       { "name": "ups And b", "r": 0.0594, "observed": 218.0 },
@@ -252,7 +252,7 @@ window.EXOPLANETS = [
     "id": "47uma",
     "name": "47 Ursae Majoris",
     "ly": 45.91,
-    "inputs": {"M_star": 1.03, "spin": 0.827655, "f_disc": 0.031623},
+    "inputs": {"M_star": 1.03, "spin": 0.8276551406860192, "f_disc": 0.03162277660168379},
     "notes": "EXISTENCE-JUSTIFICATION FIT (anchor k=2, spin 0.828, D=0.75): the old spin-7.13 fit was rejected for positing an unremovable 12,377 ME brown-dwarf ghost at slot 1 with 47UMa-d sitting calm and full-mass inside its chaos zone. Gated fit: d in situ at slot 2; b and c inward migrants (devoured ~2.8 and ~5.2 ME of interior condensables, post-H/He: Thorngren-class M_Z excess predictions); interior rocky slots obliterated by the multi-giant scatter, explaining the observed absence of inner planets. REGISTERED PREDICTION (two branches, eviction grammar): slot 0 allocated ~4.8 M_J at 34 AU. Branch A: bound survivor, detectable (RV trend / Gaia / imaging). Branch B: mutually evicted — b's plunge (slot 1 -> 2.1 AU) released ~8x the energy needed to unbind it (171 GM vs 22 GM), and d's e = 0.16 (largest in system, on an in-situ trap-held seat, da = 0.00) is the goodbye signature of the escaper crossing its zone. Non-detection as limits tighten + d's stirred e confirms B; either branch scores. 3 gas giants (f_disc formally unconstrained). d in situ at slot 0 (11.6 AU). b and c are a resonance-locked adjacent-slot pair (slots 3 and 2): their observed spacing is exactly rho (2.1/3.6 = 0.5833 vs rho = 0.5837, 0.07%) at the cascade's natural 2.24:1 capture ratio, and both sit displaced inward from their slots by the same -9% — one rigid pair drift, not independent migrations. The resonance-lock fate caught mid-act. Slot 1 hosted a body whose loss accompanied the pair's slide; its mass (and the merger attribution and PACKED depth that ride on it) is an f-artifact and should not be asserted — empty-slot predictions scale with the unconstrained f while the filled giants fit at any f via t_form.",
     "planets": [
       { "name": "47UMa-b", "r": 2.1, "observed": 804.0 },
@@ -277,7 +277,7 @@ window.EXOPLANETS = [
     "id": "hd7924",
     "name": "HD 7924",
     "ly": 54.8,
-    "inputs": {"M_star": 0.79, "spin": 1.0, "f_disc": 0.01},
+    "inputs": {"M_star": 0.79, "spin": 23458.22885939532, "f_disc": 0.0034491057289601276},
     "notes": "K0V. Three close-in super-Earths (b, c, d) in a tight chain, all interior to 0.2 AU.",
     "planets": [
       { "name": "HD 7924 b", "r": 0.0566, "observed": 8.7 },
@@ -289,7 +289,7 @@ window.EXOPLANETS = [
     "id": "betapic",
     "name": "Beta Pictoris",
     "ly": 63.4,
-    "inputs": {"M_star": 1.535088, "spin": 2.638645, "f_disc": 0.031623},
+    "inputs": {"M_star": 1.535088, "spin": 2.6509604384846415, "f_disc": 0.03162277660168379},
     "notes": "A6V, young (~20 Myr). Two directly-imaged giants b (9.66 AU) and c (2.7 AU). Best fit (spin 2.639, R_disc 28.35 AU; f_disc 0.032 formally unconstrained \u2014 all-giant system, viable parameterization): b and c formed at slots 1 (16.55 AU) and 0 (28.35 AU = the dam) and migrated inward; the inner cascade (slots 2\u20137, ~700 M\u2295 predicted inventory) was destabilized and obliterated by their passage \u2014 the source of the archetypal edge-on debris disc. Out-of-sample check: resolved planetesimal belts at ~6, 16, 30 AU (Okamoto et al. 2004, Subaru/COMICS) coincide with slots 3, 1, 0 (5.64, 16.55, 28.35 AU) to within 3\u20136%. Two exocomet families (Kiefer et al. 2014) consistent with multi-ring debris sources.",
     "planets": [
       { "name": "Beta Pic c", "r": 2.7, "observed": 2606.0 },
@@ -300,7 +300,7 @@ window.EXOPLANETS = [
     "id": "hd60532",
     "name": "HD 60532",
     "ly": 83.6,
-    "inputs": {"M_star": 1.44, "spin": 10.123, "f_disc": 0.0316},
+    "inputs": {"M_star": 1.44, "spin": 10.123438994731034, "f_disc": 0.03162277660168379},
     "notes": "F6V — the WRECKING PAIR, the catalog's second inner-dam parking case. Fit (spin 10.12, D = 32.2, R_disc = 13.61 AU, k=4, residual 0.001%): c born at slot 0 on the dam (13.61 AU, 781 pred vs 781 obs), b at slot 1 (7.94 AU, 327 vs 327). Born packed at P = 6.0 — relaxation compulsory — both surrendered angular momentum and fell inward as a coupled pair: convergent migration locked them into the 3:1 resonance (Laskar & Correia 2009, the first confirmed giant 3:1; the lock is the fall's fingerprint). THE TOLL: slots 2-4 (128.6 + 70.8 + 1.4 = 200.8 M_E) murdered in the double transit — the predicted-minus-observed deficit matches the invoice to the digit (1308.8 - 1108.0). THE STOP: the Alfven dam at 1.08 AU — b punched just under the rim (0.76 AU = 0.70 R_A), c halted behind at 1.58 — slot 4's EXACT address (1.580): seat capture, the same parking HD 142's c shows on its slot 1. The celebrated 3:1 lock is rim-plus-seat spacing expressed as a period ratio. Halting at the magnetospheric cavity is Lin, Bodenheimer & Richardson (1996) for 51 Peg; the machine adds the formation addresses, the casualty list, and an independently fitted R_A. With HD 134987 b (1.00 R_A) this opens the ALFVEN PARKING LOT population: inward migrators halt within ~1.5x of the fitted inner dam. (f_disc formally unconstrained — both survivors gas-eligible.)",
     "planets": [
       { "name": "HD60532-b", "r": 0.76, "observed": 327.0 },
@@ -311,7 +311,7 @@ window.EXOPLANETS = [
     "id": "hd134987",
     "name": "HD 134987",
     "ly": 84.9,
-    "inputs": {"M_star": 1.07, "spin": 10.485505, "f_disc": 0.031623},
+    "inputs": {"M_star": 1.07, "spin": 10.48550513343133, "f_disc": 0.03162277660168379},
     "notes": "Outside-in wrecking ball caught between both jaws of the vice. Fit (spin 10.49, D = 33.95, R_disc = 9.94 AU, residual 0.001%): b is the dam resident — born at slot 0 on the Davis Dam (9.94 AU, predicted 505 vs observed 505) — and migrated inward through the entire system to 0.81 AU, where the fit's magnetospheric void radius is 0.8196 AU: the migrator fell to the Alfven Dam and parked on its rim, 1.2% from prediction. c sits in situ at slot 1 = 5.80 AU exactly (just outside the 5.49 AU snow line; 261 predicted vs 261 observed). The toll of b's passage: slots 2-4 (80 + 41 + 1 M_E, two gas giants and a rocky world at 3.4/2.0/1.2 AU) destroyed — 122 M_E of inventory gone, matching the predicted-minus-observed deficit. End state: a lone warm giant over a swept interior, the hot-Jupiter-loneliness configuration (Steffen et al. 2012). (Data note: c's semi-major axis was a stale 15.41 in this file; literature 5.8 AU restored. f_disc formally unconstrained — both survivors gas-eligible.)",
     "planets": [
       { "name": "HD134987-b", "r": 0.81, "observed": 505.0 },
@@ -322,7 +322,7 @@ window.EXOPLANETS = [
     "id": "hd142",
     "name": "HD 142",
     "ly": 85.0,
-    "inputs": {"M_star": 1.27, "spin": 10.747, "f_disc": 0.0316},
+    "inputs": {"M_star": 1.27, "spin": 31.539459650400104, "f_disc": 0.2514866859365871},
     "notes": "F7V — the third member of the WRECKING CLASS (with HD 134987 and HD 60532: D = 32-35 in all three, the narrow density band that builds self-murdering discs). Fit (spin 10.75, D = 35.2, R_disc = 11.65 AU, residual 0.000%): c born on the dam (1684 pred vs 1684 obs), b at slot 1 (397 vs 397). Born packed (P = 4.7) — the pair fell inward, sweeping the corridor: slots 2-4 (102.4 + 55.6 + 1.2 = 159.2 M_E) destroyed, the predicted-minus-observed deficit matching the invoice to the digit. THE PARKING: b stopped at 1.04 AU = 1.05x the fitted Alfven radius (the second dead-on rim parking after HD 134987), and c stopped at 6.80 AU — slot 1 EXACT ADDRESS, the seat b vacated. With HD 60532 (whose c parked on its slot 4 at 1.580, making the famous 3:1 lock the rim-plus-seat spacing in period form), this establishes SEAT CAPTURE: migrators park at seats or rims — the lattice governs parking even after formation. (f_disc formally unconstrained — both survivors gas-eligible.)",
     "planets": [
       { "name": "HD142-b", "r": 1.04, "observed": 397.0 },
@@ -333,7 +333,7 @@ window.EXOPLANETS = [
     "id": "hr8799",
     "name": "HR 8799",
     "ly": 133.3,
-    "inputs": {"M_star": 1.324561, "spin": 0.34148283315281475, "f_disc": 0.015811388300841896},
+    "inputs": {"M_star": 1.324561, "spin": 0.3430763128319524, "f_disc": 0.03162277660168379},
     "notes": "(BEYOND 100 LY \u2014 distance 133.3 ly).",
     "planets": [
       { "name": "HR8799-e", "r": 14.0, "observed": 2225 },
