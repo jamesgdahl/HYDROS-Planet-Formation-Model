@@ -86,10 +86,15 @@ for (const sys of ctx.window.EXOPLANETS) {
     (m_ext < 0.01 ? (m_ext * 1000).toPrecision(3) + 'm' : m_ext.toFixed(1)).padStart(12),
     ('  ' + cls(m_ext)).padEnd(20),
     ' ~' + budget.toFixed(0) + ' M_E');
-  // exterior rung radii (first three stances of the retreating dam)
+  // PRODUCT-MASS DECAY along the retreat: Sigma ~ R^-2 so m ~ R^-4.
+  // Each rung stance mints lighter products than the last.
   if (only) {
-    for (const n of [0.5, 1, 1.5, 2]) {
-      console.log('    rung ' + n + ':', (R * Math.pow(1 / RHO, n)).toFixed(1), 'AU');
+    for (const n of [0.5, 1, 1.5, 2, 2.5]) {
+      const Rn = R * Math.pow(1 / RHO, n);
+      const mn = m_ext * Math.pow(R / Rn, 4);
+      console.log('    rung ' + n + ': ' + Rn.toFixed(1) + ' AU  ->  product ~'
+        + (mn < 0.01 ? (mn * 1000).toPrecision(3) + ' mE' : mn.toFixed(1) + ' M_E')
+        + '  (' + cls(mn) + ')');
     }
   }
 }
