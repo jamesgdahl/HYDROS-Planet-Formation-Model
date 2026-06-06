@@ -111,7 +111,9 @@ for (const z of F.zones) {
   for (const rc of z.receivers) console.log(`      delivered: ${rc}`);
   if (z.residual_lo > 0 || z.residual_hi > 0.05 * z.alloc) {
     console.log(`      -> UNACCOUNTED: ${z.residual_lo.toFixed(2)}-${z.residual_hi.toFixed(2)} M_E`);
-    console.log('         predicted unidentified impact(s): hit-and-run on a');
+    console.log('         predicted sinks: corridor debris field (asteroid-belt');
+    console.log('         analog; observable as a warm debris disc), further');
+    console.log('         sibling impactors on the survivor, hit-and-run on a');
     console.log('         mass-pinned body (orientation receipt, no mass');
     console.log('         signature), a star-grazer, or ejecta lost past a');
     console.log('         kinetic dam');

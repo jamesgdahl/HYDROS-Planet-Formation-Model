@@ -544,7 +544,7 @@ function renderForensics(fit, planets, M_star, f_disc) {
       const sinks = [`settled survivor ${fmtM(z.survivor)}`]
         .concat(z.receivers.map(r => 'delivered: ' + r));
       h += `<li>slot ${z.slot}: band ${fmtM(z.lo)}–${fmtM(z.hi)} M⊕; ${sinks.join('; ')} → `
-        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted unidentified impact: hit-and-run on a mass-pinned body — orientation receipt, no mass signature — a star-grazer, or ejecta lost past a kinetic dam)`)
+        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted sinks: corridor debris field — asteroid-belt analog, observable as a warm debris disc — further sibling impactors on the survivor, hit-and-run on a mass-pinned body, a star-grazer, or ejecta past a kinetic dam)`)
         + '</li>';
     }
     h += '</ul>';
