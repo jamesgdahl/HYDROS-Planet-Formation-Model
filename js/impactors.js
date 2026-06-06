@@ -31,15 +31,54 @@ function impact_forensics(all_slots, planets, M_star, f_disc) {
         }
     }
     // --- inward mass ledger: 5-10% of each dispersed allocation ---------
+    // Generic sinks, engine-identifiable in ANY system: the settled
+    // survivor at the zone, plus positive delivery excesses on interior
+    // rocky bodies (observed > predicted), each attributed to its
+    // nearest dispersed zone in log-radius. The residual is a PREDICTED
+    // unidentified impact: hit-and-run on a mass-pinned body
+    // (orientation receipt, no mass signature), a star-grazer, or
+    // ejecta lost past a kinetic dam.
     const zones = sources.map(src => {
         const sl = slots.find(x => x.slot_n === src.slot);
         const alloc = sl ? sl.predicted : src.mass;
         const survivor = (sl && sl.filled) ? sl.observed : 0;
         const lo = 0.05 * alloc, hi = 0.10 * alloc;
-        return { slot: src.slot, alloc, survivor, lo, hi,
-            residual_lo: Math.max(0, lo - survivor),
-            residual_hi: Math.max(0, hi - survivor) };
+        return { slot: src.slot, alloc, survivor, delivered: 0, receivers: [],
+            lo, hi, residual_lo: 0, residual_hi: 0 };
     });
+    if (zones.length) {
+        for (const s of slots) {
+            if (!s.filled || s.observed <= 0)
+                continue;
+            const core_s = s.rock + s.ice + s.pebble;
+            if (core_s > 3.0)
+                continue; // rocky receivers only
+            const excess = s.observed - s.predicted;
+            if (excess <= 0 || excess / s.predicted < 0.02)
+                continue;
+            // interior to at least one zone; attribute to nearest in log r
+            let zb = null, bd = Infinity;
+            for (const z of zones) {
+                const zr = slots.find(x => x.slot_n === z.slot);
+                if (!zr || s.slot_r >= zr.slot_r)
+                    continue;
+                const d = Math.abs(Math.log(zr.slot_r / s.slot_r));
+                if (d < bd) {
+                    bd = d;
+                    zb = z;
+                }
+            }
+            if (zb) {
+                zb.delivered += excess;
+                zb.receivers.push(`${s.name} +${excess.toFixed(3)}`);
+            }
+        }
+        for (const z of zones) {
+            const known = z.survivor + z.delivered;
+            z.residual_lo = Math.max(0, z.lo - known);
+            z.residual_hi = Math.max(0, z.hi - known);
+        }
+    }
     const gasTargets = [];
     for (const s of slots) {
         if (!s.filled || s.observed <= 0)

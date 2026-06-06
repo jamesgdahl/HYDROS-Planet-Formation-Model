@@ -101,27 +101,20 @@ if (F.hypotheses.length) {
 }
 
 console.log('\ninward mass ledger (5-10% of each dispersed allocation):');
-// Sol-specific identified sinks beyond the generic settled survivor:
-const SOL_SINKS = {
-  4: [['Earth excess (Theia delivery)', 0.029], ['Moon', 0.012],
-      ['Borealis impactor (Mars)', 0.020],
-      // Theia ejecta blasted past Earth's magnetopause (the kinetic
-      // rung's Davis Dam, ~6.6 R_E): uncapturable by the protolunar
-      // disc, exits heliocentric, decays back over 10-100 Myr = the
-      // geochemists' late veneer (HSE budget ~0.3-1% M_E).
-      ['Theia ejecta past the dam (late-veneer return)', 0.008]],
-};
+// Sinks are engine-identified generically (settled survivor + positive
+// delivery excesses on interior rocky bodies). Residuals predict
+// unidentified impacts. Narrative identifications of residuals (moons,
+// veneers, despins) belong in preset notes, not code.
 for (const z of F.zones) {
-  const extra = (id === 'sol' && SOL_SINKS[z.slot]) ? SOL_SINKS[z.slot] : [];
-  const known = z.survivor + extra.reduce((a, s) => a + s[1], 0);
   console.log(`  slot ${z.slot}: inward band ${z.lo.toFixed(3)}-${z.hi.toFixed(3)} M_E`);
   if (z.survivor > 0) console.log(`      settled survivor: ${z.survivor.toFixed(3)}`);
-  for (const s of extra) console.log(`      ${s[0]}: ${s[1].toFixed(3)}`);
-  const rlo = Math.max(0, z.lo - known), rhi = Math.max(0, z.hi - known);
-  if (rlo > 0 || rhi > 0.05) {
-    console.log(`      -> UNACCOUNTED: ${rlo.toFixed(2)}-${rhi.toFixed(2)} M_E`);
-    console.log('         candidate receipt: Venus retrograde despin (hit-and-run');
-    console.log('         forced by Venus ISU-exactness; no mass signature expected)');
+  for (const rc of z.receivers) console.log(`      delivered: ${rc}`);
+  if (z.residual_lo > 0 || z.residual_hi > 0.05 * z.alloc) {
+    console.log(`      -> UNACCOUNTED: ${z.residual_lo.toFixed(2)}-${z.residual_hi.toFixed(2)} M_E`);
+    console.log('         predicted unidentified impact(s): hit-and-run on a');
+    console.log('         mass-pinned body (orientation receipt, no mass');
+    console.log('         signature), a star-grazer, or ejecta lost past a');
+    console.log('         kinetic dam');
   } else {
     console.log('      -> closed');
   }

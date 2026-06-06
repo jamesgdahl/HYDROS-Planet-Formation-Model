@@ -520,6 +520,13 @@ function renderForensics(fit, planets, M_star, f_disc) {
     h += `<div><b>${n.name}</b>: t<sub>form</sub> ${n.t_form.toFixed(2)} &gt; t* → <b>never gassed</b>; predicted = bare core ${fmtM(n.core)}, observed ${fmtM(n.observed)} (${n.err_pct.toFixed(1)}%)</div>`;
   }
   if (F.verdict) {
+    // annotate the struck targets' table rows (generic, any system)
+    for (const v of F.verdict) {
+      const sl = fit.slots.find(s => s.name === v.target);
+      if (sl && !/struck by/.test(sl.interpretation)) {
+        sl.interpretation += ` — struck by slot ${v.srcSlot} primary (${fmtM(v.srcMass)} M⊕) at ${v.dv.toFixed(1)} km/s`;
+      }
+    }
     h += '<div style="margin-top:6px"><b>Routing</b> (polarity law, no tilts):</div><ul style="margin:2px 0 2px 18px">';
     for (const r of F.verdict) {
       const regime = r.ret > 0.7 ? 'additive (brakes target)' : r.ret > 0.4 ? 'erosive (boosts target)' : 'catastrophic';
@@ -533,9 +540,11 @@ function renderForensics(fit, planets, M_star, f_disc) {
   if (F.zones.length) {
     h += '<div style="margin-top:6px"><b>Inward mass ledger</b> (5–10% of each dispersed allocation):</div><ul style="margin:2px 0 2px 18px">';
     for (const z of F.zones) {
-      const closed = z.residual_lo <= 0 && z.residual_hi < 0.05;
-      h += `<li>slot ${z.slot}: band ${fmtM(z.lo)}–${fmtM(z.hi)} M⊕; settled survivor ${fmtM(z.survivor)} → `
-        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted unidentified impact; a hit on an ISU-exact body must be hit-and-run — orientation receipt, no mass)`)
+      const closed = z.residual_lo <= 0 && z.residual_hi < 0.05 * z.alloc;
+      const sinks = [`settled survivor ${fmtM(z.survivor)}`]
+        .concat(z.receivers.map(r => 'delivered: ' + r));
+      h += `<li>slot ${z.slot}: band ${fmtM(z.lo)}–${fmtM(z.hi)} M⊕; ${sinks.join('; ')} → `
+        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted unidentified impact: hit-and-run on a mass-pinned body — orientation receipt, no mass signature — a star-grazer, or ejecta lost past a kinetic dam)`)
         + '</li>';
     }
     h += '</ul>';
