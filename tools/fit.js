@@ -203,7 +203,8 @@ if (doWrite) {
   for (const o of results) {
     const blocking = o.flags.filter(f => !f.startsWith('VOID:')
       && !f.startsWith('REMNANT:') && !f.startsWith('PACKED:')
-      && !f.startsWith('STRIPPED:'));
+      && !f.startsWith('STRIPPED:') && !f.startsWith('KBO:')
+      && !f.startsWith('OMEGA:'));
     if (o.error || blocking.length) continue; // only write clean fits (VOID/REMNANT/PACKED/STRIPPED are informational)
     // Inputs may contain one nested object (the stripping config) —
     // match braces one level deep, and preserve/refresh the flag.

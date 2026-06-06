@@ -3,7 +3,7 @@ window.EXOPLANETS = [
     "id": "sol",
     "name": "Sol",
     "ly": 0.0,
-    "inputs": {"M_star": 1, "spin": 1, "f_disc": 0.00993065628194393},
+    "inputs": {"M_star": 1, "spin": 1, "f_disc": 0.010383050166273127},
     "notes": "ON-SLOT FORMATION + DISPLACEMENT LEDGER: planets form at their slots exactly; dr = r_obs - r_slot is post-formation displacement, signed by documented events and closing as one angular-momentum account (m*sqrt(r), units ME*sqrt(AU)): Jupiter -0.78 AU (paid the swarm-ejection bill, dL ~ -52), Saturn -0.71 AU (junior ejector, -11), Uranus +1.64 AU (rose on the hand-down exchange: +2.8 needed, ~6.9 available from the ~3.5 ME of relayed swarm debris), Neptune 0.00 (seated on the dam trap), Mercury -0.02 (merger barycentre), Mars -0.52 (remnant re-circularised below Jupiter's chaotic zone). TWO-TERM DECOMPOSITION: the exchange is smooth (moves a, leaves e untouched); the impacts are impulsive and arrive near aphelion moving slower than the planet, so every hit brakes (inward dv) while pumping de and tilt. Saturn's terms share a sign (both inward, da -0.71, de +0.049, 26.7 deg); Uranus's terms oppose and the exchange won (relayed ~3.5 ME vs ~2 ME absorbed): net da +1.64 out, with de +0.038 and the 98 deg tilt as the braking term's countersignature. Mass-ordered division of labour: too small to eject relays and rises; massive enough to eject pays and sinks; the dam seat holds (Fernandez & Ip 1984 planetesimal-exchange hierarchy, running on the framework's own dispersed swarm). Sol's 8 observed planets at NASA JPL J2000 mean orbital elements and IAU mass values (6+ significant figures). R_disc anchored to Neptune via auto-spin. The 10-slot cascade predicts 2 additional bodies that aren't observed \u2014 slot 9 (Vulcan, absorbed by Mercury in the iron-enriching merger) and slot 4 (the Theia swarm, scattered by Jupiter) \u2014 the simulator's MISSING rows tell that story directly. KBO-CLASS POPULATION (distinct entity, independent inputs): the nine TNO dwarf planets vs the exterior ladder. REGISTERED POPULATION TEST RESULT (6,034 MPC TNOs, fixed Neptune anchor): the ladder FAILS — low-e classicals anti-cluster (V = -0.44, they fill 42-47 AU mid-rung), and where ladder and resonance comb disagree, clustering follows Neptune's MMRs (2:1, 5:2). Rung 0.5 = the 3:2 coincidence is shared credit at best. Surviving curiosities, claimed as nothing more: Eris and Gonggong within 0.5% of rung 1.5 (both e~0.5, scatter-class by the framework's own grammar — their a is post-scatter); the four most massive TNOs all within 0.5% of rungs (~1e-3 chance). The exterior FACTORY (production budget, firehose cohorts, belt-at-the-dam) is untouched by this result — it never required rung geometry. LSST garland prediction (88.2/115.5/151.2 AU low-e clusters) remains registered, now carrying a prior against. Ceres is NOT a KBO: asteroid-belt survivor of slot 4's Theia swarm, interior population.",
     "planets": [
       { "name": "Mercury", "r": 0.387099, "observed": 0.055274 },
@@ -40,7 +40,7 @@ window.EXOPLANETS = [
     "id": "proxima",
     "name": "Proxima Centauri",
     "ly": 4.246,
-    "inputs": {"M_star": 0.122, "spin": 1.9094861096112332, "f_disc": 0.025511010652607, "stripping": {"M_pert": 0.9092, "q": 21}},
+    "inputs": {"M_star": 0.122, "spin": 1.9094861096112332, "f_disc": 0.025544933496274864, "stripping": {"M_pert": 0.9092, "q": 21}},
     "notes": "GRAVITATIONAL STRIPPING flagged — the encounter-edited system, and now one of the ten CLEAN calibrations (residual 0.001%). Perturber: Alpha Cen B (0.9092 M_sun); bisected q = 21.0 AU gives Breslau truncation r_t = 3.09 AU with stirred zone 1.55-3.09 AU. The same encounter is recorded twice and the books balance: Proxima was born ON A's dam seat (slot 0 = 25.0 AU, the GJ 667 configuration at stellar scale) and was ejected from it to its ~8,700 AU orbit — the q = 21 AU pass supplies about twice the requirement from that seat (a comfortable final kick; B's simultaneous climb to the vacated seat, costing ~5x more, was paid by the sunk brown-dwarf slots) — while its OWN disc carries the flyby's scars at exactly the q the energetics demand. Proxima's D = 2.639 vs A's 2.185 is the daughter rung of the hierarchical density ladder (with Jupiter/Sol it calibrates D_d/D_p = 0.39·(r_site/R_disc)^-2.12). The fit: d migrated inward to 0.029 AU (-2.3%, late delivery), b — the habitable-zone planet — closes at -0.3% (1.27 M_E), c IN SITU at slot 1 = 1.550 AU exactly, its 7.0 M_E closed by merger with slot 2's 2.3 M_E body (+0.1%). The dam slot's 10.5 M_E gas giant sat inside the stirred zone, lost 43% to encounter stirring, and did not survive. Without the stripping parameter NO anchor family closes (all 12 fail — the unperturbed allocation curve was overwritten by the flyby); with one physically-derived parameter the system rejoins the catalog at full precision.",
     "planets": [
       { "name": "Prox-d", "r": 0.029, "observed": 0.26 },
@@ -52,7 +52,7 @@ window.EXOPLANETS = [
     "id": "jupiter",
     "name": "Jupiter (sub-cascade)",
     "ly": 0.0000819,
-    "inputs": {"M_star": 0.0009546, "spin": 5.202368, "f_disc": 0.031146},
+    "inputs": {"M_star": 0.0009546, "spin": 5.20236779226414, "f_disc": 0.03167885550780649},
     "notes": "Jupiter's sub-cascade with the Galileans at their REAL orbits (the old preset permuted names to encode a primordial-order swap hypothesis — retired). The free fit (spin 5.20, D = 11.86) lands within 0.9% of the value the hierarchical density law predicts from Jupiter's FORMATION site: D_d/D_p = 0.39·(r_site/R_disc)^(-2.12) at Sol slot 3 (5.98 AU) gives D = 11.97, while calibrating at the current 5.20 AU misses by 35% — the Galilean disc remembers where Jupiter formed, independent confirmation of the -0.78 AU swarm-scattering recoil. CALLISTO is the dam resident: slot 0 at 0.012586 vs observed 0.012585, in situ — fittingly the undifferentiated, geologically dead, most primitive Galilean. The position ladder is the Laplace tidal fingerprint: Io +13.0% > Europa +4.9% > Ganymede -2.3% > Callisto 0.0% — Jupiter's torque enters at Io and is shared outward with diminishing strength; Callisto, outside the resonance, never moved. Mass diagnostics: Ganymede +27% (late delivery — the giant ate the leftovers), Europa -45% (impact loss; the young resurfaced ice shell), Io +41% (innermost survivor sweeping inward flux), Callisto -14%. Galileans only; irregular moons: the retrograde swarms are captures, while prograde Themisto and the Himalia group are candidate native trans-dam cohort objects (test: isotopic kinship with the Galileans). THE AMALTHEA GROUP IS SLOT 4 SHREDDED: the slot-4 body (predicted 6.5 mE at 218,600 km, 1.6x the Roche line) consolidated and was dragged across the Roche limit by gas drag (the Canup-Ward lost generation); its bulk fed Jupiter, and the surviving shards (0.007% of the body) lie stranded from the seat down to the line — Thebe ON slot 4 (+1.5%), Amalthea between (density 0.86 g/cc: a rubble pile sitting inside the Roche limit for its own density, held by friction), Metis/Adrastea at the line feeding the main ring. Each fragment trails its own gossamer ring: the debris field, photographed.",
     "planets": [
       { "name": "Io", "r": 0.002820, "observed": 0.01496 },
@@ -133,7 +133,7 @@ window.EXOPLANETS = [
     "id": "tauceti",
     "name": "Tau Ceti",
     "ly": 11.92,
-    "inputs": {"M_star": 0.78, "spin": 309.1307291240372, "f_disc": 0.021458192771559578},
+    "inputs": {"M_star": 0.78, "spin": 309.1307291240372, "f_disc": 0.021317440656515647},
     "notes": "4 confirmed small planets (g, h, e, f) \u2014 all sub-Neptune mass. Older candidates b, c, d are now considered stellar activity artifacts.",
     "planets": [
       { "name": "TauCet-g", "r": 0.133, "observed": 1.75 },
@@ -159,7 +159,7 @@ window.EXOPLANETS = [
     "id": "hd20794",
     "name": "HD 20794 / 82 G. Eridani",
     "ly": 19.7,
-    "inputs": {"M_star": 0.81, "spin": 10.300074697306185, "f_disc": 0.009478760265712828, "stripping": {"M_pert": 0.499999, "q": 15.8}},
+    "inputs": {"M_star": 0.81, "spin": 10.300074697306185, "f_disc": 0.009454798505386995, "stripping": {"M_pert": 0.499999, "q": 15.8}},
     "notes": "G6V nearby Sun-like star — GRAVITATIONAL STRIPPING flagged (anonymous cluster-era flyby; default 0.5 M☉ perturber). Fitted q = 15.8 AU → Breslau truncation r_t = 5.17 AU. The packing index forbids internal demolition (quiet chain, P = 14-22, no giants), yet the ledger shows violence — the Proxima syllogism: editing was external. Under the fitted encounter: slot 0 (7.59 AU) stripped, freeing 33.6 M⊕ with the stirred-zone losses; b (2.7 M⊕ at 0.12 AU, under the dam) is the ENCOUNTER FRAGMENT — 8.0% of the freed inventory, the inward share of the 5%/95% split, flung into a much lower orbit by the encounter; g (stirred zone) at -23%; f closes at -10% (late-delivery band) after sweeping the inward debris — its raw +310% surplus was the encounter's debris signature, Proxima-scale, far beyond Sol-style late delivery. d's +80% remains the residual open item (sits at the stirred/enriched boundary). Capture fraction ~18%, consistent with Proxima's 10-15%.",
     "planets": [
       { "name": "HD 20794 b", "r": 0.1207, "observed": 2.7 },
@@ -172,7 +172,7 @@ window.EXOPLANETS = [
     "id": "hd219134",
     "name": "HD 219134",
     "ly": 21.55,
-    "inputs": {"M_star": 0.81, "spin": 488.9943653861671, "f_disc": 0.04492287742608124},
+    "inputs": {"M_star": 0.81, "spin": 488.9943653861671, "f_disc": 0.04504812856416808},
     "planets": [
       { "name": "HD134-b", "r": 0.0387, "observed": 4.74 },
       { "name": "HD134-c", "r": 0.0653, "observed": 4.36 },
@@ -197,7 +197,7 @@ window.EXOPLANETS = [
     "id": "trappist",
     "name": "TRAPPIST-1",
     "ly": 40.66,
-    "inputs": {"M_star": 0.088999999, "spin": 1869.232560618366, "f_disc": 0.04782712636442525},
+    "inputs": {"M_star": 0.088999999, "spin": 1869.232560618366, "f_disc": 0.048051607538423746},
     "notes": "The LUGER LATTICE archetype (inverted regime, C ≈ 16 at spin 1432). All seven planets sit IN SITU on seven consecutive lattice sites — h(0), g(0.5), f(1), e(1.5), d(2), c(2.5), b(3) — with h anchored EXACTLY on the dam (slot 0 = R_disc = 0.062 AU). The lattice's natural period ratio rho^(-3/4) = 1.497 is 3:2 to 0.2%: Luger et al. 2017's resonant chain IS this lattice read in period space, locked essentially at birth (observed pairs within ~1% of commensurability), hence the name. Slots 6-10 consumed by the protostar (inside the 0.0027 AU Hayashi photosphere; predicted planet mass zero). Mass deltas: b -11% via merger absorbing slot 4 (predicts b iron-enriched), c -5%, f -8%, d/e impact losses, g/h large late-delivery surpluses flagging the open dam-edge allocation question (edge-truncated allocations look too aggressive for inverted discs whose dam-adjacent sites collect the exterior pile-up).",
     "planets": [
       { "name": "T-1b", "r": 0.0115, "observed": 1.374 },
@@ -225,7 +225,7 @@ window.EXOPLANETS = [
     "id": "55cnc",
     "name": "55 Cancri",
     "ly": 41.06,
-    "inputs": {"M_star": 0.95, "spin": 455.8510209224499, "f_disc": 0.15665818931397132},
+    "inputs": {"M_star": 0.95, "spin": 455.8510209224499, "f_disc": 0.15765451362333477},
     "notes": "Compressed disaster zone (~10 Gyr old): spin 349 packs 11 slots inside R_disc = 1.34 AU; the giant region is born-hot (P = 5.1 at d-f, 7.2 at f-slot2 and slot2-c). Fit: b formed at slot 2 (0.456 AU, pred 253.7 vs obs 255.4 \u2014 0.7%) and swept inward to 0.113 AU, capturing c near the observed 3:1 commensurability on the way past (c displaced -10% from slot 3, merger product of slots 3+4 cores at 0.0%); d driven outward 1.34 \u2192 5.96 AU (0.0%); f in situ at slot 1 (0.0%); e the innermost survivor, ground to a bare core (-17.5% vs its slot, core-remnant tag). Every target closes individually \u2014 no consensus cancellation. Debris field NOT visible, as predicted: wreckage visibility is age-gated (Beta Pic 20 Myr glows; 10-Gyr wrecks keep only dynamical scars), and early dust-ring claims here were never confirmed.",
     "planets": [
       { "name": "55Cnc-e", "r": 0.0154, "observed": 7.99 },
@@ -264,7 +264,7 @@ window.EXOPLANETS = [
     "id": "muarae",
     "name": "Mu Arae",
     "ly": 49.85,
-    "inputs": {"M_star": 1.1, "spin": 165.68402680612274, "f_disc": 0.0903451731830895},
+    "inputs": {"M_star": 1.1, "spin": 165.68402680612274, "f_disc": 0.09091292417229023},
     "notes": "Inverted disc (D = 2133, compression 1.59, R_disc = 2.57 AU, 11 slots; snow line at 9.8 AU lies beyond the dam, so every core is pure rock). All four planets close at residual 0.0001%: e in situ at slot 2 = 0.920 AU (166 predicted vs 166 observed), b in situ at slot 1 = 1.500 AU (+0.1%), and c — the dam resident — migrated OUTWARD +2.67 AU from slot 0 (2.57) to its observed 5.24: the catalog's outward migrator. The chain packs at 5.5 (born hot), and the ledger explains the recoil: slots 3-5, three gas giants totaling ~160 M_E between e and d, were destroyed in the packing relaxation — c, the heaviest member at 575 M_E, took the angular momentum and stepped off the dam outward (the kick rule's gentle end). d is IN SITU at slot 6 = 0.091 AU exactly: the bare 11 M_E core of a rock-giant progenitor whose growth was truncated (-5.2% on the core) — and the -5.2% itself reads as a smidge of MANTLE STRIPPING: d held its slot while both neighbors (slots 5 and 7) were destroyed around it, and the 0.57 M_E deficit is the graze it took in the crossfire. This is the gentle end of the remnant spectrum — hit-and-run mantle erosion (Mercury's regime) — whose catastrophic end is the Martian-type 95/5 scatter remnant — this supersedes the earlier Martian-scatter-remnant reading, which displaced d from a parent slot; the 11-slot geometry shows d never moved. Slots 7-9 (~15 M_E of small rock giants) lost in the same relaxation; slot 10 formed inside the Hayashi photosphere and was consumed (3.5 M_E accreted).",
     "planets": [
       { "name": "muAra-d", "r": 0.091, "observed": 10.5 },
@@ -346,7 +346,7 @@ window.EXOPLANETS = [
     "id": "kep90",
     "name": "Kepler-90",
     "ly": 2790.0,
-    "inputs": {"M_star": 1.13, "spin": 1131.8236680468467, "f_disc": 0.03210466091327402},
+    "inputs": {"M_star": 1.13, "spin": 1131.8236680468467, "f_disc": 0.03563568747167933},
     "notes": "(BEYOND 100 LY \u2014 distance 2790.0 ly). 8 planets \u2014 Sol's planet-count twin, inverted regime (spin 867). MIXED OCCUPANCY, exactly as the interstitial Hill gate predicts: giants h and g hold full rungs (slot 0 at 1.01 AU = R_disc, 0.0%; slot 1, +19%) \u2014 too massive for half-steps \u2014 while the six small inner planets occupy interstitial half-step sites (e at 1.5, d at 2.5, f at 3, i at 4, b at 4.5, c at 5.5). Inner members show systematic -10 to -37% deficits (impact loss / core-remnant tags): a milled inner system under two intact giants. The system demonstrates both occupancy harmonics in one architecture.",
     "planets": [
       { "name": "Kep90-c", "r": 0.0478, "observed": 5.0 },
