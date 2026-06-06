@@ -519,6 +519,15 @@ function renderForensics(fit, planets, M_star, f_disc) {
   for (const n of F.neverGassed) {
     h += `<div><b>${n.name}</b>: t<sub>form</sub> ${n.t_form.toFixed(2)} &gt; t* → <b>never gassed</b>; predicted = bare core ${fmtM(n.core)}, observed ${fmtM(n.observed)} (${n.err_pct.toFixed(1)}%)</div>`;
   }
+  // annotate delivery receivers' table rows (generic, any system)
+  for (const z of F.zones) {
+    for (const rc of z.receivers) {
+      const sl = fit.slots.find(s => s.name === rc.name);
+      if (sl && !/struck by slot/.test(sl.interpretation)) {
+        sl.interpretation += ` — struck by slot ${rc.zoneSlot} sibling (impactor ~${fmtM(rc.impactor)} M⊕ at ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)}): +${fmtM(rc.excess)} retained, ~${fmtM(rc.lost)} lost to impact disc / past the dam`;
+      }
+    }
+  }
   if (F.verdict) {
     // annotate the struck targets' table rows (generic, any system)
     for (const v of F.verdict) {
@@ -542,7 +551,8 @@ function renderForensics(fit, planets, M_star, f_disc) {
     for (const z of F.zones) {
       const closed = z.residual_lo <= 0 && z.residual_hi < 0.05 * z.alloc;
       const sinks = [`settled survivor ${fmtM(z.survivor)}`]
-        .concat(z.receivers.map(r => 'delivered: ' + r));
+        .concat(z.receivers.map(r =>
+          `delivered: ${r.name} +${fmtM(r.excess)} retained (impactor ~${fmtM(r.impactor)}, ~${fmtM(r.lost)} lost)`));
       h += `<li>slot ${z.slot}: band ${fmtM(z.lo)}–${fmtM(z.hi)} M⊕; ${sinks.join('; ')} → `
         + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted sinks: corridor debris field — asteroid-belt analog, observable as a warm debris disc — further sibling impactors on the survivor, hit-and-run on a mass-pinned body, a star-grazer, or ejecta past a kinetic dam)`)
         + '</li>';

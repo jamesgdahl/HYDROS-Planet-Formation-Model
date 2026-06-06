@@ -108,7 +108,9 @@ console.log('\ninward mass ledger (5-10% of each dispersed allocation):');
 for (const z of F.zones) {
   console.log(`  slot ${z.slot}: inward band ${z.lo.toFixed(3)}-${z.hi.toFixed(3)} M_E`);
   if (z.survivor > 0) console.log(`      settled survivor: ${z.survivor.toFixed(3)}`);
-  for (const rc of z.receivers) console.log(`      delivered: ${rc}`);
+  for (const rc of z.receivers) {
+    console.log(`      delivered: ${rc.name} +${rc.excess.toFixed(3)} retained (impactor ~${rc.impactor.toFixed(2)} at ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)}; ~${rc.lost.toFixed(2)} lost to impact disc / past the dam)`);
+  }
   if (z.residual_lo > 0 || z.residual_hi > 0.05 * z.alloc) {
     console.log(`      -> UNACCOUNTED: ${z.residual_lo.toFixed(2)}-${z.residual_hi.toFixed(2)} M_E`);
     console.log('         predicted sinks: corridor debris field (asteroid-belt');

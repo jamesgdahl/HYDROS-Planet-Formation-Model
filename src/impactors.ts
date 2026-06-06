@@ -36,9 +36,14 @@ interface ForensicsHypothesis {
   label: string; score: number; rows: ForensicsRow[];
 }
 
+interface ForensicsReceiver {
+  name: string; excess: number; impactor: number;
+  dv: number; ret: number; lost: number; zoneSlot: number;
+}
+
 interface ForensicsZone {
   slot: number; alloc: number; survivor: number;
-  delivered: number; receivers: string[];
+  delivered: number; receivers: ForensicsReceiver[];
   lo: number; hi: number; residual_lo: number; residual_hi: number;
 }
 
@@ -128,11 +133,8 @@ function impact_forensics(all_slots: FitSlot[], planets: Planet[],
         const cap = c.z.hi - (c.z.survivor + c.z.delivered);
         if (imp <= cap + 0.02 || ci === cands.length - 1) {
           c.z.delivered += imp;
-          c.z.receivers.push(
-            `${s.name} +${excess.toFixed(3)} retained `
-            + `(impactor ~${imp.toFixed(2)} at ${dv.toFixed(1)} km/s, `
-            + `ret ${ret.toFixed(2)}; ~${(imp - excess).toFixed(2)} lost `
-            + `to impact disc / past the dam)`);
+          c.z.receivers.push({ name: s.name, excess, impactor: imp,
+            dv, ret, lost: imp - excess, zoneSlot: c.z.slot });
           break;
         }
       }

@@ -87,10 +87,8 @@ function impact_forensics(all_slots, planets, M_star, f_disc) {
                 const cap = c.z.hi - (c.z.survivor + c.z.delivered);
                 if (imp <= cap + 0.02 || ci === cands.length - 1) {
                     c.z.delivered += imp;
-                    c.z.receivers.push(`${s.name} +${excess.toFixed(3)} retained `
-                        + `(impactor ~${imp.toFixed(2)} at ${dv.toFixed(1)} km/s, `
-                        + `ret ${ret.toFixed(2)}; ~${(imp - excess).toFixed(2)} lost `
-                        + `to impact disc / past the dam)`);
+                    c.z.receivers.push({ name: s.name, excess, impactor: imp,
+                        dv, ret, lost: imp - excess, zoneSlot: c.z.slot });
                     break;
                 }
             }
