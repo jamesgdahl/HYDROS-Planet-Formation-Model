@@ -87,14 +87,37 @@ for (const sys of ctx.window.EXOPLANETS) {
     ('  ' + cls(m_ext)).padEnd(20),
     ' ~' + budget.toFixed(0) + ' M_E');
   // PRODUCT-MASS DECAY along the retreat: Sigma ~ R^-2 so m ~ R^-4.
-  // Each rung stance mints lighter products than the last.
+  // SURVIVAL LAW: the dam-keeper's chaos reach is 11 R_H; each rung is
+  //   SWEPT (inside the zone: ~0%, parking-lot capture excepted),
+  //   EDGE (within ~10% of the zone boundary: resonant islands ~10%,
+  //         calibrated on Sol's plutino/cold-classical census), or
+  //   SAFE (beyond: ~100%, grinding aside).
+  // Keeper = stellar member if any, else the body nearest the dam.
   if (only) {
-    for (const n of [0.5, 1, 1.5, 2, 2.5]) {
-      const Rn = R * Math.pow(1 / RHO, n);
-      const mn = m_ext * Math.pow(R / Rn, 4);
-      console.log('    rung ' + n + ': ' + Rn.toFixed(1) + ' AU  ->  product ~'
-        + (mn < 0.01 ? (mn * 1000).toPrecision(3) + ' mE' : mn.toFixed(1) + ' M_E')
-        + '  (' + cls(mn) + ')');
+    let keeper = null, kd = Infinity;
+    for (const pl of sys.planets) {
+      if (pl.kbo || !(pl.observed > 0)) continue;
+      if (pl.observed >= 25400) { keeper = pl; break; }
+      const d = Math.abs(Math.log(pl.r / R));
+      if (d < kd) { kd = d; keeper = pl; }
+    }
+    if (keeper) {
+      const reach = 11 * Math.pow(keeper.observed
+        / (3 * m_star_earth(inp.M_star)), 1 / 3);   // in units of R_disc
+      console.log('  dam-keeper: ' + keeper.name + ' (' + keeper.observed
+        + ' M_E), chaos reach ' + (reach * R).toFixed(1) + ' AU ('
+        + (1 + reach).toFixed(2) + ' R_disc)');
+      for (const n of [0.5, 1, 1.5, 2, 2.5]) {
+        const Rn = R * Math.pow(1 / RHO, n);
+        const mn = m_ext * Math.pow(R / Rn, 4);
+        const x = Rn / R;
+        const status = x <= (1 + reach) * 0.97 ? 'SWEPT (parking-lot capture only)'
+          : x <= (1 + reach) * 1.10 ? 'EDGE (resonant islands, ~10%)'
+          : 'SAFE (survivors expected)';
+        console.log('    rung ' + n + ': ' + Rn.toFixed(1) + ' AU  ->  ~'
+          + (mn < 0.01 ? (mn * 1000).toPrecision(3) + ' mE' : mn.toFixed(1) + ' M_E')
+          + ' (' + cls(mn) + ')  ' + status);
+      }
     }
   }
 }
