@@ -880,6 +880,12 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       }
     }
     if (!leader) continue;
+    // TABLE MANNERS: a migrant cannot swallow a victim larger than its
+    // own final self — bigger bodies in the corridor are eviction
+    // stories, not meals. And the meal ledger caps below: retained
+    // mass cannot dominate the eater's observed mass.
+    const m_eater = leader.observed > 0 ? leader.observed : leader.predicted;
+    if (o.predicted > m_eater) continue;
     // encounter: migrant crossing the victim's orbit on its descent
     // (grazing-perihelion convention q = 0.85 r_v, aphelion at the
     // migrant's formation seat)
@@ -894,6 +900,9 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     const vesc = 11.186 * Math.pow(Math.max(m_mig + o.predicted, 1), 1 / 3);
     const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
     const meal = eaten.get(leader) || { total: 0, retained: 0, metals: 0, debris: 0, n: 0 };
+    // meal cap: total retained <= 60% of the eater's observed mass
+    // (the eater must still mostly be its own formation product)
+    if (meal.retained + ret * o.predicted > 0.6 * m_eater) continue;
     meal.total += o.predicted;
     meal.retained += ret * o.predicted;
     meal.metals += ret * (o.rock + o.ice + o.pebble);
@@ -1328,13 +1337,49 @@ function bruteFit(planets: Planet[], M_star: number,
         if (p) score += Math.abs(Math.log(p.r / s.slot_r));
       } else {
         if (s.predicted >= M_STELLAR_BOUNDARY) score += BIG;
-        else score += Math.log10(1 + Math.max(0, s.predicted));
+        else {
+          // CORRIDOR DISCOUNT: an unfilled slot lying between a filled
+          // planet's observed position and its assigned seat is not
+          // missing — it is a victim on a migrant's descent path
+          // (devoured, budget-closed). Explained absences are cheap.
+          let in_corridor = false;
+          for (const s2 of fit.slots) {
+            if (!s2.filled || s2.external || s2.exterior) continue;
+            const p2 = by_name[s2.name];
+            if (!p2 || !(p2.r > 0)) continue;
+            if (p2.r < s.slot_r && s.slot_r < s2.slot_r) { in_corridor = true; break; }
+          }
+          const cost = Math.log10(1 + Math.max(0, s.predicted));
+          score += in_corridor ? 0.2 * cost : cost;
+        }
       }
     }
     // Unassigned = observed, non-void planets without a slot. Void-
-    // interior bodies are external rows, not unassigned failures.
+    // interior bodies are external rows, not unassigned failures —
+    // but they are REJECTED all the same: every observed planet must
+    // occupy a seat. A body with "formation slot indeterminate" is an
+    // unjustified existence, exactly like an unassigned one. (Empty
+    // slots with death stories are fine; planets without slots are
+    // not.) The void fit can only survive as a last resort when NO
+    // candidate seats everyone.
     const n_void_now = fit.slots.filter(s => s.external && s.in_void).length;
     score += BIG * Math.max(0, (n_obs - n_void_now) - n_filled);
+    score += BIG * n_void_now;
+    // MASS-SUPPLY FEASIBILITY: a filled seat must be able to SUPPLY
+    // its body's observed mass — formation prediction plus devour
+    // credit, within a factor 2.5. A body whose seat cannot source it
+    // is an unjustified existence (mass appearing from nowhere), no
+    // matter how well positions score.
+    for (const s of fit.slots) {
+      if (!s.filled || s.external || s.exterior || s.remnant) continue;
+      if (!(s.observed > 0)) continue;
+      // a stripped body implies a PROGENITOR of observed/iron-fraction:
+      // the seat must source the progenitor, not the remnant
+      const need = s.stripped ? s.observed / IRON_FRACTION : s.observed;
+      if ((s.predicted + (s.devoured_credit || 0)) * 2.5 < need) {
+        score += BIG;
+      }
+    }
     // EXISTENCE JUSTIFICATION (ghost refutation): an unfilled slot
     // predicting a body that dominates a calm, full-mass observed
     // neighbor inside its chaotic zone refutes the candidate — that
@@ -1368,6 +1413,8 @@ function bruteFit(planets: Planet[], M_star: number,
     return score;
   };
 
+  const topCands: { score: number; spin: number; k: number;
+                    penalty_base: number }[] = [];
   let best: { score: number; spin: number; f: number; k: number;
               fit: FitResult; residual: number;
               q: number | null; omega: number | null;
@@ -1455,12 +1502,21 @@ function bruteFit(planets: Planet[], M_star: number,
     // position alone cannot carry an unfittable configuration. For
     // stripped systems the per-planet term joins the score: encounter
     // editing exists to close individual masses, not just the sum.
-    const score = scoreFit(fit, pen) + 10 * residual + 2 * J;
+    // Gross mass non-closure is rejection-grade: the books must close
+    // at percent level. (Without this, a 46%-residual fit can outrank
+    // an honest last-resort void fit purely on structure.)
+    const score = scoreFit(fit, pen) + 10 * residual + 2 * J
+      + (residual > 0.05 ? BIG : 0);
     return { score, spin, f, k, fit, residual, q: q_used,
              omega: (omega === undefined) ? null : omega, penalty_base: penalty };
   };
   const consider = (spin: number, k: number, penalty: number) => {
     const r = evalCandidate(spin, k, penalty, undefined);
+    if (r) {
+      topCands.push({ score: r.score, spin, k, penalty_base: penalty });
+      topCands.sort((a, b) => a.score - b.score);
+      if (topCands.length > 4) topCands.length = 4;
+    }
     if (r && (best === null || r.score < best.score)) best = r;
   };
 
@@ -1508,9 +1564,21 @@ function bruteFit(planets: Planet[], M_star: number,
     const bw = best as { spin: number; k: number; penalty_base?: number;
                          score: number };
     const ob = breakup_spin(M_star);
-    for (const frac of [0.1, 0.2, 0.4, 0.65, 1.0]) {
-      const r = evalCandidate(bw.spin, bw.k, bw.penalty_base || 0, ob * frac);
-      if (r && r.score < (best as { score: number }).score) best = r;
+    // grid extends DOWN to slow inner jaws: a decoupled rim can sit
+    // far inside the geometric lock (deep ladders seating hot giants).
+    // Scan the TOP candidates, not just the winner: the lock-frame
+    // ranking can invert once the rim is free to move.
+    const seeds = [{ spin: bw.spin, k: bw.k, penalty_base: bw.penalty_base || 0 },
+                   ...topCands];
+    const seen = new Set<string>();
+    for (const sd of seeds) {
+      const key = sd.spin.toFixed(6) + ':' + sd.k;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      for (const frac of [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.4, 0.65, 1.0]) {
+        const r = evalCandidate(sd.spin, sd.k, sd.penalty_base, ob * frac);
+        if (r && r.score < (best as { score: number }).score) best = r;
+      }
     }
   }
 
@@ -1542,8 +1610,22 @@ function bruteFit(planets: Planet[], M_star: number,
     }
     if (!any) break;
     devour_credit = credits;
-    const { f, fit, residual } = bisectF(b.spin, b.q, b.omega ?? undefined);
-    b = { ...b, f, fit, residual };
+    // FIXED-f refit: re-bisecting f here can hop assignment basins and
+    // return a fit that was never scored (the B-class-eating-planet
+    // failure mode). Hold the winner's f; only the credits change.
+    const fit2 = slot_aware_fit(planets, M_star, b.spin, b.f,
+      fit_opts(b.q, b.omega ?? undefined));
+    const tgt2 = sel(fit2);
+    const tot2 = tgt2.reduce((a, s) => a + s.observed, 0);
+    const res2 = tot2 > 0
+      ? Math.abs(tgt2.reduce((a, s) => a + (objMass(s) - s.observed), 0)) / tot2
+      : 0;
+    // no-regression guard: keep the credited fit only if it does not
+    // worsen the structural score
+    const sc_old = scoreFit(b.fit, 0), sc_new = scoreFit(fit2, 0);
+    if (sc_new <= sc_old + 1.0) {
+      b = { ...b, fit: fit2, residual: res2 };
+    } else { devour_credit = null; break; }
   }
   devour_credit = null;
   return {

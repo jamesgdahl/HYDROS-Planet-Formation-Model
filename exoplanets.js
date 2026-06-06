@@ -159,7 +159,7 @@ window.EXOPLANETS = [
     "id": "hd20794",
     "name": "HD 20794 / 82 G. Eridani",
     "ly": 19.7,
-    "inputs": {"M_star": 0.81, "spin": 10.300074697306185, "f_disc": 0.009426124337129003, "stripping": {"M_pert": 0.499999, "q": 15.8}},
+    "inputs": {"M_star": 0.81, "spin": 10.300074697306185, "f_disc": 0.009454798505386995, "stripping": {"M_pert": 0.499999, "q": 15.8}},
     "notes": "G6V nearby Sun-like star — GRAVITATIONAL STRIPPING flagged (anonymous cluster-era flyby; default 0.5 M☉ perturber). Fitted q = 15.8 AU → Breslau truncation r_t = 5.17 AU. The packing index forbids internal demolition (quiet chain, P = 14-22, no giants), yet the ledger shows violence — the Proxima syllogism: editing was external. Under the fitted encounter: slot 0 (7.59 AU) stripped, freeing 33.6 M⊕ with the stirred-zone losses; b (2.7 M⊕ at 0.12 AU, under the dam) is the ENCOUNTER FRAGMENT — 8.0% of the freed inventory, the inward share of the 5%/95% split, flung into a much lower orbit by the encounter; g (stirred zone) at -23%; f closes at -10% (late-delivery band) after sweeping the inward debris — its raw +310% surplus was the encounter's debris signature, Proxima-scale, far beyond Sol-style late delivery. d's +80% remains the residual open item (sits at the stirred/enriched boundary). Capture fraction ~18%, consistent with Proxima's 10-15%.",
     "planets": [
       { "name": "HD 20794 b", "r": 0.1207, "observed": 2.7 },
@@ -197,7 +197,7 @@ window.EXOPLANETS = [
     "id": "trappist",
     "name": "TRAPPIST-1",
     "ly": 40.66,
-    "inputs": {"M_star": 0.088999999, "spin": 1869.232560618366, "f_disc": 0.048051607538423746},
+    "inputs": {"M_star": 0.088999999, "spin": 217.01494914593064, "f_disc": 0.1281686080726214},
     "notes": "The LUGER LATTICE archetype (inverted regime, C ≈ 16 at spin 1432). All seven planets sit IN SITU on seven consecutive lattice sites — h(0), g(0.5), f(1), e(1.5), d(2), c(2.5), b(3) — with h anchored EXACTLY on the dam (slot 0 = R_disc = 0.062 AU). The lattice's natural period ratio rho^(-3/4) = 1.497 is 3:2 to 0.2%: Luger et al. 2017's resonant chain IS this lattice read in period space, locked essentially at birth (observed pairs within ~1% of commensurability), hence the name. Slots 6-10 consumed by the protostar (inside the 0.0027 AU Hayashi photosphere; predicted planet mass zero). Mass deltas: b -11% via merger absorbing slot 4 (predicts b iron-enriched), c -5%, f -8%, d/e impact losses, g/h large late-delivery surpluses flagging the open dam-edge allocation question (edge-truncated allocations look too aggressive for inverted discs whose dam-adjacent sites collect the exterior pile-up).",
     "planets": [
       { "name": "T-1b", "r": 0.0115, "observed": 1.374 },
@@ -225,7 +225,7 @@ window.EXOPLANETS = [
     "id": "55cnc",
     "name": "55 Cancri",
     "ly": 41.06,
-    "inputs": {"M_star": 0.95, "spin": 455.8510209224499, "f_disc": 0.14655522398793489},
+    "inputs": {"M_star": 0.95, "spin": 455.8510209224499, "f_disc": 0.15765451362333477},
     "notes": "Compressed disaster zone (~10 Gyr old): spin 349 packs 11 slots inside R_disc = 1.34 AU; the giant region is born-hot (P = 5.1 at d-f, 7.2 at f-slot2 and slot2-c). Fit: b formed at slot 2 (0.456 AU, pred 253.7 vs obs 255.4 \u2014 0.7%) and swept inward to 0.113 AU, capturing c near the observed 3:1 commensurability on the way past (c displaced -10% from slot 3, merger product of slots 3+4 cores at 0.0%); d driven outward 1.34 \u2192 5.96 AU (0.0%); f in situ at slot 1 (0.0%); e the innermost survivor, ground to a bare core (-17.5% vs its slot, core-remnant tag). Every target closes individually \u2014 no consensus cancellation. Debris field NOT visible, as predicted: wreckage visibility is age-gated (Beta Pic 20 Myr glows; 10-Gyr wrecks keep only dynamical scars), and early dust-ring claims here were never confirmed.",
     "planets": [
       { "name": "55Cnc-e", "r": 0.0154, "observed": 7.99 },
@@ -239,9 +239,10 @@ window.EXOPLANETS = [
     "id": "upsand",
     "name": "Upsilon Andromedae",
     "ly": 43.9,
-    "inputs": {"M_star": 1.27, "spin": 53.01284219968904, "f_disc": 0.2514866859365871},
-    "notes": "F8V. The disc-formation cascade is a clean 2-slot system: ups And d (slot 1, 2.51 AU) and e (slot 0, 5.245 AU) both fit in-situ at their cascade positions to machine precision. Both flagged ISU. The shorter-period bodies ups And b (0.06 AU) and c (0.83 AU) sit interior to R_A and are not products of the disc-cascade — they are scattered or migrated bodies arriving in the inner system via separate dynamics. Their inclusion would over-constrain the fit; they are listed here as observed bodies but not as cascade members.",
+    "inputs": {"M_star": 1.27, "spin": 18.063181501808476, "f_disc": 0.9134430336006767, "stripping": {"M_pert": 0.2, "q": 17.76}},
+    "notes": "COMPANION-COMPLETED SYSTEM — the fit only makes sense with ups And B (M4.5V, ~0.2 Msun, ~750 AU) included as a BODY: originally an enormous system (f_disc 0.91: a disc nearly as heavy as its star, which is what sourcing a stellar companion requires) with B ALLOCATED AT SLOT 0 (8.99 AU): predicted 66,617 vs observed 66,589 ME — 0.04%, the second cascade-sourced stellar companion after Alpha Cen B. B was evicted Proxima-style to 750 AU (da +741); its departure pass (encounter periapsis q = 17.8 AU bisected, truncation r_t = 8.99 AU) sheared the slots exterior to its seat and stirred the survivors — the 30-deg c-d mutual inclination and the abrupt outer edge at e are the stirring receipts. Survivors c/d/e sit IN SITU at slots 3/2/1, their settling (da -0.96/-0.55/-0.00) the eviction's counter-payment. ups And b (the classic hot Jupiter) was DELIVERED inward by the same event (companion-driven Kozai delivery, the published mechanism for hot Jupiters in binaries); its formation seat lies among the slots the departure destroyed — genuinely indeterminate, honestly listed as delivered. F8V. The disc-formation cascade is a clean 2-slot system: ups And d (slot 1, 2.51 AU) and e (slot 0, 5.245 AU) both fit in-situ at their cascade positions to machine precision. Both flagged ISU. The shorter-period bodies ups And b (0.06 AU) and c (0.83 AU) sit interior to R_A and are not products of the disc-cascade — they are scattered or migrated bodies arriving in the inner system via separate dynamics. Their inclusion would over-constrain the fit; they are listed here as observed bodies but not as cascade members.",
     "planets": [
+      { "name": "ups And B", "r": 750.0, "observed": 66589.0 },
       { "name": "ups And b", "r": 0.0594, "observed": 218.0 },
       { "name": "ups And c", "r": 0.829, "observed": 629.0 },
       { "name": "ups And d", "r": 2.51, "observed": 1313.0 },
