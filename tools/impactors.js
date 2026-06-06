@@ -142,6 +142,7 @@ if (tstar !== null && sources.length >= 1) {
     console.log('\nrouting from deficit + orbit change alone (polarity law):');
     for (const ass of perm(prims.slice(0, struck.length))) {
       let score = 0; const lines = [];
+      const fdata = [];
       for (let i = 0; i < struck.length; i++) {
         const tg = struck[i], src = ass[i];
         const r0 = launch(src), rt = tg.s.slot_r;
@@ -161,12 +162,29 @@ if (tstar !== null && sources.length >= 1) {
         const da_obs = pl ? pl.r - tg.s.slot_r : 0;
         score += Math.abs(da_net - da_obs);
         lines.push(`    slot ${src.slot} (${src.mass.toFixed(2)}) -> ${tg.s.name}: ret ${ret.toFixed(2)}, da_net ${da_net >= 0 ? '+' : ''}${da_net.toFixed(2)} vs observed ${da_obs >= 0 ? '+' : ''}${da_obs.toFixed(2)} AU`);
+        fdata.push({ tg, src, dv, vesc, ret, da_net });
       }
       console.log(`  hypothesis [${ass.map(s => 'slot ' + s.slot).join(', ')}], residual ${score.toFixed(2)} AU:`);
       for (const l of lines) console.log(l);
-      if (!best || score < best.score) best = { ass, score };
+      if (!best || score < best.score) best = { ass, score, fdata };
     }
     console.log(`  VERDICT: ${best.ass.map((s, i) => `slot ${s.slot} -> ${struck[i].s.name}`).join('; ')}  (no tilts used)`);
+
+    // --- impact forensics: velocity, impactor, date -------------------
+    console.log('\nIMPACT FORENSICS (per struck body):');
+    for (const f of best.fdata) {
+      const kept = f.tg.gas_obs / f.tg.gas_pred;
+      const when = (kept > 0.02 && kept < 0.95)
+        ? `t* = ${(f.tg.s.t_form - Math.log(1 - kept) / k).toFixed(2)} Myr (own gas clock)`
+        : (f.tg.s.t_form > (tstar || 0)
+          ? `t* < t_form ${f.tg.s.t_form.toFixed(2)} (never gassed; dated by partner: ${tstar.toFixed(2)} Myr)`
+          : 'undated');
+      console.log(`  ${f.tg.s.name}:`);
+      console.log(`    impactor: slot ${f.src.slot} primary, ${f.src.mass.toFixed(2)} M_E`);
+      console.log(`    velocity: ${(f.dv).toFixed(1)} km/s arrival (dv/v_esc ${(f.dv / f.vesc).toFixed(2)})`);
+      console.log(`    regime:   retention ${f.ret.toFixed(2)} -> ${f.ret > 0.7 ? 'additive (brakes target)' : f.ret > 0.4 ? 'erosive (boosts target)' : 'catastrophic'}`);
+      console.log(`    date:     ${when}`);
+    }
   }
 }
 
