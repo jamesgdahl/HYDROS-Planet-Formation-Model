@@ -115,6 +115,7 @@
     <tbody id="result-rows"></tbody>
     <tfoot id="result-total"></tfoot>
   </table>
+<div id="forensics" style="margin-top:14px"></div>
 </fieldset>
 
 <fieldset>
@@ -131,6 +132,7 @@
 <script src="js/classify.js"></script>
 <script src="js/cascade.js"></script>
 <script src="js/fit.js"></script>
+<script src="js/impactors.js"></script>
 <script>
 "use strict";
 
@@ -419,6 +421,7 @@ function calculate() {
     : { auto_compress: false };
   if (window.CURRENT_KINETIC) fitOpts.kinetic = true;
   const fit = slot_aware_fit(planets, M_star, spin, f_disc, fitOpts);
+  try { renderForensics(fit, planets, M_star, f_disc); } catch (e) { console.warn('forensics:', e); }
 
   const tbody = document.getElementById("result-rows");
   tbody.innerHTML = "";
@@ -498,6 +501,48 @@ function calculate() {
 
 // Fill predicted slots: generate Hill-cascade chain + outer R_disc anchors,
 // skip any slot that already has a planet within its mutual Hill radius.
+function renderForensics(fit, planets, M_star, f_disc) {
+  const el = document.getElementById("forensics");
+  const F = impact_forensics(fit.slots, planets, M_star, f_disc);
+  if (F.tstar === null && F.sources.length === 0) { el.innerHTML = ""; return; }
+  let h = '<h3 style="margin:6px 0">Impact forensics</h3>';
+  if (F.sources.length) {
+    h += '<div><b>Candidate impactors</b> (dispersed-zone primaries): '
+      + F.sources.map(s => `slot ${s.slot} — ${fmtM(s.mass)} M⊕ ${s.from}`).join('; ')
+      + '</div>';
+  }
+  if (F.datings.length) {
+    h += '<div><b>Impact dating</b> (gas-law truncation): '
+      + F.datings.map(d => `${d.name} kept ${(d.kept * 100).toFixed(0)}% of its gas → t* = ${d.tstar.toFixed(2)} Myr`).join('; ')
+      + '</div>';
+  }
+  for (const n of F.neverGassed) {
+    h += `<div><b>${n.name}</b>: t<sub>form</sub> ${n.t_form.toFixed(2)} &gt; t* → <b>never gassed</b>; predicted = bare core ${fmtM(n.core)}, observed ${fmtM(n.observed)} (${n.err_pct.toFixed(1)}%)</div>`;
+  }
+  if (F.verdict) {
+    h += '<div style="margin-top:6px"><b>Routing</b> (polarity law, no tilts):</div><ul style="margin:2px 0 2px 18px">';
+    for (const r of F.verdict) {
+      const regime = r.ret > 0.7 ? 'additive (brakes target)' : r.ret > 0.4 ? 'erosive (boosts target)' : 'catastrophic';
+      h += `<li><b>slot ${r.srcSlot} primary (${fmtM(r.srcMass)} M⊕) → ${r.target}</b>: `
+        + `${r.dv.toFixed(1)} km/s arrival (Δv/v<sub>esc</sub> ${(r.dv / r.vesc).toFixed(2)}), `
+        + `retention ${r.ret.toFixed(2)} → ${regime}; `
+        + `Δa<sub>impact</sub> ${r.da_net >= 0 ? '+' : ''}${r.da_net.toFixed(2)} vs observed ${r.da_obs >= 0 ? '+' : ''}${r.da_obs.toFixed(2)} AU</li>`;
+    }
+    h += '</ul>';
+  }
+  if (F.zones.length) {
+    h += '<div style="margin-top:6px"><b>Inward mass ledger</b> (5–10% of each dispersed allocation):</div><ul style="margin:2px 0 2px 18px">';
+    for (const z of F.zones) {
+      const closed = z.residual_lo <= 0 && z.residual_hi < 0.05;
+      h += `<li>slot ${z.slot}: band ${fmtM(z.lo)}–${fmtM(z.hi)} M⊕; settled survivor ${fmtM(z.survivor)} → `
+        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted unidentified impact; a hit on an ISU-exact body must be hit-and-run — orientation receipt, no mass)`)
+        + '</li>';
+    }
+    h += '</ul>';
+  }
+  el.innerHTML = h;
+}
+
 function fillPredictedSlots() {
   const inp = getInputs();
   let { M_star, spin, f_disc } = inp;
