@@ -589,45 +589,6 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     }
   }
 
-  // DEVOURED-MASS LEDGER (wrecking class): a giant that migrated
-  // inward ACROSS SEATS ate the interior cascade it traversed. The
-  // swallowed condensables arrive post-gas-accumulation: they enrich
-  // the interior (the anomalous 10-100 M⊕ heavy-element inventories of
-  // hot Jupiters; Thorngren et al. 2016) without seeding further
-  // envelope capture, so they are reported as a post-formation gain,
-  // never folded into the Tanigawa-Ikoma core² term. Within-seat
-  // displacement (Jupiter's -0.78 AU) does not qualify; the migrant
-  // must have left its seat.
-  const wreckers: FitSlot[] = [];
-  for (const s of results) {
-    if (!s.filled || s.external || s.exterior) continue;
-    const p = planet_by_slot[s.slot_n];
-    if (!p || !(p.r > 0)) continue;
-    if (nearest_site_n(p.r) === s.slot_n) continue;   // displaced, not migrated
-    if (p.r >= s.slot_r) continue;                    // inward migrants only
-    wreckers.push(s);
-  }
-  // Each eaten slot goes to ONE devourer: the LEADER — the migrant with
-  // the lowest formation seat whose traversal range contains the slot
-  // (it descends ahead; followers cross an already-cleared corridor).
-  const eaten = new Map<FitSlot, number>();
-  for (const o of results) {
-    if (o.filled || o.external || o.exterior) continue;
-    let leader: FitSlot | null = null;
-    for (const m of wreckers) {
-      const pr = planet_by_slot[m.slot_n].r;
-      if (o.slot_r < m.slot_r && o.slot_r > pr) {
-        if (leader === null || m.slot_r < leader.slot_r) leader = m;
-      }
-    }
-    if (leader) eaten.set(leader, (eaten.get(leader) || 0) + o.rock + o.ice + o.pebble);
-  }
-  for (const [m, devoured] of eaten) {
-    if (devoured <= 0.1) continue;
-    m.devoured = devoured;
-    m.interpretation += ` — devoured ~${devoured.toFixed(1)} M⊕ of interior slots en route (post-H/He heavy-element gain)`;
-  }
-
   // Mutual-eviction detection: adjacent MISSING slots both predicting
   // brown-dwarf-or-larger mass cannot coexist (Sep/R_H,mutual << 3.5).
   const M_BROWN_DWARF_LOCAL = 4131.0;
@@ -847,6 +808,78 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   }
 
   // Multi-perturber attribution: simultaneous scattering by 2+ massive
+
+  // DEVOURED-MASS LEDGER (wrecking class): a giant that migrated
+  // inward ACROSS SEATS ate the interior cascade it traversed. The
+  // swallowed condensables arrive post-gas-accumulation: they enrich
+  // the interior (the anomalous 10-100 M⊕ heavy-element inventories of
+  // hot Jupiters; Thorngren et al. 2016) without seeding further
+  // envelope capture, so they are reported as a post-formation gain,
+  // never folded into the Tanigawa-Ikoma core² term. Within-seat
+  // displacement (Jupiter's -0.78 AU) does not qualify; the migrant
+  // must have left its seat.
+  const wreckers: FitSlot[] = [];
+  for (const s of results) {
+    if (!s.filled || s.external || s.exterior) continue;
+    const p = planet_by_slot[s.slot_n];
+    if (!p || !(p.r > 0)) continue;
+    if (nearest_site_n(p.r) === s.slot_n) continue;   // displaced, not migrated
+    if (p.r >= s.slot_r) continue;                    // inward migrants only
+    wreckers.push(s);
+  }
+  // Each eaten slot goes to ONE devourer: the LEADER — the migrant with
+  // the lowest formation seat whose traversal range contains the slot
+  // (it descends ahead; followers cross an already-cleared corridor).
+  // VICTIMS ARE FORMED PLANETS at full predicted mass (migration is
+  // post-gas: the occupants existed). Meals are NOT intact: the
+  // retention line prices each one — retained joins the migrant,
+  // the remainder scatters as corridor debris. The migrant's
+  // FORMATION-seat mass is therefore observed minus retained: the
+  // devoured gain is post-prediction mass. Slots whose planets were
+  // scattered OUTWARD (dispersal-with-survivor stories) are not on
+  // the menu.
+  interface Meal { total: number; retained: number; metals: number;
+                   debris: number; n: number; }
+  const eaten = new Map<FitSlot, Meal>();
+  for (const o of results) {
+    if (o.filled || o.external || o.exterior) continue;
+    if (/scattered outward/.test(o.interpretation)) continue;
+    let leader: FitSlot | null = null;
+    for (const m of wreckers) {
+      const pr = planet_by_slot[m.slot_n].r;
+      if (o.slot_r < m.slot_r && o.slot_r > pr) {
+        if (leader === null || m.slot_r < leader.slot_r) leader = m;
+      }
+    }
+    if (!leader) continue;
+    // encounter: migrant crossing the victim's orbit on its descent
+    // (grazing-perihelion convention q = 0.85 r_v, aphelion at the
+    // migrant's formation seat)
+    const r_v = o.slot_r, r0 = leader.slot_r;
+    const q = 0.85 * r_v, ao = (q + r0) / 2, ecc = (r0 - q) / (r0 + q);
+    const vc = 29.785 * Math.sqrt(M_PRIM_TO_MSUN * M_star / r_v);
+    const vv = Math.sqrt(2 - r_v / ao);
+    const vt = Math.sqrt(ao * (1 - ecc * ecc) / r_v);
+    const vr = Math.sqrt(Math.max(0, vv * vv - vt * vt));
+    const dv = vc * Math.sqrt((vt - 1) ** 2 + vr * vr);
+    const m_mig = leader.observed > 0 ? leader.observed : leader.predicted;
+    const vesc = 11.186 * Math.pow(Math.max(m_mig + o.predicted, 1), 1 / 3);
+    const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
+    const meal = eaten.get(leader) || { total: 0, retained: 0, metals: 0, debris: 0, n: 0 };
+    meal.total += o.predicted;
+    meal.retained += ret * o.predicted;
+    meal.metals += ret * (o.rock + o.ice + o.pebble);
+    meal.debris += (1 - ret) * o.predicted;
+    meal.n += 1;
+    eaten.set(leader, meal);
+  }
+  for (const [m, meal] of eaten) {
+    if (meal.retained <= 0.1) continue;
+    m.devoured = meal.retained;
+    const m_form = Math.max(0, (m.observed > 0 ? m.observed : m.predicted) - meal.retained);
+    m.interpretation += ` — devoured ${meal.n} interior occupant${meal.n > 1 ? 's' : ''}: +${meal.retained.toFixed(1)} retained of ${meal.total.toFixed(1)} M⊕ (≈${meal.metals.toFixed(1)} M⊕ metals; ${meal.debris.toFixed(1)} M⊕ scattered as corridor debris); formation-seat mass ≈ ${m_form.toFixed(0)} M⊕ pre-devouring`;
+  }
+
   // bodies leaves no stable region. Total obliteration of the swarm.
   for (const matches of multi_perturbed) {
     const target = matches[0].target;
