@@ -16,7 +16,7 @@ function outer_feed_truncation(r, r_disc) {
         return 1.0;
     return Math.max(0.0, 1.0 - void_width / (L + S));
 }
-// omega: the VICE's inner-jaw rotation (defaults to spin — the
+// omega: the VICE's inner-jaw rotation (defaults to spin - the
 // jaw-lock). R_A and the backstop intercept are stellar (rotation/
 // field) properties; R_disc, the regime classification, and the dam
 // pile-up are outer-jaw (density-dial) properties.
@@ -41,10 +41,10 @@ function rock_allocation(r, M_star, spin, f_disc, omega) {
         let base;
         if (r < 2.0 * r_a) {
             // Inner ramp with alpha = (5/6)*R_A.
-            // GEOMETRIC 1/6 TRUNCATION: hexagonal-packing nearest-neighbor —
+            // GEOMETRIC 1/6 TRUNCATION: hexagonal-packing nearest-neighbor -
             // same as outer dam, just oriented inward (lost neighbor inside R_A).
             // ADDITIONAL ABLATION (separate, layered on top): Alfven Dam is
-            // ACTIVE — magnetic-reconnection crack bursts vaporize Mercury's
+            // ACTIVE - magnetic-reconnection crack bursts vaporize Mercury's
             // silicate mantle (~70% loss; Cameron 1985, Fegley & Cameron 1987),
             // captured by post-formation dM_Mercury. The outer Davis Dam
             // is PASSIVE (MRI-revival trap, no analogous ablation), so Neptune's
@@ -108,7 +108,7 @@ function hydrogen_capture(core_mass, t_form_myr, spin, r, M_star, f_disc, omega)
     // A_0 and k calibrated against Sol's Jupiter and Neptune under the
     // geometric cascade ρ = 1 − √(ln 2)/2 ≈ 0.584, with allocation at
     // SLOT radii (on-slot doctrine: Jupiter at its formation slot
-    // 5.981 AU, not its displaced 5.203 AU — the old value 4.45 carried
+    // 5.981 AU, not its displaced 5.203 AU - the old value 4.45 carried
     // that conflation). k corresponds to disc-gas-dispersal e-folding
     // time ~1.45 Myr.
     const A_0 = 4.3899; // units of 1/M_E (so M_core² · A_0 gives M_E)

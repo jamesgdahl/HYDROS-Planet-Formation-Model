@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// HYDROS catalog fitter — runs the SAME bestFit() the web UI uses,
+// HYDROS catalog fitter - runs the SAME bestFit() the web UI uses,
 // loaded from the compiled js/ files (no bundler, no dependencies).
 //
 // Usage:
@@ -9,7 +9,7 @@
 //                                     # into exoplanets.js
 //
 // Metrics:
-//   resid%  — achieved bisection objective: |sum(pred-obs)| over the fit
+//   resid%  - achieved bisection objective: |sum(pred-obs)| over the fit
 //             TARGET subset (ISU planets, or all filled when no ISU), as
 //             % of the target's total observed mass. This is the fit
 //             quality. Diagnostic deltas on non-target planets (impact
@@ -50,7 +50,11 @@ const writeAll = args.includes('--all');
 // rule + dam-anchor candidates carry Alpha Cen (B-on-the-dam /
 // Proxima-evicted) and Upsilon And (companion-completed, B sourced on
 // the dam) natively.
-const WRITE_EXCLUDE = new Set([]);
+// Inheritance-pinned systems: their disc inputs are DERIVED from a
+// parent fit (hierarchy law), not bisected - a --write would regress
+// them to one-extra-free-parameter solutions. Proxima: spin inherited
+// from Alpha Cen A at x = rho (slot-1 seat); closes at 0.19% mean.
+const WRITE_EXCLUDE = new Set(['proxima']);
 const doBrute = !args.includes('--iterated'); // brute (joint scan) is the default
 const doVice = args.includes('--vice'); // decouple the vice jaws (omega grid)
 const bruteFit = ctx.bruteFit;
@@ -67,7 +71,7 @@ function fitSystem(sys) {
     : bestFit(planets, sys.inputs.M_star, sys.inputs.f_disc);
   // EVENT CLOSURES: bodies whose deviation is explained by an
   // identified, budget-closed event (impact/merger/survivor/delivery)
-  // count as PERFECT fits — the deviation is model output, not error.
+  // count as PERFECT fits - the deviation is model output, not error.
   // n_diag counts only the OPEN (unexplained) deviations.
   let closures = [];
   try {
@@ -93,7 +97,7 @@ function fitSystem(sys) {
   // target is sub-threshold rocky (core ≤ 3 M⊕, mass ∝ f_disc) or
   // stripped, or when ISU anchors pin the target. In a no-ISU system
   // where every target is gas-eligible, the per-planet t_form bisection
-  // absorbs any f_disc — the objective is flat and the "fitted" value
+  // absorbs any f_disc - the objective is flat and the "fitted" value
   // is a bisection-lattice artifact, not a measurement.
   const THRESHOLD_GAS_LOCAL = 3.0;
   const anyISU = planets.some(p => p.immutable);
@@ -110,10 +114,10 @@ function fitSystem(sys) {
   if (n_remn > 0) flags.push('REMNANT:' + n_remn);
   if (r.target_names.length < n_obs - n_void - n_remn && !anyISU) flags.push('UNASSIGNED');
   // Primordial packing diagnostic: min sep/R_H_mutual over ALL adjacent
-  // slot pairs at slot radii — lost slots included at their PREDICTED
+  // slot pairs at slot radii - lost slots included at their PREDICTED
   // masses, since the at-formation configuration is what packing
   // measures (HD 134987's perpetrator is a lost slot-1 8 M_J giant).
-  // Below the Lissauer limit (7) the chain was born dynamically hot —
+  // Below the Lissauer limit (7) the chain was born dynamically hot -
   // informational; predicts the system's scatter/migration/remnant/
   // displacement tags. Stellar pairs included: Alpha Cen B–Proxima
   // packs at 0.8, predicting the lightweight's ejection onto its
@@ -152,11 +156,11 @@ function fitSystem(sys) {
 }
 
 // Mass display: sub-cascade moons live at micro-Earth masses where
-// .toFixed(3) collapses to 0.000 — switch to milliEarths (suffix m)
+// .toFixed(3) collapses to 0.000 - switch to milliEarths (suffix m)
 // below 0.01 M⊕ (single-digit mE and down). Internal math stays in
 // M⊕ (doubles carry 16 digits; only the DISPLAY needed rescuing).
 function fmtMass(m) {
-  if (!(m > 0)) return '—';
+  if (!(m > 0)) return '-';
   return m < 0.01 ? (m * 1000).toPrecision(4) + 'm' : m.toFixed(3);
 }
 function printSlotTable(sys, r) {
@@ -166,16 +170,16 @@ function printSlotTable(sys, r) {
   for (const s of [...r.fit.slots].sort((a, b) => b.slot_n - a.slot_n)) {
     const name = (s.filled || s.exterior) ? s.name : `(slot ${s.slot_n})`;
     const lbl = s.exterior ? 'ext' : String(s.slot_n);
-    const obs = s.observed > 0 ? fmtMass(s.observed) : '—';
+    const obs = s.observed > 0 ? fmtMass(s.observed) : '-';
     const pred = fmtMass(s.predicted);
     const dm = (s.filled && s.observed > 0 && !s.exterior)
-      ? ((s.observed - s.predicted) / s.predicted * 100).toFixed(1) + '%' : '—';
+      ? ((s.observed - s.predicted) / s.predicted * 100).toFixed(1) + '%' : '-';
     const sr = s.slot_r < 0.01 ? s.slot_r.toExponential(3) : s.slot_r.toFixed(3);
     // On-slot doctrine: r_form = slot; da = r_obs - r_slot is the
     // post-formation displacement (the event ledger).
     const pl = s.filled ? sys.planets.find(pp => pp.name === s.name) : null;
-    const robs = pl ? (pl.r < 0.01 ? pl.r.toExponential(3) : pl.r.toFixed(3)) : '—';
-    const da = pl ? ((pl.r - s.slot_r >= 0 ? '+' : '') + (pl.r - s.slot_r).toFixed(2)) : '—';
+    const robs = pl ? (pl.r < 0.01 ? pl.r.toExponential(3) : pl.r.toFixed(3)) : '-';
+    const da = pl ? ((pl.r - s.slot_r >= 0 ? '+' : '') + (pl.r - s.slot_r).toFixed(2)) : '-';
     console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  r_form=${sr.padStart(9)}  r_obs=${robs.padStart(9)}  da=${da.padStart(6)}  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
   }
 }
@@ -232,7 +236,7 @@ if (doWrite) {
           && !f.startsWith('OMEGA:') && !f.startsWith('CLOSED:'));
     if (o.error || blocking.length) continue; // only write converged fits
     if (WRITE_EXCLUDE.has(o.sys.id)) continue;
-    // Inputs may contain one nested object (the stripping config) —
+    // Inputs may contain one nested object (the stripping config) -
     // match braces one level deep, and preserve/refresh the flag.
     const re = new RegExp(`("id": "${o.sys.id}",[\\s\\S]*?"inputs": )\\{(?:[^{}]|\\{[^{}]*\\})*\\}`);
     const stripPart = o.sys.inputs.stripping

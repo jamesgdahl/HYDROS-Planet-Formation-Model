@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// HYDROS impactor identification and impact dating — CLI front-end.
+// HYDROS impactor identification and impact dating - CLI front-end.
 // ALL PHYSICS LIVES IN js/impactors.js (impact_forensics), shared with
 // the web UI so the two cannot drift.
 //
 // Mechanism: an impact on a body mid-gas-runaway TRUNCATES accretion
 // (the energy budget rules out literal envelope blow-off: even at 10x
 // extended radii, impact KE covers <25% of the binding energy of the
-// missing mass — the deficit is gas that never arrived, not gas
+// missing mass - the deficit is gas that never arrived, not gas
 // removed). Truncation makes the deficit a CLOCK:
 //
 //   kept = gas_obs/gas_pred = 1 - e^(-k (t* - t_form))   ->   t*
@@ -102,7 +102,7 @@ if (F.hypotheses.length) {
 
 if (F.water && F.water.length) {
   console.log('\nwater ledger (ocean equivalents; 1 ocean = 2.3e-4 M_E;');
-  console.log('  delivered, not retained — escape + sequestration set what each body holds):');
+  console.log('  delivered, not retained - escape + sequestration set what each body holds):');
   for (const w of F.water) {
     console.log(`  ${w.name.padEnd(8)} ${w.kind === 'receipt' ? 'RECEIPT' : 'BOUND  '}`
       + ` from slot ${w.zoneSlot} (${(w.ice_frac * 100).toFixed(0)}% ice), ret ${w.ret.toFixed(2)}:`

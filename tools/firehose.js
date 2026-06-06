@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// HYDROS firehose generator — predict each system's dam-exterior
+// HYDROS firehose generator - predict each system's dam-exterior
 // cohort (its "KBOs") from the environment alone.
 //
 // THE PRODUCT-MASS LAW: the dam is one production line at every scale;
@@ -74,7 +74,7 @@ for (const sys of ctx.window.EXOPLANETS) {
   const C = 0.2 * inp.M_star * Math.pow(inp.spin, 4 / 7) / R;
   if (C >= 1) {                      // inverted regime: no boundary density
     console.log(sys.name.slice(0, 21).padEnd(22), D.toFixed(1).padStart(9),
-      '—'.padStart(8), '(inverted regime: dam semantics differ)'.padStart(30));
+      '-'.padStart(8), '(inverted regime: dam semantics differ)'.padStart(30));
     continue;
   }
   const S = inp.f_disc * m_star_earth(inp.M_star) / (R * R);
@@ -110,7 +110,7 @@ for (const sys of ctx.window.EXOPLANETS) {
       // THE FIRSTBORN PREDICTION: the first product mints co-orbital
       // with the keeper at maximal capture cross-section; an in-situ
       // keeper should hold a captured RETROGRADE companion of the
-      // at-dam product mass (Sol: Triton, 3.59 mE — the calibration's
+      // at-dam product mass (Sol: Triton, 3.59 mE - the calibration's
       // physically pinned anchor, da = 0.00).
       if (Math.abs(Math.log(keeper.r / R)) < 0.2) {
         console.log('  FIRSTBORN: keeper sits on the dam -> predicted captured'
@@ -154,7 +154,7 @@ for (const sys of ctx.window.EXOPLANETS) {
       //   gear 3: the long retreat, R ~ t^0.138 (Sol-calibrated:
       //           heliopause 120 AU at 4,570 Myr)
       // Bodies more massive than the at-dam product are firehose-onset
-      // vintage (densest supply). Rung residence is NOT the clock —
+      // vintage (densest supply). Rung residence is NOT the clock -
       // scattered bodies sit anywhere; their mass still dates them.
       const kbos = sys.planets.filter(pl => pl.kbo && pl.observed > 0);
       if (kbos.length) {

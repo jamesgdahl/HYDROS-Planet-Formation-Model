@@ -11,27 +11,27 @@ function disc_radius(M_star: number, spin: number): number {
 
 // Nebula density D (Sol = 1): the physical free variable of the VICE's
 // outer jaw. The formation cloud's ambient pressure establishes the
-// Davis Dam — R_disc = 30.07 · (M/1.14) · D^(-1/3) — and Sol's D = 1
+// Davis Dam - R_disc = 30.07 · (M/1.14) · D^(-1/3) - and Sol's D = 1
 // corresponds to n(H2) ≈ 1e6 cm^-3 (a clustered prestellar core: the
 // density whose collapse centrifugal radius puts the dam at Neptune's
 // exact 30.07 AU). Under the default JAW-LOCK (inner and outer jaws
 // correlated through birth-site density) the recorded spin is
-// Ω = D^(2/3) — Sol has spin 1, density 1 — and the anchor-family
+// Ω = D^(2/3) - Sol has spin 1, density 1 - and the anchor-family
 // scan that solves R_disc from the outermost planet IS the D
 // bisection expressed through the lock. In the inverted regime D_eff
 // exceeds any static cloud (TRAPPIST ~5e4): the outer jaw there
-// includes more than birth pressure — the decoupled-jaw signature.
+// includes more than birth pressure - the decoupled-jaw signature.
 // Habitable zone, ASYMMETRIC empirical bounds scaled by sqrt(L):
-//   inner 0.72 AU — the recent-Venus limit (Kopparapu et al. 2013):
+//   inner 0.72 AU - the recent-Venus limit (Kopparapu et al. 2013):
 //     a delivered Venus is hot but habitable; the delivery receipt,
 //     not the thermostat, is the framework's discriminator.
-//   outer 1.37 AU — the first-CO2-condensation limit (Kasting et
+//   outer 1.37 AU - the first-CO2-condensation limit (Kasting et
 //     al. 1993): beyond it CO2 clouds defeat the greenhouse. Mars
-//     (1.52) is the empirical cold case — too cold even Earth-sized
-//     with oceans and atmosphere — so the edge sits INSIDE its orbit.
+//     (1.52) is the empirical cold case - too cold even Earth-sized
+//     with oceans and atmosphere - so the edge sits INSIDE its orbit.
 // L defaults to the main-sequence mass-luminosity estimate (M^4
 // above 0.43 M_sun; 0.23 M^2.3 for M dwarfs); pass the system's
-// measured luminosity when known (preset inputs.L) — real stars
+// measured luminosity when known (preset inputs.L) - real stars
 // scatter around the M-L law (ACen B: true 0.50 vs estimate 0.41).
 function habitable_zone(M_star: number,
                          L_obs?: number | null): [number, number] {

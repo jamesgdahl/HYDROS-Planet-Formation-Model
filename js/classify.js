@@ -34,7 +34,7 @@ function apply_mantle_stripping(rock, ice, peb, h_he, r, M_star) {
     return [rock_keep, 0, peb_keep, 0];
 }
 function is_stripped(planet, M_star) {
-    // T_eq > 2000 K. No mass cap — vaporization-temperature stellar
+    // T_eq > 2000 K. No mass cap - vaporization-temperature stellar
     // energy dominates over rocky-body binding at any size. Gas giants
     // are protected by being cooler (further out), not by mass.
     return equilibrium_temperature(planet.r, M_star) > T_STRIP_K;
@@ -97,7 +97,7 @@ function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
     if (!slot.filled) {
         // Default: missing slot without directly attributable cause of death
         // is simply unobserved. We don't infer destruction from migration
-        // patterns alone — that's speculative attribution. Other detectors
+        // patterns alone - that's speculative attribution. Other detectors
         // (mutual eviction, impact merger) attach specific causes when the
         // physics actually supports the attribution.
         return `${primordial_comp} (not observed)`;
@@ -131,7 +131,7 @@ function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
     const tags = [];
     if (migrated)
         tags.push(`migrated ${direction}`);
-    // Late delivery is a rocky-planet phenomenon — gas/ice giants vary in
+    // Late delivery is a rocky-planet phenomenon - gas/ice giants vary in
     // envelope mass from formation-timing, not from impactor delivery.
     if (mass_delta_frac >= LATE_DELIVERY_FRAC && observed_r < r_snow
         && comp === "rocky") {

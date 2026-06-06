@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// HYDROS tide ledger — CLI front-end. ALL PHYSICS LIVES IN
+// HYDROS tide ledger - CLI front-end. ALL PHYSICS LIVES IN
 // js/tides.js (tide_ledger), shared with the web UI.
 //
 // What a bound stellar companion's recurring tide does to a satellite
 // system: the standing tide-dam (Breslau r_t, cross-checked against
 // the independent Holman-Wiegert N-body stability radius), the
 // conveyor erosion of boundary seats, and the priced inward/outward
-// split — including the WATER ledger (ocean units) for the safe
+// split - including the WATER ledger (ocean units) for the safe
 // interior seats. This is the volatile-delivery audit for truncated
 // systems: a giantless compact system's only watering channel is its
 // own tide-stirred icy boundary seat.
@@ -47,7 +47,7 @@ const a_bin = arg('--abin') ? parseFloat(arg('--abin'))
   : (strip.a_bin || null);
 
 // --- seats: the PRIMORDIAL cascade ladder (shared builder in
-//     js/tides.js — pre-stripping allocations; fitted slots supply
+//     js/tides.js - pre-stripping allocations; fitted slots supply
 //     occupant names only) ------------------------------------------
 const obs = (sys.planets || []).filter(p => !p.kbo && p.observed > 0);
 let slots = null;
@@ -67,7 +67,7 @@ console.log(`  tide-dam r_t = ${L.r_t.toFixed(2)} AU`
   + ` (stirred zone ${L.r_stir.toFixed(2)}-${L.r_t.toFixed(2)})`);
 if (L.a_crit !== null) {
   console.log(`  Holman-Wiegert a_crit = ${L.a_crit.toFixed(2)} AU`
-    + (L.hw_valid ? '' : '  [outside fit range — indicative only]')
+    + (L.hw_valid ? '' : '  [outside fit range - indicative only]')
     + `  <- independent N-body cross-check of the wall`);
 }
 console.log(`  VERDICT: ${L.verdict}`);
@@ -91,13 +91,13 @@ console.log(`  inward share (Sol-calibrated 5-10%):`
   + ` material crosses the inner system`);
 console.log(`  outward share: ~${L.outward.toFixed(2)} M_E ejected by the`
   + ` recurring stellar periapsis or handed to the companion's own`
-  + ` space (cross-system veneer — the perturber's planets are the`
+  + ` space (cross-system veneer - the perturber's planets are the`
   + ` other receiver)`);
 
 if (L.receivers.length) {
   const hz = ctx.habitable_zone(inp.M_star, inp.L || null);
   console.log('\nwater ledger (per safe seat, Opik arrival + retention line;');
-  console.log('  per-seat PRINCIPAL-RECEIVER brackets — not additive across seats):');
+  console.log('  per-seat PRINCIPAL-RECEIVER brackets - not additive across seats):');
   for (const rc of L.receivers) {
     const inHZ = rc.r >= hz[0] && rc.r <= hz[1];
     const world = rc.oceans_lo > 20 ? ' (OCEAN WORLD: surface km-deep)'
@@ -109,5 +109,5 @@ if (L.receivers.length) {
       + (inHZ ? `  <- HABITABLE ZONE (${hz[0].toFixed(2)}-${hz[1].toFixed(2)})${world}` : ''));
   }
 } else {
-  console.log('\nwater ledger: NO icy feedstock erodes — bone-dry forecast stands');
+  console.log('\nwater ledger: NO icy feedstock erodes - bone-dry forecast stands');
 }

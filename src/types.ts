@@ -1,5 +1,5 @@
 // Shared types for the HYDROS cascade model.
-// Global-script style: no imports/exports — interfaces are ambient and
+// Global-script style: no imports/exports - interfaces are ambient and
 // erased at compile time; this file emits nothing of consequence.
 
 interface Planet {
@@ -15,7 +15,7 @@ interface Planet {
    *  gate). Display resolves the slot to its occupant's name. */
   captured?: number;
   /** Dam-exterior cohort object (Kuiper mechanism): a DISTINCT
-   *  population with independent inputs — excluded from the interior
+   *  population with independent inputs - excluded from the interior
    *  cascade fit entirely (no anchor influence, no penalties), then
    *  evaluated against the exterior ladder r = R_disc·(1/ρ)^n
    *  (half-integer rungs) anchored on the fitted Davis Dam. */
@@ -81,13 +81,13 @@ interface FitSlot {
   external?: boolean;
   // Martian-type scatter remnant bound to this slot: observed mass is
   // ~5-10% of the slot's predicted parent. Mass delta and delivered
-  // position are scatter OUTPUT — excluded from fit residuals/score.
+  // position are scatter OUTPUT - excluded from fit residuals/score.
   remnant?: boolean;
   // Occupied half-step site (inverted regime). slot_n is half-integer.
   interstitial?: boolean;
   // Dam-exterior cohort member (the Kuiper mechanism): body beyond
   // R_disc sitting on the exterior ladder r = R_disc·(1/ρ)^n. Geometry
-  // is the fit; mass calculus deferred (predicted := observed) —
+  // is the fit; mass calculus deferred (predicted := observed) -
   // excluded from f-bisection target. slot_n = -n (negative rung).
   exterior?: boolean;
   // Wrecking-class ledger: condensables of the interior slots this
