@@ -1237,6 +1237,36 @@ function bruteFit(planets: Planet[], M_star: number,
     // interior bodies are external rows, not unassigned failures.
     const n_void_now = fit.slots.filter(s => s.external && s.in_void).length;
     score += BIG * Math.max(0, (n_obs - n_void_now) - n_filled);
+    // EXISTENCE JUSTIFICATION (ghost refutation): an unfilled slot
+    // predicting a body that dominates a calm, full-mass observed
+    // neighbor inside its chaotic zone refutes the candidate — that
+    // neighbor would have been scattered and would not hold its
+    // observed mass. Survival stories that exempt the neighbor:
+    // depletion (<= 15% of its own slot prediction), observed position
+    // outside the zone, deep-interior decoupling (< 0.27 of the ghost
+    // radius). The ghost itself is exempt only if a body at least its
+    // own mass exists in the system (a credible remover): an
+    // unremovable dominant ghost with calm bystanders is a
+    // contradiction, not a story.
+    const m_max_obs = obs_disc.reduce((a, p) => Math.max(a, p.observed || 0), 0);
+    for (const g of fit.slots) {
+      if (g.filled || g.external || g.exterior) continue;
+      const m_g = g.predicted;
+      if (m_g <= 0 || m_g <= m_max_obs) continue;     // removable ghost
+      const RH = g.slot_r * Math.pow(
+        m_g * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
+      for (const s of fit.slots) {
+        if (!s.filled || s.external || s.exterior || s.remnant) continue;
+        const p = by_name[s.name];
+        if (!p || (p.observed || 0) <= 0) continue;
+        if (m_g < 10 * Math.max(p.observed || 0, s.predicted)) continue;
+        if (Math.abs(p.r - g.slot_r) >= 11 * RH) continue;
+        if (p.r < g.slot_r && p.r / g.slot_r < 0.27) continue;
+        if ((p.observed || 0) <= 0.15 * Math.max(s.predicted, 1e-12)) continue;
+        score += BIG;   // unjustified existence under this hypothesis
+        break;
+      }
+    }
     return score;
   };
 
