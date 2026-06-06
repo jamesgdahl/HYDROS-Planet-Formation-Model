@@ -107,16 +107,27 @@ for (const sys of ctx.window.EXOPLANETS) {
       console.log('  dam-keeper: ' + keeper.name + ' (' + keeper.observed
         + ' M_E), chaos reach ' + (reach * R).toFixed(1) + ' AU ('
         + (1 + reach).toFixed(2) + ' R_disc)');
+      // UNDISCOVERED CENSUS: stance stock is supply-proportional and
+      // therefore ~constant per stance, C*f*M with C = 5.1e-6
+      // (calibrated on Sol's cold-classical stock, ~0.02 M_E/stance).
+      // N = stock / m_product = count of CHARACTERISTIC-mass members
+      // per ring (the size-distribution tail multiplies the smaller).
+      const C_STOCK = 5.1e-6;
+      const stock = C_STOCK * inp.f_disc * m_star_earth(inp.M_star);
       for (const n of [0.5, 1, 1.5, 2, 2.5]) {
         const Rn = R * Math.pow(1 / RHO, n);
         const mn = m_ext * Math.pow(R / Rn, 4);
         const x = Rn / R;
-        const status = x <= (1 + reach) * 0.97 ? 'SWEPT (parking-lot capture only)'
-          : x <= (1 + reach) * 1.10 ? 'EDGE (resonant islands, ~10%)'
+        const surv = x <= (1 + reach) * 0.97 ? 0
+          : x <= (1 + reach) * 1.10 ? 0.1 : 1.0;
+        const status = surv === 0 ? 'SWEPT (parking-lot capture only)'
+          : surv === 0.1 ? 'EDGE (resonant islands, ~10%)'
           : 'SAFE (survivors expected)';
+        const N = surv > 0 ? Math.round(stock * surv / mn) : 0;
         console.log('    rung ' + n + ': ' + Rn.toFixed(1) + ' AU  ->  ~'
           + (mn < 0.01 ? (mn * 1000).toPrecision(3) + ' mE' : mn.toFixed(1) + ' M_E')
-          + ' (' + cls(mn) + ')  ' + status);
+          + ' (' + cls(mn) + ')  ' + status
+          + (N > 0 ? '  N~' + N : ''));
       }
     }
   }
