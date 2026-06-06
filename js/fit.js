@@ -795,6 +795,19 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         }
     }
     // Multi-perturber attribution: simultaneous scattering by 2+ massive
+    for (const matches of multi_perturbed) {
+        const target = matches[0].target;
+        const base = target.interpretation.split(' (')[0];
+        const perturberNames = matches.map(m => m.perturber.name + (m.epoch === 'arrival' ? ' (on arrival)' : '')).join(', ');
+        if (!target.filled) {
+            target.interpretation = `${base} (totally obliterated by simultaneous scattering: ${perturberNames})`;
+        }
+        else if (target.observed > 0
+            && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
+            const pct = Math.round(target.observed / target.predicted * 100);
+            target.interpretation = `${base} (anomalous remnant ~${pct}%; multi-perturber scattering: ${perturberNames})`;
+        }
+    }
     // DEVOURED-MASS LEDGER (wrecking class): a giant that migrated
     // inward ACROSS SEATS ate the interior cascade it traversed. The
     // swallowed condensables arrive post-gas-accumulation: they enrich
@@ -853,6 +866,14 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         meal.debris += (1 - ret) * o.predicted;
         meal.n += 1;
         eaten.set(leader, meal);
+        // name the eater on the victim's row
+        const victim_note = `devoured by ${leader.name} en route: ${(ret * 100).toFixed(0)}% retained into it, ${((1 - ret) * o.predicted).toFixed(1)} M⊕ scattered as corridor debris`;
+        if (/\(not observed\)/.test(o.interpretation)) {
+            o.interpretation = o.interpretation.replace('(not observed)', `(${victim_note})`);
+        }
+        else {
+            o.interpretation += ` — ${victim_note}`;
+        }
     }
     for (const [m, meal] of eaten) {
         if (meal.retained <= 0.1)
@@ -862,19 +883,6 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         m.interpretation += ` — devoured ${meal.n} interior occupant${meal.n > 1 ? 's' : ''}: +${meal.retained.toFixed(1)} retained of ${meal.total.toFixed(1)} M⊕ (≈${meal.metals.toFixed(1)} M⊕ metals; ${meal.debris.toFixed(1)} M⊕ scattered as corridor debris); formation-seat mass ≈ ${m_form.toFixed(0)} M⊕ pre-devouring`;
     }
     // bodies leaves no stable region. Total obliteration of the swarm.
-    for (const matches of multi_perturbed) {
-        const target = matches[0].target;
-        const base = target.interpretation.split(' (')[0];
-        const perturberNames = matches.map(m => m.perturber.name + (m.epoch === 'arrival' ? ' (on arrival)' : '')).join(', ');
-        if (!target.filled) {
-            target.interpretation = `${base} (totally obliterated by simultaneous scattering: ${perturberNames})`;
-        }
-        else if (target.observed > 0
-            && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
-            const pct = Math.round(target.observed / target.predicted * 100);
-            target.interpretation = `${base} (anomalous remnant ~${pct}%; multi-perturber scattering: ${perturberNames})`;
-        }
-    }
     // Void-interior bodies — observed inside the Alfven Dam, where no
     // cascade slot exists. A body cannot have FORMED there, but a small
     // one (bare-core mass range, no surviving envelope) may be a
