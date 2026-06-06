@@ -97,17 +97,44 @@ function impact_forensics(all_slots: FitSlot[], planets: Planet[],
       if (core_s > 3.0) continue;                  // rocky receivers only
       const excess = s.observed - s.predicted;
       if (excess <= 0 || excess / s.predicted < 0.02) continue;
-      // interior to at least one zone; attribute to nearest in log r
-      let zb: ForensicsZone | null = null, bd = Infinity;
-      for (const z of zones) {
-        const zr = slots.find(x => x.slot_n === z.slot);
-        if (!zr || s.slot_r >= zr.slot_r) continue;
-        const d = Math.abs(Math.log(zr.slot_r / s.slot_r));
-        if (d < bd) { bd = d; zb = z; }
-      }
-      if (zb) {
-        zb.delivered += excess;
-        zb.receivers.push(`${s.name} +${excess.toFixed(3)}`);
+      // Reconstruct the LAUNCHED impactor through the retention line,
+      // run backwards: the retained excess is ret x impactor. Arrival:
+      // grazing-perihelion convention q = 0.85 r_t (Opik: collision
+      // probability peaks for orbits whose perihelion grazes the
+      // target's orbit). The ledger counts the launched mass; the
+      // difference is lost to the impact disc / past the target's dam.
+      const cands = zones
+        .map(z => ({ z, zr: slots.find(x => x.slot_n === z.slot) }))
+        .filter(c => c.zr && s.slot_r < c.zr.slot_r)
+        .sort((a, b) =>
+          Math.abs(Math.log(a.zr!.slot_r / s.slot_r))
+          - Math.abs(Math.log(b.zr!.slot_r / s.slot_r)));
+      if (!cands.length) continue;
+      // attribute to the nearest zone with band CAPACITY for the
+      // launched mass; spill outward when the implied impactor cannot
+      // fit (this recovers parentage from arithmetic alone)
+      for (let ci = 0; ci < cands.length; ci++) {
+        const c = cands[ci];
+        const r0 = c.zr!.slot_r, rt = s.slot_r;
+        const q = 0.85 * rt, ao = (q + r0) / 2, e = (r0 - q) / (r0 + q);
+        const vc = 29.785 * Math.sqrt(1.14 * M_star / rt);
+        const vv = Math.sqrt(2 - rt / ao);                  // v/vc
+        const vt = Math.sqrt(ao * (1 - e * e) / rt);        // v_t/vc
+        const vr = Math.sqrt(Math.max(0, vv * vv - vt * vt));
+        const dv = vc * Math.sqrt((vt - 1) ** 2 + vr * vr);
+        const vesc = 11.186 * Math.pow(Math.max(s.observed, 0.01), 1 / 3);
+        const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
+        const imp = excess / ret;
+        const cap = c.z.hi - (c.z.survivor + c.z.delivered);
+        if (imp <= cap + 0.02 || ci === cands.length - 1) {
+          c.z.delivered += imp;
+          c.z.receivers.push(
+            `${s.name} +${excess.toFixed(3)} retained `
+            + `(impactor ~${imp.toFixed(2)} at ${dv.toFixed(1)} km/s, `
+            + `ret ${ret.toFixed(2)}; ~${(imp - excess).toFixed(2)} lost `
+            + `to impact disc / past the dam)`);
+          break;
+        }
       }
     }
     for (const z of zones) {
