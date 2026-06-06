@@ -132,11 +132,11 @@ function fitSystem(sys) {
 
 // Mass display: sub-cascade moons live at micro-Earth masses where
 // .toFixed(3) collapses to 0.000 — switch to milliEarths (suffix m)
-// below 0.1 M⊕. Internal math stays in M⊕ (doubles carry 16 digits;
-// only the DISPLAY needed rescuing).
+// below 0.01 M⊕ (single-digit mE and down). Internal math stays in
+// M⊕ (doubles carry 16 digits; only the DISPLAY needed rescuing).
 function fmtMass(m) {
   if (!(m > 0)) return '—';
-  return m < 0.1 ? (m * 1000).toPrecision(4) + 'm' : m.toFixed(3);
+  return m < 0.01 ? (m * 1000).toPrecision(4) + 'm' : m.toFixed(3);
 }
 function printSlotTable(sys, r) {
   console.log(`\n${sys.name}  (M*=${sys.inputs.M_star})`);

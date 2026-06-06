@@ -19,11 +19,12 @@
 //      t_form > t* must sit at bare core mass (cross-prediction).
 //   2. THE BUDGET: impactor masses come from the dispersed zones'
 //      allocations (engine numbers), nowhere else.
-//   3. RANGE ORDERING: the near target intercepts the corridor first
-//      and takes the leading (heavier, first-launched) primary; the
-//      far target is reached by the survivor of the passage.
-// The tilt angular-momentum budget remains as a Sol-only luxury
-// confirmation (we happen to have tilts here); it is NOT load-bearing.
+//   3. THE POLARITY LAW: da sign and size per assignment must match
+//      the erosion-recoil ledger (see routing section).
+// The polarity law replaces any tilt argument: accretive impacts brake
+// their target (da < 0), erosive impacts boost it via backward ejecta
+// (da > 0); retention sets the polarity, and the assignment must
+// reproduce each struck target's observed da.
 //
 // Sol verdict (engine numbers): slot-4 planet (2.57 ME) -> Saturn
 // (only impactor that can pay the 26.7 deg tilt), slot-5 planet
@@ -111,19 +112,57 @@ if (tstar !== null) {
   }
 }
 
-// --- tilt-free routing: range ordering --------------------------------
+// --- routing from mass deficit + orbit change alone -------------------
+// THE POLARITY LAW: the sign of an impact's da is set by RETENTION.
+//   accretive (high retention): target absorbs the impactor's
+//     sub-circular momentum -> brakes -> sinks (da < 0)
+//   erosive (low retention): the plume launches backward/down-well,
+//     carrying the retrograde momentum plus entrained target material
+//     at sub-circular speed; shedding slow mass is a boost (da > 0)
+// Net impact da per (impactor, target), all from masses and orbits:
+//   vt/vc   = sqrt(2 r0/(r0+rt))      (arrival, perihelion ~ launch slot)
+//   ret     = max(0.05, 0.969 - 0.605 dv/v_esc)
+//   m_acc   = ret*m_i;  m_ej = (1-ret)*m_i*(1+ENTRAIN)
+//   da_net  = 2 rt (1 - vt/vc) (m_ej - m_acc)/M_t
+// Routing = the assignment whose da_net best matches observed da.
+// ENTRAIN ~ 1 (equal target mass entrained per unit unretained
+// impactor) is the one crude dial; label it honestly.
 if (tstar !== null && sources.length >= 1) {
-  const bySize = [...sources].sort((a, b) => b.mass - a.mass);
-  const hit = gasTargets.filter(t => {
+  const ENTRAIN = 1.0;
+  const struck = gasTargets.filter(t => {
     const kept = t.gas_obs / t.gas_pred;
     return (kept < 0.95) || t.s.t_form > tstar;
   }).sort((a, b) => a.s.slot_r - b.s.slot_r);
-  if (hit.length) {
-    console.log('\ntilt-free routing (range ordering: near target = leading primary):');
-    for (let i = 0; i < hit.length; i++) {
-      const src = bySize[Math.min(i, bySize.length - 1)];
-      console.log(`  slot ${src.slot} primary (${src.mass.toFixed(2)} M_E) -> ${hit[i].s.name}`);
+  const prims = [...sources].sort((a, b) => b.mass - a.mass);
+  if (struck.length >= 1 && prims.length >= struck.length) {
+    const perm = (arr) => arr.length <= 1 ? [arr] :
+      arr.flatMap((x, i) => perm(arr.slice(0, i).concat(arr.slice(i + 1))).map(r => [x, ...r]));
+    const launch = s => slots.find(x => x.slot_n === s.slot)?.slot_r || 1;
+    let best = null;
+    console.log('\nrouting from deficit + orbit change alone (polarity law):');
+    for (const ass of perm(prims.slice(0, struck.length))) {
+      let score = 0; const lines = [];
+      for (let i = 0; i < struck.length; i++) {
+        const tg = struck[i], src = ass[i];
+        const r0 = launch(src), rt = tg.s.slot_r;
+        const vt_vc = Math.sqrt(2 * r0 / (r0 + rt));
+        const vc = 29.785 * Math.sqrt(1.14 * sys.inputs.M_star / rt);
+        const dv = vc * Math.sqrt(2) * (1 - vt_vc);   // tangential + pumping
+        const vesc = 11.186 * Math.pow(Math.max(tg.s.observed, 1), 1 / 3);
+        const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
+        const m_acc = ret * src.mass;
+        const m_ej = (1 - ret) * src.mass * (1 + ENTRAIN);
+        const da_net = 2 * rt * (1 - vt_vc) * (m_ej - m_acc) / tg.s.observed;
+        const pl = sys.planets.find(pp => pp.name === tg.s.name);
+        const da_obs = pl ? pl.r - tg.s.slot_r : 0;
+        score += Math.abs(da_net - da_obs);
+        lines.push(`    slot ${src.slot} (${src.mass.toFixed(2)}) -> ${tg.s.name}: ret ${ret.toFixed(2)}, da_net ${da_net >= 0 ? '+' : ''}${da_net.toFixed(2)} vs observed ${da_obs >= 0 ? '+' : ''}${da_obs.toFixed(2)} AU`);
+      }
+      console.log(`  hypothesis [${ass.map(s => 'slot ' + s.slot).join(', ')}], residual ${score.toFixed(2)} AU:`);
+      for (const l of lines) console.log(l);
+      if (!best || score < best.score) best = { ass, score };
     }
+    console.log(`  VERDICT: ${best.ass.map((s, i) => `slot ${s.slot} -> ${struck[i].s.name}`).join('; ')}  (no tilts used)`);
   }
 }
 
@@ -155,28 +194,4 @@ if (id === 'sol') {
       console.log('      -> closed');
     }
   }
-}
-
-// --- tilt-budget routing (Sol targets; radii/tilts are observational) ---
-if (id === 'sol') {
-  const ME = 5.972e24, RE = 6.371e6;
-  const T = {
-    Saturn: { R: 9.14 * RE, tilt: 26.7, L: 7.5e37, r: 10.246 },
-    Uranus: { R: 3.98 * RE, tilt: 98, L: 1.3e36, r: 17.552 },
-  };
-  const vcirc = rr => 29785 * Math.sqrt(1.14 / rr);
-  const vinf = 13000;  // Jupiter pumping ceiling
-  console.log('\ntilt-budget CONFIRMATION (Sol-only; identification above is tilt-free):');
-  for (const [tn, t] of Object.entries(T)) {
-    const vc = vcirc(t.r);
-    const vrel = Math.sqrt(vinf * vinf + 2 * vc * vc + vc * vc);
-    const Lneed = t.L * Math.sin(t.tilt * Math.PI / 180);
-    const row = sources.map(s => {
-      const lo = s.mass * ME * vrel * t.R / Lneed;
-      return `slot ${s.slot}: ${lo.toFixed(2)}..${(lo * 10).toFixed(1)}`;
-    }).join('   ');
-    console.log(`  ${tn} (needs ${t.tilt} deg): ${row}`);
-  }
-  console.log('  tilt agrees with the tilt-free routing: only the heaviest');
-  console.log('  primary can pay Saturn\'s 26.7 deg.');
 }

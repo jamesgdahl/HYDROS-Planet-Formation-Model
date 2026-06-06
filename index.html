@@ -345,7 +345,7 @@ function fmt(x, dec = 3) {
 // (suffix m) below 0.1 M⊕. Internal math stays in M⊕ throughout.
 function fmtM(x, dec = 3) {
   if (!isFinite(x)) return "—";
-  if (x > 0 && x < 0.1) return (x * 1000).toPrecision(4) + "m";
+  if (x > 0 && x < 0.01) return (x * 1000).toPrecision(4) + "m";
   return x.toFixed(dec);
 }
 
