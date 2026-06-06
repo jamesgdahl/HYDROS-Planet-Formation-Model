@@ -162,7 +162,7 @@ function printSlotTable(sys, r) {
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
   for (const s of [...r.fit.slots].sort((a, b) => b.slot_n - a.slot_n)) {
     const name = s.filled ? s.name : `(slot ${s.slot_n})`;
-    const lbl = s.exterior ? `ext ${-s.slot_n}` : String(s.slot_n);
+    const lbl = s.exterior ? 'ext' : String(s.slot_n);
     const obs = s.observed > 0 ? fmtMass(s.observed) : '—';
     const pred = s.exterior ? '(indep)' : fmtMass(s.predicted);
     const dm = (s.filled && s.observed > 0 && !s.exterior)

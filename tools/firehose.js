@@ -129,6 +129,41 @@ for (const sys of ctx.window.EXOPLANETS) {
           + ' (' + cls(mn) + ')  ' + status
           + (N > 0 ? '  N~' + N : ''));
       }
+      // FACTORY VINTAGE: size IS the clock. m ~ Sigma^2 ~ R^-4 inverts
+      // each observed exterior body's mass to its minting stance
+      // (ORIGINAL AU), and the dam's three-gear chronology dates it:
+      //   gear 1: parked at R_disc through the gas era (t_disc)
+      //   gear 2: the firehose sweep, R_disc -> 1.6 R_disc (the cliff)
+      //           over ~3 Myr
+      //   gear 3: the long retreat, R ~ t^0.138 (Sol-calibrated:
+      //           heliopause 120 AU at 4,570 Myr)
+      // Bodies more massive than the at-dam product are firehose-onset
+      // vintage (densest supply). Rung residence is NOT the clock —
+      // scattered bodies sit anywhere; their mass still dates them.
+      const kbos = sys.planets.filter(pl => pl.kbo && pl.observed > 0);
+      if (kbos.length) {
+        const t_disc = 5.0 * Math.sqrt(
+          (inp.f_disc * m_star_earth(inp.M_star)) / (0.01 * m_star_earth(1.0)));
+        const R_cliff = 1.6 * R;
+        const BETA = 0.138;
+        console.log('  FACTORY VINTAGES (size-clock):');
+        for (const pl of kbos.sort((a, b) => b.observed - a.observed)) {
+          const Rb = Math.max(R, R * Math.pow(m_ext / pl.observed, 0.25));
+          let when;
+          if (pl.observed >= m_ext * 0.999) when = '<' + t_disc.toFixed(1) + ' (firehose onset, at the dam face)';
+          else if (Rb <= R_cliff) when = (t_disc + 3 * (Rb - R) / (0.6 * R)).toFixed(1);
+          else when = ((t_disc + 3) * Math.pow(Rb / R_cliff, 1 / BETA)).toFixed(0);
+          const disp = Math.abs(pl.r - Rb) / Rb;
+          const tag = disp < 0.15 ? 'in situ at its stance'
+            : pl.r > Rb ? 'scattered/combed OUTWARD from ' + Rb.toFixed(1)
+            : 'displaced INWARD from ' + Rb.toFixed(1);
+          console.log('    ' + pl.name.padEnd(10)
+            + (pl.observed * 1000).toPrecision(3).padStart(8) + ' mE'
+            + '  born ' + Rb.toFixed(1).padStart(6) + ' AU'
+            + '  vintage ' + String(when).padStart(6) + ' Myr'
+            + '  now ' + pl.r.toFixed(1).padStart(6) + '  ' + tag);
+        }
+      }
     }
   }
 }

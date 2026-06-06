@@ -483,7 +483,7 @@ function calculate() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${name}</td>
-      <td>${s.exterior ? 'ext ' + (-s.slot_n) : s.slot_n}</td>
+      <td>${s.exterior ? 'ext' : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
       <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
       <td>${fmt(s.t_form, 2)}</td>

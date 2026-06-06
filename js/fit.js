@@ -965,36 +965,58 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         });
     }
     // KBO-class population (the Kuiper mechanism): a distinct entity
-    // with independent inputs. Each body is evaluated against the
-    // exterior ladder r = R_dam·(1/ρ)^n — half-integer rungs, the Luger
-    // lattice continued outward through the dam (rung 0.5's period ratio
-    // 1.497 ≈ 3:2 is the plutino resonance). Geometry is the test; the
-    // exterior mass calculus is independent and deferred, so rows are
-    // satisfied (predicted := observed) and carry no fit cost.
+    // with independent inputs. The exterior carries structure in TIME,
+    // not space (the 6,034-TNO census test rejected the exterior
+    // ladder): products mint continuously at the retreating dam's outer
+    // face, and SIZE IS THE CLOCK — the product-mass law m ∝ Σ_dam² ∝
+    // R⁻⁴ inverts each body's mass to its minting stance (the original
+    // AU) and the dam's retreat chronology dates it (FACTORY VINTAGE):
+    //   gear 1: parked at R_disc through the gas era (t_disc)
+    //   gear 2: the firehose sweep, R_disc → 1.6 R_disc over ~3 Myr
+    //   gear 3: the long retreat, R ∝ t^0.138 (Sol: heliopause 120 AU
+    //           at 4,570 Myr)
+    // slot_r carries the BIRTH STANCE, so r_form / Δr display formation
+    // position and displacement exactly as for interior rows.
     if (kbo_bodies.length > 0) {
         const R_dam = R_disc_local > 0 ? R_disc_local
             : disc_radius(M_star, spin);
-        const KBO_TOL = 0.035; // |ln(r/rung)| in-situ acceptance
+        // product-mass law, Sol-anchored at the dam face
+        const SIGMA_SOL = 0.0103830 * m_star_earth(1.0) / Math.pow(30.07, 2);
+        const M_EXT_SOL = 0.00218;
+        const sigma_dam = f_disc * m_star_earth(M_star) / (R_dam * R_dam);
+        const m_at_dam = M_EXT_SOL * Math.pow(sigma_dam / SIGMA_SOL, 2);
+        const t_disc_myr = gas_dispersal_time(M_star, f_disc);
+        const R_cliff = 1.6 * R_dam, BETA = 0.138;
         for (const p of kbo_bodies) {
-            const n_raw = Math.log(p.r / R_dam) / Math.log(1 / CASCADE_RATIO);
-            const n = Math.max(0.5, Math.round(n_raw * 2) / 2);
-            const rung_r = R_dam * Math.pow(1 / CASCADE_RATIO, n);
-            const dlog = Math.log(p.r / rung_r);
-            const dr_pct = ((p.r / rung_r - 1) * 100).toFixed(1);
-            const on_rung = Math.abs(dlog) <= KBO_TOL;
+            const m_obs_k = p.observed || 0;
+            const onset = m_obs_k >= m_at_dam * 0.999;
+            const R_birth = onset ? R_dam
+                : R_dam * Math.pow(m_at_dam / m_obs_k, 0.25);
+            let vintage;
+            if (onset)
+                vintage = `<${t_disc_myr.toFixed(1)} Myr (firehose onset)`;
+            else if (R_birth <= R_cliff) {
+                vintage = `~${(t_disc_myr + 3 * (R_birth - R_dam) / (0.6 * R_dam)).toFixed(1)} Myr (firehose)`;
+            }
+            else {
+                vintage = `~${((t_disc_myr + 3) * Math.pow(R_birth / R_cliff, 1 / BETA)).toFixed(0)} Myr (retreat era)`;
+            }
+            const disp = (p.r - R_birth) / R_birth;
+            const where = Math.abs(disp) < 0.15 ? 'in situ at its stance'
+                : disp > 0 ? 'displaced outward (combed/scattered)'
+                    : 'displaced inward (rained back / captured)';
             results.push({
-                slot_n: -n, slot_r: rung_r, r_used: p.r,
+                slot_n: -Math.max(0.01, Math.log(R_birth / R_dam) / Math.log(1 / CASCADE_RATIO)),
+                slot_r: R_birth, r_used: p.r,
                 filled: true, name: p.name,
                 rock: 0, ice: 0, pebble: 0, core: 0,
                 t_form: 0, h_he: 0,
-                predicted: p.observed || 0, observed: p.observed || 0,
+                predicted: m_obs_k, observed: m_obs_k,
                 err_pct: 0, implied_dM: 0,
                 stripped: false, in_void: false, exterior: true,
                 primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
-                    total: p.observed || 0 },
-                interpretation: on_rung
-                    ? `dam-exterior cohort: IN SITU on exterior rung ${n} (${rung_r.toPrecision(4)} AU, Δr ${dr_pct}%) — formed against the Davis Dam's outer face (Kuiper mechanism; independent mass calculus deferred)`
-                    : `dam-exterior object: off-rung (nearest exterior rung ${n} at ${rung_r.toPrecision(4)} AU, Δr ${dr_pct}%) — inter-rung belt member or scattered (Kuiper mechanism; independent mass calculus deferred)`,
+                    total: m_obs_k },
+                interpretation: `factory product, vintage ${vintage} — minted at the dam's outer face when it stood at ${R_birth.toFixed(1)} AU (size-clock); ${where}`,
             });
         }
     }
