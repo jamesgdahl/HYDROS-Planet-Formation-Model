@@ -46,7 +46,10 @@ const doWrite = args.includes('--write');
 // still block); informational flags don't. Alpha Centauri is excluded
 // pending the seating ruling.
 const writeAll = args.includes('--all');
-const WRITE_EXCLUDE = new Set(['alphacen']);
+// upsand: energy-ledger override (the brute winner is the corpse-free
+// parsimony twin; the stored configuration closes the eviction energy
+// books — see preset note). Excluded until eviction-energy scoring lands.
+const WRITE_EXCLUDE = new Set(['alphacen', 'upsand']);
 const doBrute = !args.includes('--iterated'); // brute (joint scan) is the default
 const doVice = args.includes('--vice'); // decouple the vice jaws (omega grid)
 const bruteFit = ctx.bruteFit;

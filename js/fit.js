@@ -1311,8 +1311,48 @@ function bruteFit(planets, M_star, stripping, vice) {
                     score += Math.abs(Math.log(p.r / s.slot_r));
             }
             else {
-                if (s.predicted >= M_STELLAR_BOUNDARY)
-                    score += BIG;
+                // CORE PRICING: a missing gas-eligible slot's occupant is
+                // indeterminate between its core and the full-gas default
+                // (t_form truncation) — the corpse is COSTED at its core
+                // (cheapest viable occupant). Only a core that is itself
+                // stellar is un-truncatable.
+                const corpse_core = s.rock + s.ice + s.pebble;
+                const corpse_cost = Math.min(s.predicted, Math.max(corpse_core, 0));
+                if (corpse_core >= M_STELLAR_BOUNDARY
+                    || (s.predicted >= M_STELLAR_BOUNDARY && corpse_core <= 0)) {
+                    // MUTUAL-EVICTION EXEMPTION: a missing stellar-mass slot is
+                    // not an impossible ghost when an OBSERVED stellar-mass body
+                    // sits within two rungs displaced far OUTWARD of its seat —
+                    // the pair is an eviction event (one ejected unbound, one
+                    // flung up but bound: the Alpha Cen B / Proxima grammar).
+                    // Costed, not rejected.
+                    let eviction_partner = false;
+                    for (const s2 of fit.slots) {
+                        if (!s2.filled || s2.external || s2.exterior)
+                            continue;
+                        if (Math.abs(s2.slot_n - s.slot_n) > 2)
+                            continue;
+                        const p2 = by_name[s2.name];
+                        if (!p2 || !(p2.r > 0))
+                            continue;
+                        if ((p2.observed || 0) >= M_STELLAR_BOUNDARY
+                            && p2.r > 3 * s2.slot_r) {
+                            eviction_partner = true;
+                            break;
+                        }
+                    }
+                    if (eviction_partner) {
+                        score += 3 + Math.log10(1 + corpse_cost);
+                    }
+                    else {
+                        score += BIG;
+                    }
+                }
+                else if (s.predicted >= M_STELLAR_BOUNDARY) {
+                    // stellar at full gas but truncatable core: priced as the
+                    // core-mass corpse (BD-grade occupant removed early)
+                    score += 1.5 + Math.log10(1 + corpse_cost);
+                }
                 else {
                     // CORRIDOR DISCOUNT: an unfilled slot lying between a filled
                     // planet's observed position and its assigned seat is not
@@ -1330,7 +1370,7 @@ function bruteFit(planets, M_star, stripping, vice) {
                             break;
                         }
                     }
-                    const cost = Math.log10(1 + Math.max(0, s.predicted));
+                    const cost = Math.log10(1 + Math.max(0, corpse_cost));
                     score += in_corridor ? 0.2 * cost : cost;
                 }
             }
@@ -1381,6 +1421,27 @@ function bruteFit(planets, M_star, stripping, vice) {
             const m_g = g.predicted;
             if (m_g <= 0 || m_g <= m_max_obs)
                 continue; // removable ghost
+            // eviction-partner exemption: a corpse removed EARLY by a mutual
+            // eviction (observed stellar partner within two rungs, displaced
+            // far outward) never lived alongside the bystanders — its zone
+            // threat is moot
+            let evict_ok = false;
+            for (const s2 of fit.slots) {
+                if (!s2.filled || s2.external || s2.exterior)
+                    continue;
+                if (Math.abs(s2.slot_n - g.slot_n) > 2)
+                    continue;
+                const p2 = by_name[s2.name];
+                if (!p2 || !(p2.r > 0))
+                    continue;
+                if ((p2.observed || 0) >= M_STELLAR_BOUNDARY
+                    && p2.r > 3 * s2.slot_r) {
+                    evict_ok = true;
+                    break;
+                }
+            }
+            if (evict_ok)
+                continue;
             const RH = g.slot_r * Math.pow(m_g * (3e-6 / M_PRIM_TO_MSUN) / (3 * M_star), 1.0 / 3.0);
             for (const s of fit.slots) {
                 if (!s.filled || s.external || s.exterior || s.remnant)
