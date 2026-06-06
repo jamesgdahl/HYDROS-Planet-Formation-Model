@@ -74,6 +74,14 @@ function assign_planets_to_slots(planets: Planet[], M_star: number,
       slot_target = slot_pred[n];
     }
     if (slot_target > mass_for_match) penalty += OVERPRED_PENALTY;
+    // STELLAR BODIES ARE ALLOCATION-MATCHED, not position-greedy: a
+    // star's mass IS its seat allocation (no gas bisection above it),
+    // and evicted companions sit nowhere near their seats. Mass match
+    // dominates; position barely informs.
+    if ((p.observed || 0) >= M_STELLAR_BOUNDARY && slot_target > 0) {
+      return 0.1 * r_dist
+        + 5.0 * Math.abs(Math.log(mass_for_match / slot_target));
+    }
     // In-situ trust zone: a planet sitting essentially ON a site
     // (within ~6% in radius) is not exiled for a mass mismatch ---
     // position is primary and mass deltas are interpretable events
