@@ -147,7 +147,11 @@ if (tstar !== null && sources.length >= 1) {
         const r0 = launch(src), rt = tg.s.slot_r;
         const vt_vc = Math.sqrt(2 * r0 / (r0 + rt));
         const vc = 29.785 * Math.sqrt(1.14 * sys.inputs.M_star / rt);
-        const dv = vc * Math.sqrt(2) * (1 - vt_vc);   // tangential + pumping
+        // pumped corridor arrival: v_inf ~ the perturber's circular
+        // speed (multi-pass slingshot ceiling), as the dating requires
+        const vinf = 29.785 * Math.sqrt(1.14 * sys.inputs.M_star / Math.max(r0 * 1.7, 1));
+        const varr = Math.sqrt(vinf * vinf + 2 * vc * vc);
+        const dv = Math.sqrt(varr * varr + vc * vc) - vc * vt_vc;
         const vesc = 11.186 * Math.pow(Math.max(tg.s.observed, 1), 1 / 3);
         const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
         const m_acc = ret * src.mass;
