@@ -86,6 +86,11 @@ interface FitSlot {
   // is the fit; mass calculus deferred (predicted := observed) —
   // excluded from f-bisection target. slot_n = -n (negative rung).
   exterior?: boolean;
+  // Wrecking-class ledger: condensables of the interior slots this
+  // migrant traversed and ate en route to its parking seat. Arrives
+  // POST-H/He accumulation (heavy-element enrichment; not fed into the
+  // core² gas term). The Thorngren-class M_Z excess prediction.
+  devoured?: number;
   primordial: Composition;
   interpretation: string;
 }

@@ -555,6 +555,52 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             outer.interpretation = `merger (absorbed slot ${inner.slot_n}${suffix})`;
         }
     }
+    // DEVOURED-MASS LEDGER (wrecking class): a giant that migrated
+    // inward ACROSS SEATS ate the interior cascade it traversed. The
+    // swallowed condensables arrive post-gas-accumulation: they enrich
+    // the interior (the anomalous 10-100 M⊕ heavy-element inventories of
+    // hot Jupiters; Thorngren et al. 2016) without seeding further
+    // envelope capture, so they are reported as a post-formation gain,
+    // never folded into the Tanigawa-Ikoma core² term. Within-seat
+    // displacement (Jupiter's -0.78 AU) does not qualify; the migrant
+    // must have left its seat.
+    const wreckers = [];
+    for (const s of results) {
+        if (!s.filled || s.external || s.exterior)
+            continue;
+        const p = planet_by_slot[s.slot_n];
+        if (!p || !(p.r > 0))
+            continue;
+        if (nearest_site_n(p.r) === s.slot_n)
+            continue; // displaced, not migrated
+        if (p.r >= s.slot_r)
+            continue; // inward migrants only
+        wreckers.push(s);
+    }
+    // Each eaten slot goes to ONE devourer: the LEADER — the migrant with
+    // the lowest formation seat whose traversal range contains the slot
+    // (it descends ahead; followers cross an already-cleared corridor).
+    const eaten = new Map();
+    for (const o of results) {
+        if (o.filled || o.external || o.exterior)
+            continue;
+        let leader = null;
+        for (const m of wreckers) {
+            const pr = planet_by_slot[m.slot_n].r;
+            if (o.slot_r < m.slot_r && o.slot_r > pr) {
+                if (leader === null || m.slot_r < leader.slot_r)
+                    leader = m;
+            }
+        }
+        if (leader)
+            eaten.set(leader, (eaten.get(leader) || 0) + o.rock + o.ice + o.pebble);
+    }
+    for (const [m, devoured] of eaten) {
+        if (devoured <= 0.1)
+            continue;
+        m.devoured = devoured;
+        m.interpretation += ` — devoured ~${devoured.toFixed(1)} M⊕ of interior slots en route (post-H/He heavy-element gain)`;
+    }
     // Mutual-eviction detection: adjacent MISSING slots both predicting
     // brown-dwarf-or-larger mass cannot coexist (Sep/R_H,mutual << 3.5).
     const M_BROWN_DWARF_LOCAL = 4131.0;
@@ -621,16 +667,23 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             break;
         }
     }
-    // Embryo-swarm scattering detection: any cascade slot within ~10 R_H of
-    // a much larger perturber slot has its pre-consolidation embryo swarm
-    // dispersed by asymmetric Jupiter-style scattering.
+    // Slot-dispersal detection: any cascade slot within ~10 R_H of a much
+    // larger perturber has its zone dispersed by asymmetric Jupiter-style
+    // scattering. ROUTING (on-slot doctrine): the zone's consolidated
+    // PLANET (>85% of the allocation) is scattered OUTWARD at high
+    // velocity — in Sol, the slot-4 planet struck Saturn and the slot-5
+    // planet struck Uranus — while the lighter sibling planetesimals
+    // scatter inward (Theia to Earth, Borealis to Mars).
     //
-    // Quantitative predictions for the inner-scattered survivor:
+    // Quantitative predictions for the inward-scattered sibling survivor:
     //   - Position: r_survivor ≈ r_perturber − 11·R_H (Sol: Jupiter at
     //     5.20 AU, R_H ≈ 0.34 AU → 1.46 AU; Mars observed at 1.524 AU).
     //   - Mass: ~5-10% of the slot's primordial cascade allocation.
     const SCATTER_MASS_RATIO = 10;
-    const SCATTER_RH_THRESHOLD = 10;
+    // 11 R_H: matched to SURVIVOR_N_SAFETY (the chaotic zone's own reach).
+    // At slot-frame radii Mars sits 10.1 R_H from Jupiter; the old 10
+    // threshold was tuned on observed-radius separations.
+    const SCATTER_RH_THRESHOLD = 11;
     const SURVIVOR_FRACTION_MAX = 0.15;
     const SURVIVOR_N_SAFETY = 11;
     const SURVIVOR_MASS_FRAC_MIN = 0.05;
@@ -728,23 +781,23 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             const is_settled_slot = (g === settled);
             if (!target.filled) {
                 if (is_settled_slot && boundary_valid) {
-                    target.interpretation = `${base} (swarm scattered by ${perturberName}; survivor predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
+                    target.interpretation = `${base} (planet scattered outward by ${perturberName}; sibling survivor predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
                 }
                 else if (!boundary_valid) {
-                    target.interpretation = `${base} (swarm scattered by ${perturberName}, fully dispersed)`;
+                    target.interpretation = `${base} (planet + siblings scattered outward by ${perturberName}, fully dispersed)`;
                 }
                 else {
-                    target.interpretation = `${base} (swarm scattered by ${perturberName}; inner-system impactors, no settled survivor)`;
+                    target.interpretation = `${base} (planet scattered outward by ${perturberName}; sibling planetesimals inward as impactors)`;
                 }
             }
             else if (target.observed > 0
                 && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
                 const pct = Math.round(target.observed / target.predicted * 100);
                 if (is_settled_slot && boundary_valid) {
-                    target.interpretation = `${base} (inner-scattered survivor: ~${pct}% of slot, scattered by ${perturberName}; predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
+                    target.interpretation = `${base} (sibling survivor ~${pct}% of slot — its planet scattered outward by ${perturberName}; sibling predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${r_boundary.toFixed(2)} AU)`;
                 }
                 else {
-                    target.interpretation = `${base} (scattered by ${perturberName}, only ~${pct}% remains)`;
+                    target.interpretation = `${base} (zone dispersed by ${perturberName}, only ~${pct}% remains)`;
                 }
             }
         }
