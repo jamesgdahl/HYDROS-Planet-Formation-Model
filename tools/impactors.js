@@ -104,7 +104,12 @@ console.log('\ninward mass ledger (5-10% of each dispersed allocation):');
 // Sol-specific identified sinks beyond the generic settled survivor:
 const SOL_SINKS = {
   4: [['Earth excess (Theia delivery)', 0.029], ['Moon', 0.012],
-      ['Borealis impactor (Mars)', 0.020]],
+      ['Borealis impactor (Mars)', 0.020],
+      // Theia ejecta blasted past Earth's magnetopause (the kinetic
+      // rung's Davis Dam, ~6.6 R_E): uncapturable by the protolunar
+      // disc, exits heliocentric, decays back over 10-100 Myr = the
+      // geochemists' late veneer (HSE budget ~0.3-1% M_E).
+      ['Theia ejecta past the dam (late-veneer return)', 0.008]],
 };
 for (const z of F.zones) {
   const extra = (id === 'sol' && SOL_SINKS[z.slot]) ? SOL_SINKS[z.slot] : [];
