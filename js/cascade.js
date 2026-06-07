@@ -6,13 +6,13 @@ function cascade_slot_positions(M_star, spin, min_slots = 0, omega) {
     // Slot count: keep adding slots until next would fall inside R_A.
     // Inverted regime (R_A >= R_disc): the compressed inner reservoir
     // defaults to 11 slots, but the observed planet count constrains the
-    // generator — a system with n observed planets requires at least n
+    // generator - a system with n observed planets requires at least n
     // slots, so the inverted reservoir packs max(11, min_slots). (The
     // normal regime cannot be extended this way: its slot count is fixed
     // by the R_A terminus, so insufficient slots invalidate the spin.)
     // VICE: the regime CLASSIFICATION stays on the geometry dial (spin =
     // D^(2/3)), but the normal-regime ladder TERMINUS is the physical
-    // inner jaw — alfven_radius at omega (defaults to spin: jaw-lock).
+    // inner jaw - alfven_radius at omega (defaults to spin: jaw-lock).
     const om = (omega === undefined) ? spin : omega;
     const R_disc = disc_radius(M_star, spin);
     const R_A_geom = alfven_radius(M_star, spin);
@@ -54,7 +54,7 @@ function slot_predicted_mass(r, M_star, spin, f_disc, t_form_cascade, omega) {
 function auto_spin_from_outermost(planets, M_star, anchor_slot) {
     if (anchor_slot === undefined)
         anchor_slot = 0;
-    // All observed bodies are included in the cascade — even stellar-mass
+    // All observed bodies are included in the cascade - even stellar-mass
     // ones. This is consistent with the framework's prediction that outer
     // slots can naturally allocate stellar-mass bodies (e.g. HD 60532's
     // predicted slot 0 stellar companion). Holman-Wiegert truncation is
@@ -75,7 +75,7 @@ function auto_spin_from_outermost(planets, M_star, anchor_slot) {
         return 1.0;
     }
     // anchor_slot > 0: outermost observed sits at slot k, not slot 0.
-    // Slots 0..k-1 are "missing" — ejected/scattered outer bodies.
+    // Slots 0..k-1 are "missing" - ejected/scattered outer bodies.
     const R_disc_target = max_r / Math.pow(CASCADE_RATIO, anchor_slot);
     return Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc_target, 2);
 }
@@ -164,7 +164,7 @@ function auto_spin_with_anchor_search(planets, M_star, f_disc) {
         // Reject if any MISSING slot would predict a stellar-mass body, and
         // accumulate mass-weighted missing cost (log10 of predicted mass).
         // Missing rocky bodies are cheap; missing brown dwarfs and gas
-        // giants are expensive — discourages exotic outer slot ejection
+        // giants are expensive - discourages exotic outer slot ejection
         // scenarios involving giants when a smaller-k solution exists.
         let stellar_missing = false;
         let missing_cost = 0;
@@ -194,7 +194,7 @@ function auto_spin_with_anchor_search(planets, M_star, f_disc) {
         // significant LOSS (predicted >> observed) is acceptable; GAIN
         // (predicted << observed) is suspect. SKIP this check for gas-
         // eligible anchors (observed > 5 M_E) because t_form bisection in
-        // bestFit always fits gas-giant mass exactly — the slot prediction
+        // bestFit always fits gas-giant mass exactly - the slot prediction
         // at pre-bisection f_disc/t_form is not a reliable estimate.
         if ((outermost.observed || 0) <= GAS_OBS_THRESHOLD) {
             const anchor_pred = slot_predicted_mass(slots[k], M_star, spin_try, f_disc_eval);
@@ -206,7 +206,7 @@ function auto_spin_with_anchor_search(planets, M_star, f_disc) {
         }
         // Per-k penalty: prefer anchoring to the outermost slot (k=0).
         // Escalating k is only chosen when the missing-cost or positional
-        // fit improvement outweighs this penalty — a default-to-in-situ
+        // fit improvement outweighs this penalty - a default-to-in-situ
         // anchor at R_disc bias.
         const K_PENALTY = 1.5;
         const score = unassigned * BIG + pos_resid + missing_cost + K_PENALTY * k;
@@ -236,7 +236,7 @@ function auto_spin_with_anchor_search(planets, M_star, f_disc) {
         for (let k1 = 1; k1 <= 5; k1++) {
             // second_outermost at slot k1: R_disc = second_outermost.r / ratio^k1
             const R_disc = second_outermost.r / Math.pow(CASCADE_RATIO, k1);
-            // Stage 2 is outward-migration only — outermost must have migrated
+            // Stage 2 is outward-migration only - outermost must have migrated
             // outward, so its observed r must be > R_disc (formation position).
             if (outermost.r <= R_disc)
                 continue;

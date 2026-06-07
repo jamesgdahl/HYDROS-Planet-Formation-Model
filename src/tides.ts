@@ -1,4 +1,4 @@
-// HYDROS tide ledger — what a bound stellar companion's RECURRING
+// HYDROS tide ledger - what a bound stellar companion's RECURRING
 // tide does to a satellite system, and where the scattered mass goes.
 //
 // The single-flyby stripping transform (fit.ts: Breslau r_t, stirred
@@ -26,7 +26,7 @@
 //      share was relayed down a giant ladder (Fernandez-Ip). Here the
 //      outward share meets a STAR at every periapsis: it is ejected,
 //      or handed across to the perturber's own system (cross-system
-//      delivery — the perturber's planets can receive a foreign
+//      delivery - the perturber's planets can receive a foreign
 //      veneer). The inward share is the Sol-calibrated 5-10% of the
 //      eroded mass; receivers are priced exactly like the impactors
 //      ledger (Opik grazing-perihelion arrival + the retention line).
@@ -72,7 +72,7 @@ interface TideLedger {
   verdict: string;
 }
 
-// engine globals (module: none — all scripts share one scope)
+// engine globals (module: none - all scripts share one scope)
 declare function cascade_slot_positions(
   M_star: number, spin: number, min_slots?: number, omega?: number): number[];
 declare function slot_predicted_mass(
@@ -115,7 +115,7 @@ function tide_ledger(seats: TideSeat[], M_star: number,
   const r_t = 0.28 * q * Math.pow(M_pert / M_star, -0.32);
   const r_stir = 0.5 * r_t;
 
-  // Holman & Wiegert (1999) critical semimajor axis — the independent
+  // Holman & Wiegert (1999) critical semimajor axis - the independent
   // N-body resonance-overlap boundary, valid for e_bin <~ 0.8
   const mu = M_pert / (M_star + M_pert);
   let e_bin: number | null = null, a_crit: number | null = null;
@@ -136,7 +136,7 @@ function tide_ledger(seats: TideSeat[], M_star: number,
     if (s.r > r_t) { zone = 'DESTROYED'; destroyed += s.mass; }
     else if (s.r > r_stir) {
       // inside the wall but on the conveyor: a seat ALSO outside the
-      // Holman-Wiegert radius is not a survivor at all — it is
+      // Holman-Wiegert radius is not a survivor at all - it is
       // feedstock, fully processed over Gyr (erosion floor = the
       // graduated one-pass law; ceiling = 1)
       L = 0.6 * (s.r - r_stir) / (r_t - r_stir);
@@ -157,7 +157,7 @@ function tide_ledger(seats: TideSeat[], M_star: number,
   const inward_hi = TIDE_IN_HI * eroded_icy;
   const outward = (eroded_icy + eroded_dry) - 0.5 * (inward_lo + inward_hi);
 
-  // price the delivery at each safe interior seat — Opik
+  // price the delivery at each safe interior seat - Opik
   // grazing-perihelion arrival from the innermost eroding seat,
   // retention line at the receiver (identical to impactors.ts)
   const sources = rows.filter(x => x.eroded > 0 && x.icy)

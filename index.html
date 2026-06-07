@@ -38,7 +38,7 @@
 <body>
 
 <h1>HYDROS Planet Formation Model</h1>
-<p class="subtitle">Local-capacity rule for primordial planetary mass allocation, driven by stellar mass, rotation, and disc-to-star mass ratio.</p>
+<p class="subtitle">Local-capacity rule for primordial planetary mass allocation, driven by stellar mass, nebula density (spin jaw-locked, Ω = D<sup>2/3</sup>), and disc-to-star mass ratio, plus the perturber block (M<sub>pert</sub>, q, a<sub>bin</sub>) for encounter-edited and companion-bound systems.</p>
 
 <fieldset>
   <legend>System inputs</legend>
@@ -71,7 +71,7 @@
   <table style="margin-top: 0.6rem;">
     <thead>
       <tr>
-        <th title="Dam-exterior cohort (Kuiper mechanism): distinct population with independent inputs — excluded from the interior cascade fit, evaluated against the exterior ladder">KBO (dam-exterior)</th>
+        <th title="Dam-exterior cohort (Kuiper mechanism): distinct population with independent inputs - excluded from the interior cascade fit, evaluated against the exterior ladder">KBO (dam-exterior)</th>
         <th>a (AU)</th>
         <th>Observed M (mE = 10<sup>-3</sup> M<sub>⊕</sub>)</th>
         <th></th>
@@ -85,7 +85,7 @@
   <button id="find-fit">Find best fit</button>
   <label style="margin-left: 0.5rem;">Preset:
     <select id="preset-select">
-      <option value="">— select —</option>
+      <option value="">- select -</option>
     </select>
   </label>
   <button id="calculate" class="primary" style="margin-left: 0.5rem;">Calculate</button>
@@ -151,8 +151,8 @@
 // ============================================================
 
 // All presets come from exoplanets.js (loaded via <script src>), exposed
-// as window.EXOPLANETS — an array of system objects keyed by .id. Using a
-// JS file (not fetch on a .json) means it works with file:// — no server required.
+// as window.EXOPLANETS - an array of system objects keyed by .id. Using a
+// JS file (not fetch on a .json) means it works with file:// - no server required.
 const PRESETS = {};
 for (const sys of (window.EXOPLANETS || [])) PRESETS[sys.id] = sys;
 
@@ -180,7 +180,13 @@ function buildPresetDropdown() {
 
   const groups = bins.map(b => ({ ...b, systems: [] }));
   for (const sys of (window.EXOPLANETS || [])) {
-    const m = sys.inputs.M_star * 1.14;  // bins are in current M_sun
+    // Bins are in CURRENT M_sun; inputs are primordial-solar units.
+    // A star sheds the same ~12% fraction Sol did across T Tauri
+    // (Sol: 1.0 unit = 1.14 M_sun primordial -> 1.00 M_sun today), so
+    // the current mass in M_sun is numerically the input itself. The
+    // old x1.14 here classified by PRIMORDIAL mass and pushed Alpha
+    // Cen A (1.08 -> "1.23") into F class; it is G2V.
+    const m = sys.inputs.M_star;
     const bin = groups.find(g => m >= g.min && m < g.max);
     if (bin) bin.systems.push(sys);
   }
@@ -217,6 +223,7 @@ function getInputs() {
   const inp = {
     M_star: parseFloat(document.getElementById("M_star").value),
     spin: parseFloat(document.getElementById("spin").value),
+    D_neb: parseFloat(document.getElementById("nebula_density").value),
     f_disc: parseFloat(document.getElementById("f_disc").value),
   };
   if (document.getElementById("strip_on").checked) {
@@ -235,7 +242,7 @@ function getInputs() {
 
 // Jaw-lock sync: nebula density D (outer jaw, Davis Dam) and spin Ω
 // (inner jaw record) are two readings of one dial under the default
-// lock Ω = D^(2/3) — Sol: spin 1, density 1, dam at 30.07 AU.
+// lock Ω = D^(2/3) - Sol: spin 1, density 1, dam at 30.07 AU.
 function syncDensityFromSpin() {
   const s = parseFloat(document.getElementById("spin").value);
   if (isFinite(s) && s > 0) {
@@ -255,6 +262,12 @@ function setInputs(inp) {
   document.getElementById("M_star").value = inp.M_star;
   document.getElementById("spin").value = inp.spin;
   document.getElementById("f_disc").value = inp.f_disc;
+  // Nebula density is the causally primary jaw (dam radius, factory
+  // Sigma, inheritance, XUV); presets carry it explicitly. The
+  // syncDensityFromSpin() below re-derives it under the jaw-lock, so
+  // an explicit value only matters if a future preset decouples the
+  // jaws - set it after the sync.
+  const D_explicit = (inp.D_neb && inp.D_neb > 0) ? inp.D_neb : null;
   // Kinetic regime (impact-vapor natal disc, e.g. Earth/Theia):
   // carried as a preset flag, threaded into slot_aware_fit.
   window.CURRENT_KINETIC = !!inp.kinetic;
@@ -263,6 +276,9 @@ function setInputs(inp) {
   // back on (ACen B: true 0.50 vs estimate 0.41).
   window.CURRENT_L = (inp.L && inp.L > 0) ? inp.L : null;
   syncDensityFromSpin();
+  if (D_explicit) {
+    document.getElementById("nebula_density").value = +D_explicit.toPrecision(6);
+  }
   const on = !!inp.stripping;
   document.getElementById("strip_on").checked = on;
   if (on) {
@@ -359,19 +375,24 @@ function loadPreset(name) {
   const preset = PRESETS[name];
   setInputs(preset.inputs);
   setPlanets(preset.planets);
+  // Carry the source preset's notes so a user-save keeps the system's
+  // documentation, and remember the last-viewed system so a refresh
+  // or revisit restores it.
+  window.CURRENT_NOTES = preset.notes || null;
+  try { localStorage.setItem(LAST_KEY, name); } catch {}
   calculate();
 }
 
 function fmt(x, dec = 3) {
-  if (!isFinite(x)) return "—";
+  if (!isFinite(x)) return "-";
   return x.toFixed(dec);
 }
 
 // Mass display: sub-cascade moons and KBOs live at micro/milli-Earth
-// masses where .toFixed(3) collapses to 0.000 — switch to milliEarths
+// masses where .toFixed(3) collapses to 0.000 - switch to milliEarths
 // (suffix m) below 0.1 M⊕. Internal math stays in M⊕ throughout.
 function fmtM(x, dec = 3) {
-  if (!isFinite(x)) return "—";
+  if (!isFinite(x)) return "-";
   if (x > 0 && x < 0.01) return (x * 1000).toPrecision(4) + "m";
   return x.toFixed(dec);
 }
@@ -421,7 +442,7 @@ function calculate() {
     ? `<br><span class="label">Gravitational stripping:</span> <span class="value">${
         strip_active
           ? `M_pert=${fmt(strip.M_pert, 2)} M☉, q=${fmt(strip.q, 1)} AU → truncation r_t=${fmt(strip_rt, 2)} AU (stirred zone ${fmt(strip_rt * 0.5, 2)}–${fmt(strip_rt, 2)} AU)`
-          : `flagged — q unfitted (press best-fit to bisect the stripping factor)`
+          : `flagged - q unfitted (press best-fit to bisect the stripping factor)`
       }</span>`
     : "";
 
@@ -460,7 +481,7 @@ function calculate() {
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
   // forensics receiver, e.g. Earth; or tide-ledger receiver, e.g.
-  // ACen B slot 6) gets the green row — occupancy + delivery is the
+  // ACen B slot 6) gets the green row - occupancy + delivery is the
   // habitability claim, occupancy alone is not.
   const deliveryNames = new Set();
   let tideRx = [];
@@ -477,11 +498,11 @@ function calculate() {
   tbody.innerHTML = "";
   let total_pred = 0, total_obs = 0;
 
-  // Sort by slot # descending — slot 10 (innermost) first, slot 0
+  // Sort by slot # descending - slot 10 (innermost) first, slot 0
   // (outermost) last, matching the conventional Mercury→Neptune order.
   const rows = fit.slots.slice().sort((x, y) => y.slot_n - x.slot_n);
 
-  // Always show all 11 cascade slots — the framework's slot count is
+  // Always show all 11 cascade slots - the framework's slot count is
   // universal. Inner slots may have tiny primordial allocations or sit
   // inside R_A (magnetospheric void), but they're still part of the
   // cascade and the user should see that explicitly.
@@ -492,7 +513,7 @@ function calculate() {
     name = (s.filled || s.exterior) ? s.name : `(slot ${s.slot_n} lost)`;
     // ON-SLOT DOCTRINE: planets form at their slots exactly. r_form is
     // the slot radius, and Δr = r_obs − r_slot is post-formation
-    // displacement — the event ledger (Jupiter/Saturn sank paying the
+    // displacement - the event ledger (Jupiter/Saturn sank paying the
     // swarm-ejection bill, Uranus rose on the hand-down exchange,
     // Neptune holds the dam seat). KBO rows: the exterior rung.
     r_form = s.slot_r;
@@ -504,9 +525,9 @@ function calculate() {
       r_now = obs_r;
       dr_au = obs_r - r_form;       // 0 for in-situ; migration distance for migrants
       dm = observed - predicted;
-      // External stellar companions don't count toward disc total —
+      // External stellar companions don't count toward disc total -
       // they're bound but not formed in the disc. KBO-class bodies are
-      // a distinct population with independent inputs — own ledger.
+      // a distinct population with independent inputs - own ledger.
       if (!s.external && !s.exterior) {
         total_pred += predicted;
         total_obs += observed;
@@ -532,9 +553,9 @@ function calculate() {
       && (deliveryNames.has(s.name) || rx);
     if (wetHZ) {
       const oc = rx
-        ? `${rx.oceans_lo.toFixed(0)}–${rx.oceans_hi.toFixed(0)} oceans${rx.oceans_lo > 20 ? ' — ocean world' : rx.oceans_hi > 20 ? ' — possibly an ocean world' : ''}`
+        ? `${rx.oceans_lo.toFixed(0)}–${rx.oceans_hi.toFixed(0)} oceans${rx.oceans_lo > 20 ? ' - ocean world' : rx.oceans_hi > 20 ? ' - possibly an ocean world' : ''}`
         : 'delivery receipt in the impact ledger';
-      interp += ` — 🌊 HABITABLE ZONE + volatile delivery (${oc})`;
+      interp += ` - 🌊 HABITABLE ZONE + volatile delivery (${oc})`;
     }
 
     const tr = document.createElement("tr");
@@ -546,15 +567,15 @@ function calculate() {
       <td>${name}</td>
       <td>${s.exterior ? 'ext' : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
-      <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
+      <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '-'}</td>
       <td>${fmt(s.t_form, 2)}</td>
       <td>${fmtM(s.rock)}</td>
       <td>${fmtM(s.ice)}</td>
       <td>${fmtM(s.pebble)}</td>
       <td>${fmtM(s.h_he, 2)}</td>
       <td>${fmtM(predicted)}</td>
-      <td>${isFinite(observed) ? fmtM(observed) : '—'}</td>
-      <td class="${isFinite(dm_pct) ? errClass(dm_pct) : ''}">${isFinite(dm_pct) ? (dm_pct >= 0 ? '+' : '') + fmt(dm_pct, 1) + '%' : '—'}</td>
+      <td>${isFinite(observed) ? fmtM(observed) : '-'}</td>
+      <td class="${isFinite(dm_pct) ? errClass(dm_pct) : ''}">${isFinite(dm_pct) ? (dm_pct >= 0 ? '+' : '') + fmt(dm_pct, 1) + '%' : '-'}</td>
       <td>${interp}</td>
     `;
     tbody.appendChild(tr);
@@ -588,19 +609,19 @@ function renderForensics(fit, planets, M_star, f_disc) {
         ? `${FB.keeper} sits on the dam → predicted captured <i>retrograde</i> companion ~${m_str} (Triton-analog)`
         : `${FB.keeper} is displaced from the dam → its Triton-analog (~${m_str}) was lost, scattered, or carried off`)
         + (FB.observed
-          ? ` — <b>observed: ${FB.observed}</b> (${(FB.observedMass * 1000).toPrecision(3)} mE) ✓`
+          ? ` - <b>observed: ${FB.observed}</b> (${(FB.observedMass * 1000).toPrecision(3)} mE) ✓`
           : '')
         + '</div>';
     }
   } catch (e) { console.warn('firstborn:', e); }
   if (F.closures && F.closures.length) {
     h += '<div><b>Event closures</b> (deviation = model output; counts as an exact fit): '
-      + F.closures.map(c => `<b>${c.name}</b> — ${c.reason}`).join('; ')
+      + F.closures.map(c => `<b>${c.name}</b> - ${c.reason}`).join('; ')
       + '</div>';
   }
   if (F.sources.length) {
     h += '<div><b>Candidate impactors</b> (dispersed-zone primaries): '
-      + F.sources.map(s => `slot ${s.slot} — ${fmtM(s.mass)} M⊕ ${s.from}`).join('; ')
+      + F.sources.map(s => `slot ${s.slot} - ${fmtM(s.mass)} M⊕ ${s.from}`).join('; ')
       + '</div>';
   }
   if (F.datings.length) {
@@ -616,7 +637,7 @@ function renderForensics(fit, planets, M_star, f_disc) {
     for (const rc of z.receivers) {
       const sl = fit.slots.find(s => s.name === rc.name);
       if (sl && !/struck by slot/.test(sl.interpretation)) {
-        sl.interpretation += ` — struck by slot ${rc.zoneSlot} sibling (impactor ~${fmtM(rc.impactor)} M⊕ at ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)}): +${fmtM(rc.excess)} retained, ~${fmtM(rc.lost)} lost to impact disc / past the dam`;
+        sl.interpretation += ` - struck by slot ${rc.zoneSlot} sibling (impactor ~${fmtM(rc.impactor)} M⊕ at ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)}): +${fmtM(rc.excess)} retained, ~${fmtM(rc.lost)} lost to impact disc / past the dam`;
       }
     }
   }
@@ -625,7 +646,7 @@ function renderForensics(fit, planets, M_star, f_disc) {
     for (const v of F.verdict) {
       const sl = fit.slots.find(s => s.name === v.target);
       if (sl && !/struck by/.test(sl.interpretation)) {
-        sl.interpretation += ` — struck by slot ${v.srcSlot} primary (${fmtM(v.srcMass)} M⊕) at ${v.dv.toFixed(1)} km/s`;
+        sl.interpretation += ` - struck by slot ${v.srcSlot} primary (${fmtM(v.srcMass)} M⊕) at ${v.dv.toFixed(1)} km/s`;
       }
     }
     h += '<div style="margin-top:6px"><b>Routing</b> (polarity law, no tilts):</div><ul style="margin:2px 0 2px 18px">';
@@ -646,13 +667,13 @@ function renderForensics(fit, planets, M_star, f_disc) {
         .concat(z.receivers.map(r =>
           `delivered: ${r.name} +${fmtM(r.excess)} retained (impactor ~${fmtM(r.impactor)}, ~${fmtM(r.lost)} lost)`));
       h += `<li>slot ${z.slot}: band ${fmtM(z.lo)}–${fmtM(z.hi)} M⊕; ${sinks.join('; ')} → `
-        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted sinks: corridor debris field — asteroid-belt analog, observable as a warm debris disc — further sibling impactors on the survivor, hit-and-run on a mass-pinned body, a star-grazer, or ejecta past a kinetic dam)`)
+        + (closed ? 'closed' : `<b>unaccounted ${fmtM(z.residual_lo)}–${fmtM(z.residual_hi)} M⊕</b> (predicted sinks: corridor debris field - asteroid-belt analog, observable as a warm debris disc - further sibling impactors on the survivor, hit-and-run on a mass-pinned body, a star-grazer, or ejecta past a kinetic dam)`)
         + '</li>';
     }
     h += '</ul>';
   }
   if (F.water && F.water.length) {
-    h += '<div style="margin-top:6px"><b>Water ledger</b> (ocean equivalents; delivered, not retained — escape + sequestration set what each body holds):</div><ul style="margin:2px 0 2px 18px">';
+    h += '<div style="margin-top:6px"><b>Water ledger</b> (ocean equivalents; delivered, not retained - escape + sequestration set what each body holds):</div><ul style="margin:2px 0 2px 18px">';
     for (const w of F.water) {
       const oc = (x) => x < 10 ? x.toFixed(1) : x.toFixed(0);
       h += `<li>${w.name}: <b>${w.kind === 'receipt' ? 'receipt' : 'upper bound'}</b> from slot ${w.zoneSlot} material (${(w.ice_frac * 100).toFixed(0)}% ice, ret ${w.ret.toFixed(2)}) → ${fmtM(w.water_lo)}–${fmtM(w.water_hi)} M⊕ water = <b>${oc(w.oceans_lo)}–${oc(w.oceans_hi)} oceans</b>${w.kind === 'bound' ? ' (crossing-band share)' : ''}</li>`;
@@ -665,7 +686,7 @@ function renderForensics(fit, planets, M_star, f_disc) {
 }
 
 // The tide ledger panel: what a BOUND companion's recurring tide does
-// to the cascade — standing tide-dam (with the independent
+// to the cascade - standing tide-dam (with the independent
 // Holman-Wiegert N-body cross-check), conveyor erosion of boundary
 // seats, the Sol-calibrated inward/outward split, and the water
 // ledger in ocean units. Renders only when stripping carries a_bin
@@ -679,10 +700,10 @@ function renderTides(fit, M_star, spin, f_disc, strip) {
   const L = tide_ledger(seats, M_star, strip.M_pert, strip.q, strip.a_bin);
   let h = '<h3 style="margin:6px 0">Tide ledger (standing companion tide)</h3>';
   h += `<div>M_pert ${fmt(strip.M_pert, 2)} M☉ at a_bin ${fmt(strip.a_bin, 1)} AU, q ${fmt(strip.q, 1)} AU`
-    + (L.e_bin !== null ? ` (e ${L.e_bin.toFixed(2)})` : '') + ' — '
+    + (L.e_bin !== null ? ` (e ${L.e_bin.toFixed(2)})` : '') + ' - '
     + `tide-dam r_t = <b>${L.r_t.toFixed(2)} AU</b>`
     + (L.a_crit !== null
-      ? `; Holman–Wiegert a_crit = <b>${L.a_crit.toFixed(2)} AU</b>${L.hw_valid ? '' : ' <i>(outside fit range — indicative)</i>'} ← independent N-body cross-check`
+      ? `; Holman–Wiegert a_crit = <b>${L.a_crit.toFixed(2)} AU</b>${L.hw_valid ? '' : ' <i>(outside fit range - indicative)</i>'} ← independent N-body cross-check`
       : '')
     + `</div><div><b>${L.verdict}</b></div>`;
   h += '<ul style="margin:2px 0 2px 18px">';
@@ -691,7 +712,7 @@ function renderTides(fit, M_star, spin, f_disc, strip) {
       : x.zone === 'CONVEYOR' ? `<b>conveyor</b> (Breslau-stable per pass, HW-unstable secularly: feedstock, ~${(x.L * 100).toFixed(0)}% processed over Gyr)`
       : x.zone === 'STIRRED' ? `stirred (~${(x.L * 100).toFixed(0)}% eroded)`
       : 'safe';
-    h += `<li>${x.name || 'seat ' + x.slot_n} — ${x.r.toFixed(2)} AU, ${fmtM(x.mass)} M⊕, ${x.icy ? 'icy' : 'dry'}: ${tag}</li>`;
+    h += `<li>${x.name || 'seat ' + x.slot_n} - ${x.r.toFixed(2)} AU, ${fmtM(x.mass)} M⊕, ${x.icy ? 'icy' : 'dry'}: ${tag}</li>`;
   }
   h += '</ul>';
   h += `<div><b>Erosion budget</b>: icy ${fmtM(L.eroded_icy)} M⊕, dry ${fmtM(L.eroded_dry)} M⊕`
@@ -703,13 +724,13 @@ function renderTides(fit, M_star, spin, f_disc, strip) {
     h += '<div style="margin-top:6px"><b>Water ledger</b> (Öpik arrival + retention line; per-seat principal-receiver brackets, not additive):</div><ul style="margin:2px 0 2px 18px">';
     for (const rc of L.receivers) {
       const inHZ = rc.r >= hz[0] && rc.r <= hz[1];
-      const world = rc.oceans_lo > 20 ? ' — ocean world (surface km-deep)'
-        : rc.oceans_hi > 20 ? ' — possibly an ocean world' : '';
-      h += `<li${inHZ ? ' style="background:#e3f6e3"' : ''}>${rc.name || 'seat ' + rc.slot_n} (${rc.r.toFixed(2)} AU): Δv ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)} → retained ${fmtM(rc.retained_lo)}–${fmtM(rc.retained_hi)} M⊕ = <b>${rc.oceans_lo.toFixed(0)}–${rc.oceans_hi.toFixed(0)} oceans</b>${inHZ ? ' — <b>🌊 HABITABLE ZONE</b>' + world : ''}</li>`;
+      const world = rc.oceans_lo > 20 ? ' - ocean world (surface km-deep)'
+        : rc.oceans_hi > 20 ? ' - possibly an ocean world' : '';
+      h += `<li${inHZ ? ' style="background:#e3f6e3"' : ''}>${rc.name || 'seat ' + rc.slot_n} (${rc.r.toFixed(2)} AU): Δv ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)} → retained ${fmtM(rc.retained_lo)}–${fmtM(rc.retained_hi)} M⊕ = <b>${rc.oceans_lo.toFixed(0)}–${rc.oceans_hi.toFixed(0)} oceans</b>${inHZ ? ' - <b>🌊 HABITABLE ZONE</b>' + world : ''}</li>`;
     }
     h += '</ul>';
   } else {
-    h += '<div style="margin-top:6px"><b>Water ledger</b>: no icy feedstock erodes — bone-dry forecast stands</div>';
+    h += '<div style="margin-top:6px"><b>Water ledger</b>: no icy feedstock erodes - bone-dry forecast stands</div>';
   }
   el.innerHTML = h;
   return L.receivers;   // habitability flag: HZ seats with oceans
@@ -888,7 +909,7 @@ function refineChainsPass(planets, targets, chains, M_star, spin, f_disc, r_snow
 
 // Find r-bounds for planet i that keep it at least one Hill-distance "slot" away
 // from every other planet. The slot half-width at radius r is k·R_H_mutual where
-// k = 20 (a half-spacing — full mutual-Hill = 40). Returns [lo, hi].
+// k = 20 (a half-spacing - full mutual-Hill = 40). Returns [lo, hi].
 function rBoundsWithHillSpacing(planets, i, M_star, r_snow, R_disc, k_half) {
   const M_E = m_star_earth(M_star);
   const m_i = Math.max(0.1, planets[i].observed > 0 ? planets[i].observed : 1);
@@ -920,7 +941,7 @@ function bisectionPass(planets, targets, M_star, spin, f_disc, r_snow, R_disc, c
   // the snow line as rocky bodies. Applied only if the system can physically
   // accommodate that target in the inner rocky regime (max inner-zone allocation
   // ≥ target). If not (low f_disc, slope too small), the rule is skipped and
-  // the planet bisects across the full range — the model interprets it as a
+  // the planet bisects across the full range - the model interprets it as a
   // stripped sub-Neptune instead.
   const max_inner_rock = (() => {
     // Capacity just inside snow line (where rock + snow_bump are both at max).
@@ -946,7 +967,7 @@ function bisectionPass(planets, targets, M_star, spin, f_disc, r_snow, R_disc, c
     for (const { i, target } of targets) {
       let [lo, hi] = order_bounds(i);
       // If bounds collapsed (neighbors shuffled mid-iter so prev > next),
-      // skip this planet and try again next iter — DON'T fall back to a free
+      // skip this planet and try again next iter - DON'T fall back to a free
       // range, which would let the planet leapfrog out of table order.
       if (lo >= hi) continue;
       for (let k = 0; k < 40; k++) {
@@ -984,7 +1005,7 @@ function bisectionPass(planets, targets, M_star, spin, f_disc, r_snow, R_disc, c
       // Rocky planets (target < 3 M⊕): lock t_form to physics-derived cascade
       // (their mass is tf-independent anyway).
       // Gas-eligible planets (target ≥ 3): bisect t_form freely in [0.001, 50]
-      // — no cascade floor. The physics-derived INIT seeds the natural
+      // - no cascade floor. The physics-derived INIT seeds the natural
       // monotonic ordering; bisection then refines without being clamped, so
       // compact systems with heterogeneous masses can satisfy each fit.
       const slope_now = slope(M_star, f_disc);
@@ -1038,7 +1059,7 @@ function findBestFit() {
   setInputs(newInputs);
 
   if (r.anchor_slot > 0) {
-    console.log(`findBestFit: outermost planet anchored at slot ${r.anchor_slot} (slots 0..${r.anchor_slot - 1} treated as missing — ejected/scattered outer bodies)`);
+    console.log(`findBestFit: outermost planet anchored at slot ${r.anchor_slot} (slots 0..${r.anchor_slot - 1} treated as missing - ejected/scattered outer bodies)`);
   }
   const report = [];
   for (const s of r.fit.slots) {
@@ -1054,6 +1075,8 @@ function findBestFit() {
 // as { id: {inputs, planets, notes?} }. User-saved systems show up in the
 // "User" optgroup of the preset selector.
 const USER_KEY = "hydros_user_presets";
+// Last-viewed system, restored on page load (falls back to Sol).
+const LAST_KEY = "hydros_last_preset";
 function loadUserPresets() {
   try { return JSON.parse(localStorage.getItem(USER_KEY) || "{}"); }
   catch { return {}; }
@@ -1091,11 +1114,14 @@ function saveCurrentAsPreset() {
     id: "user:" + id,
     inputs: inp,
     planets: planets,
-    notes: "User-saved system."
+    notes: window.CURRENT_NOTES
+      ? "User-saved system. " + window.CURRENT_NOTES
+      : "User-saved system."
   };
   saveUserPresets(map);
   refreshUserPresetDropdown();
   document.getElementById("preset-select").value = "user:" + id;
+  try { localStorage.setItem(LAST_KEY, "user:" + id); } catch {}
   console.log(`Saved user preset "${id}"`);
 }
 function updateDeleteButtonState() {
@@ -1116,6 +1142,9 @@ function deleteCurrentUserPreset() {
   delete PRESETS[v];
   refreshUserPresetDropdown();
   sel.value = "";
+  try {
+    if (localStorage.getItem(LAST_KEY) === v) localStorage.removeItem(LAST_KEY);
+  } catch {}
   console.log(`Deleted user preset "${id}"`);
 }
 
@@ -1135,10 +1164,18 @@ document.getElementById("preset-select").onchange = (e) => {
   updateDeleteButtonState();
 };
 
-// Start with Sol loaded once the JSON has been fetched.
+// Start with the last-viewed system (refresh/revisit restores it);
+// fall back to Sol. User presets are already registered in PRESETS by
+// refreshUserPresetDropdown() above, so "user:" ids restore too.
 PRESETS_READY.then(() => {
-  document.getElementById("preset-select").value = "sol";
-  if (PRESETS.sol) loadPreset("sol");
+  let start = "sol";
+  try {
+    const last = localStorage.getItem(LAST_KEY);
+    if (last && PRESETS[last]) start = last;
+  } catch {}
+  document.getElementById("preset-select").value = start;
+  if (PRESETS[start]) loadPreset(start);
+  updateDeleteButtonState();
 });
 </script>
 

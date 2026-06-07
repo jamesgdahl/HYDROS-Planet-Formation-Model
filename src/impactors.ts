@@ -1,6 +1,6 @@
 // Impact forensics: identification, dating, routing. Shared by the web
 // UI (index.html) and the CLI (tools/impactors.js) so the two cannot
-// drift. Every input is a mass or an orbit — no tilts, portable to
+// drift. Every input is a mass or an orbit - no tilts, portable to
 // exoplanet systems.
 //
 // Mechanism: an impact mid-gas-runaway TRUNCATES accretion (energy
@@ -55,7 +55,7 @@ interface ForensicsClosure { name: string; reason: string; }
 // an UPPER BOUND for every other interior rocky body it crossed.
 // Delivery is not retention: Earth's 1 surface + 1-10 mantle oceans
 // and Mars's geological <~1-ocean record are what each body HELD of
-// what arrived — escape and sequestration take the rest.
+// what arrived - escape and sequestration take the rest.
 interface WaterRow {
   name: string; kind: 'receipt' | 'bound'; zoneSlot: number;
   ice_frac: number; ret: number;
@@ -83,7 +83,7 @@ interface Forensics {
 // first factory product mints co-orbital with the dam-keeper at
 // maximal capture cross-section. A keeper still on its seat should
 // hold a captured RETROGRADE companion of the at-dam product mass
-// (Sol: Triton, 3.59 mE, da = 0.00 — the law's physically pinned
+// (Sol: Triton, 3.59 mE, da = 0.00 - the law's physically pinned
 // anchor). A displaced keeper lost its firstborn (ups And: the
 // corpse, ~5,600 M_E, sunk to pay the eviction).
 interface FirstbornForecast {

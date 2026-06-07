@@ -1,7 +1,7 @@
 "use strict";
 // Impact forensics: identification, dating, routing. Shared by the web
 // UI (index.html) and the CLI (tools/impactors.js) so the two cannot
-// drift. Every input is a mass or an orbit — no tilts, portable to
+// drift. Every input is a mass or an orbit - no tilts, portable to
 // exoplanet systems.
 //
 // Mechanism: an impact mid-gas-runaway TRUNCATES accretion (energy

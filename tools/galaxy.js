@@ -1,4 +1,4 @@
-// galaxy.js — the all-purpose galaxy generator (2026-06-05).
+// galaxy.js - the all-purpose galaxy generator (2026-06-05).
 // Plug in any founder seed and baryon budget; everything else is the
 // construction framework run at face value:
 //
@@ -10,12 +10,12 @@
 //               truncation, (5/6)R_A inner ramp, dam pile-up)
 //
 // D(z) = D0 (1+z)^6.3 is the relaxing protogalactic compression; D0 is
-// the inherited record (default: n = 12 cm^-3, the CNM — universal cold
+// the inherited record (default: n = 12 cm^-3, the CNM - universal cold
 // gas, so dam radii scale with the seed alone unless you override it).
 //
 // The factory constant k is UNIVERSAL: calibrated once on the Milky Way
 // (hits M* = 6e10 with the MW's burst history), then any other galaxy
-// is a parameter-free prediction — its stellar mass is EMERGENT.
+// is a parameter-free prediction - its stellar mass is EMERGENT.
 //
 // usage:
 //   node galaxy.js                          (Milky Way reference run)
@@ -74,10 +74,10 @@ const burst = t => !useBursts ? 1
 
 // The dam is a pressure boundary HELD by the system's gas: it advances
 // along the relaxation track only while unconverted budget remains at
-// the boundary. Exhausted budget = nothing to push the shoreline — the
+// the boundary. Exhausted budget = nothing to push the shoreline - the
 // dam stalls where the last deposition happened. Exhaustion is
 // unconverted gas below EPS of what has been DELIVERED (the drain is
-// asymptotic; a trickle holds no boundary — percent-level gas does).
+// asymptotic; a trickle holds no boundary - percent-level gas does).
 // In supply-limited regimes the dam rides the delivery front: it
 // stalls and resumes as budget arrives; tAdv records its LAST advance.
 const T_QUENCH = arg('quench', Infinity);   // supply cutoff [Gyr]
@@ -110,7 +110,7 @@ const k = has('tune') ? tune(arg('tune', 6e10), BUDGET, AGE, T_QUENCH)
 const kIsUniversal = !has('tune');
 const { M: Mstar, hist, used, R: R_FINAL, tAdv } = run(k, BUDGET, AGE, T_QUENCH);
 
-// Lattice anchor: where the (dynamic) dam actually stood at the gate —
+// Lattice anchor: where the (dynamic) dam actually stood at the gate -
 // a stalled dam anchors the lattice at its stall radius, not the track.
 const t_gate = AGE * Math.pow(1 + Z_GATE, -1.5);
 const R_ANCHOR = hist[Math.min(hist.length - 1,
@@ -167,7 +167,7 @@ console.log("record D0 =", D0.toExponential(2), "Sol units = n ~",
 console.log("Davis Dam today:   ", R_FINAL.toFixed(1).padStart(8), "kpc ",
             R_FINAL >= 0.98 * Rdam(0)
               ? "(stellar shoreline, on track)"
-              : `(STALLED since t = ${tAdv.toFixed(1)} Gyr — budget exhausted; relaxation track wanted ${Rdam(0).toFixed(1)} kpc)`);
+              : `(STALLED since t = ${tAdv.toFixed(1)} Gyr - budget exhausted; relaxation track wanted ${Rdam(0).toFixed(1)} kpc)`);
 console.log("  vs warm halo n 0.1-1 cm^-3:",
             (30.07*M_PRIM*Math.pow(1e-6,-1/3)/KPC).toFixed(0) + "-" +
             (30.07*M_PRIM*Math.pow(1e-7,-1/3)/KPC).toFixed(0),
