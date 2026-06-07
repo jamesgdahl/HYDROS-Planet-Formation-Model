@@ -85,3 +85,16 @@ Voyager structures near 8.3 AU (gauge says stream noise).
 Ulysses (COHOWeb merged, 1990-2009): out-of-ecliptic passes = AXISYMMETRY
 CONTROL. Bands are disc-plane structures: polar arcs at the same r should
 show NO comb where in-ecliptic segments show it. A-priori sign.
+
+## Saturn sub-cascade overlay (the full-amplitude live lattice)
+Ladder anchored on the fitted dam 903,100 km (Rhea = slot 1, 0.01%).
+Crests hold: B-ring CENTER = slot 4 (-0.0%); arc nursery (G ring, Aegaeon,
+Mimas +3.3%, Methone, Anthe) = slot 3; Tethys = slot 2 (-4.3%).
+Troughs empty: main-ring TERMINUS = trough 3-4 (A-ring outer edge -0.3%,
+Atlas +0.3%, F ring +2.1%); faint C ring = trough 4-5 (+4%). Alternating
+brightness in comb phase, as predicted for high/low pressure bands.
+Wrong-phase (flagged): Enceladus at trough 2-3 (+1.2%), Dione near trough
+1-2 - both fitted migrants. CONTROL: trans-dam clean - Titan 21% off-comb,
+zero unexplained arcs beyond the dam. Embedded arc moonlets (Methone,
+Anthe, Aegaeon: km-scale, smooth, young) = candidate current mintings.
+Formal test: comb-bin Cassini CDA + ISS faint-ring census.

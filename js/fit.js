@@ -980,6 +980,13 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     if (kbo_bodies.length > 0) {
         const R_dam = R_disc_local > 0 ? R_disc_local
             : disc_radius(M_star, spin);
+        // STELLAR DAMS ONLY for the factory pricing (same guard as
+        // tools/firehose.js): the product-mass law, the retreat
+        // chronology, and the census stock are Sol-anchored at stellar
+        // scale. Sub-cascade exteriors (moon systems) have their own
+        // capture physics (ring/moonlet grammar); their trans-dam bodies
+        // are listed as natives with no vintage or cohort pricing.
+        const stellar_dam = M_star >= 0.075;
         // product-mass law, Sol-anchored at the dam face
         const SIGMA_SOL = 0.0103830 * m_star_earth(1.0) / Math.pow(30.07, 2);
         // anchor = TRITON, the firstborn: captured by the dam-keeper at
@@ -995,6 +1002,23 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         kbo_bodies.sort((a, b) => (b.observed || 0) - (a.observed || 0));
         for (const p of kbo_bodies) {
             const m_obs_k = p.observed || 0;
+            if (!stellar_dam) {
+                results.push({
+                    slot_n: -0.01, slot_r: p.r, r_used: p.r,
+                    filled: true, name: p.name,
+                    rock: 0, ice: 0, pebble: 0, core: 0,
+                    t_form: 0, h_he: 0,
+                    predicted: m_obs_k, observed: m_obs_k,
+                    err_pct: 0, implied_dM: 0,
+                    stripped: false, in_void: false, exterior: true,
+                    primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
+                        total: m_obs_k },
+                    interpretation: "trans-dam native (sub-cascade exterior"
+                        + " pool; factory vintage pricing applies at stellar"
+                        + " dams only)",
+                });
+                continue;
+            }
             const onset = m_obs_k >= m_at_dam * 0.999;
             const R_birth = onset ? R_dam
                 : R_dam * Math.pow(m_at_dam / m_obs_k, 0.25);
@@ -1048,7 +1072,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         // hide (scattered: high inclination, far from perihelion).
         const C_STOCK = 5.1e-6;
         const stock = C_STOCK * f_disc * m_star_earth(M_star);
-        {
+        if (stellar_dam) {
             const binned = new Set();
             for (const p of kbo_bodies) {
                 if (binned.has(p))
@@ -1075,7 +1099,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         // grindings, not predictions worth a row.
         const MENTION_CUTOFF = 5e-5;
         let t_epoch = (t_disc_myr + 3) * 4;
-        for (let k = 0; k < 5 && t_epoch < 6000; k++, t_epoch *= 4) {
+        for (let k = 0; stellar_dam && k < 5 && t_epoch < 6000; k++, t_epoch *= 4) {
             const R_t = R_cliff * Math.pow(t_epoch / (t_disc_myr + 3), BETA);
             const m_t = m_at_dam * Math.pow(R_dam / R_t, 4);
             if (m_t < MENTION_CUTOFF)
