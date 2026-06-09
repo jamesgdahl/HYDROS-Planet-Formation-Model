@@ -97,7 +97,7 @@ function slot_predicted_mass(r: number, M_star: number, spin: number,
   // threshold (an inverted hot Jupiter) — so no inverted-specific suppression.
   if (core <= THRESHOLD_GAS) return core;
   const sl = slope(M_star, f_disc);
-  const tf = (t_form_cascade === undefined) ? 0.10 * r / sl : t_form_cascade;
+  const tf = (t_form_cascade === undefined) ? formation_time(r, rock + ice, M_star, f_disc) : t_form_cascade;
   return core + hydrogen_capture(core, tf, spin, r, M_star, f_disc, omega);
 }
 

@@ -177,6 +177,15 @@ function slope(M_star, f_disc) {
     const r_disc = COMP_R_DISC > 0 ? COMP_R_DISC : disc_radius(M_star, 1.0);
     return m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * f_disc * ETA_ROCK / r_disc;
 }
+// Formation time [Myr]. Budget non-igniter sub-disc (COMP_MDOT set): the
+// SUPPLY-limited clock M_core/(Z·ε·Ṁ) — how long to build the core at the disc's
+// solid accretion rate. Else: the legacy 0.10·r/AAF (∝r — outer planets slower).
+function formation_time(r, core, M_star, f_disc) {
+    if (COMP_MDOT > 0 && core > 0) {
+        return core / (COMP_Z * COMP_MDOT * CLOCK_COEFF);
+    }
+    return 0.10 * r / slope(M_star, f_disc);
+}
 function intercept(M_star, spin) {
     return SOL_INTERCEPT * (M_star / SOL_M_PRIMORDIAL) * Math.pow(spin, 2.0 / 7.0);
 }

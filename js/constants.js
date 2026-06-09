@@ -50,6 +50,19 @@ function reset_r_disc_norm() { COMP_R_DISC = -1.0; }
 let COMP_R_SNOW = -1.0;
 function set_snow_line(r) { COMP_R_SNOW = r; }
 function reset_snow_line() { COMP_R_SNOW = -1.0; }
+// FORMATION-CLOCK OVERRIDE (v6 budget wiring). The legacy formation time
+// t_form = 0.10·r/AAF is fine for a spread stellar disc (its ∝r keeps outer
+// planets forming slowly → ice giants) but ABSURD for a compact sub-cascade
+// (the anchored-dam AAF is huge ⇒ the Galilean moons "form" in ~185 yr). The
+// supply-limited clock t_form = M_core/(Z·ε·Ṁ) gives ~Myr there. It's set ONLY
+// for a parent-fed (non-igniter) sub-disc — for an igniter (Sol) it would lose
+// the radial dependence and wrongly gas-up Neptune, so igniters keep the legacy
+// clock. COMP_MDOT < 0 ⇒ legacy. CLOCK_COEFF (= 1/(ε·M⊙→M⊕·1e-6)) calibrated so
+// Sol's Jupiter core forms in ~1.7 Myr; ε≈0.11 core-capture is ~universal.
+let COMP_MDOT = -1.0; // budget gas accretion rate Ṁ [M⊙/yr], or <0
+const CLOCK_COEFF = 3.735e10; // t_form[Myr] = M_core / (Z · Ṁ · CLOCK_COEFF)
+function set_mdot(md) { COMP_MDOT = md; }
+function reset_mdot() { COMP_MDOT = -1.0; }
 const F_LODDERS_ICE = 3.5;
 const GAS_FRACTION = 0.95;
 const H_FRACTION = 0.74;

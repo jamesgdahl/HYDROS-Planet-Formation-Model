@@ -310,7 +310,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   const weights: Record<number, number> = {};
   for (const s of slot_data) {
     const r = fit_r(s);
-    const tf_casc = 0.10 * r / sl;
+    const tf_casc = formation_time(r, cores[s.slot_n], M_star, f_disc);
     const eligible = (cores[s.slot_n] > THRESHOLD_GAS) && (tf_casc < T_DISC_DISPERSAL_MYR);
     weights[s.slot_n] = eligible ? pebble_allocation_weight(r, M_star, f_disc) : 0.0;
   }
@@ -372,7 +372,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       && (is_immutable_planet || !any_isu);
     if (!gas_eligible) {
       // Sub-threshold rocky: total = core, t_form from cascade.
-      t_form = 0.10 * r / sl;
+      t_form = formation_time(r, core, M_star, f_disc);
       h_he = 0;
       total = core;
     } else if (should_bisect_t_form) {
@@ -399,14 +399,14 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         total = core + h_he;
       }
     } else {
-      t_form = 0.10 * r / sl;
+      t_form = formation_time(r, core, M_star, f_disc);
       h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
       total = core + h_he;
     }
 
     // Snapshot PRIMORDIAL composition (with cascade-default t_form, no
     // bisection, no stripping) — used by classifier for diagnostic tags.
-    const t_form_p = 0.10 * r / sl;
+    const t_form_p = formation_time(r, core, M_star, f_disc);
     const h_he_p = gas_eligible
       ? hydrogen_capture(core, t_form_p, spin, r, M_star, f_disc, omega) : 0;
     const primordial: Composition = {
@@ -2031,7 +2031,8 @@ function bruteFit(planets: Planet[], M_star: number,
 const SIGN_DRAIN_K = 17.6;  // φ = drain fraction of a +slot's solids = K·C² (cap 0.6)
 const SIGN_LEAK_K = 6.4;    // fraction a −slot passes further inward = K·C (cap 0.95)
 function apply_sign_modulation(slots: FitSlot[], C: number,
-                               R_disc: number, R_A: number): void {
+                               R_disc: number, R_A: number,
+                               M_star?: number, f_disc?: number): void {
   const phi = Math.min(0.6, SIGN_DRAIN_K * C * C);
   const leak = Math.min(0.95, SIGN_LEAK_K * C);
   if (!(phi > 0) || !(R_disc > 0) || !(R_A > 0)) return;
@@ -2057,6 +2058,11 @@ function apply_sign_modulation(slots: FitSlot[], C: number,
     lastBump.rock += acc; lastBump.core += acc; lastBump.predicted += acc;
   }
   for (const s of body) {
+    // refresh the formation clock from the FINAL (post-transfer) core, and the
+    // residual bookkeeping
+    if (M_star !== undefined && f_disc !== undefined) {
+      s.t_form = formation_time(s.slot_r, s.core, M_star, f_disc);
+    }
     if (s.observed > 0) {
       s.err_pct = (s.predicted - s.observed) / s.observed * 100;
       s.implied_dM = s.observed - s.predicted;
@@ -2126,6 +2132,11 @@ function budgetFit(planets: Planet[], budget: Budget,
     reset_snow_line();
     const fA = bisectF().f;
     set_snow_line(mulders_snow_line(M, Mdot_of(fA)));
+    // Non-igniter sub-disc: supply-limited formation clock (M_core/Z·ε·Ṁ) so the
+    // moons form in ~Myr, not the legacy AAF fudge's ~centuries. Igniters keep the
+    // legacy ∝r clock (preserves outer-planet gas timing). Moons are sub-threshold
+    // (no gas) ⇒ this is display-only; masses are unaffected.
+    if (M < IGNITION_MASS) set_mdot(Mdot_of(fA));
     const passB = bisectF();
     let f = passB.f;
     const fit = passB.fit;
@@ -2134,7 +2145,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     // mass match is preserved; only the per-slot distribution shifts.
     const om_for_RA = (omega !== undefined) ? omega : spin;
     const R_A_used = alfven_radius(M, om_for_RA);
-    apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used);
+    apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used, M, f);
     const tgt = sel(fit);
     const tot = tgt.reduce((a, s) => a + s.observed, 0);
     const resid = tot > 0
@@ -2153,5 +2164,5 @@ function budgetFit(planets: Planet[], budget: Budget,
       budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
       budget_Mdot: Mdot, budget_snow: mulders_snow_line(M, Mdot), budget_C: C,
     };
-  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); }
+  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); }
 }
