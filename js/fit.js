@@ -187,11 +187,15 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // interior cascade fit. They are evaluated afterward against the
     // exterior ladder anchored on the fitted dam.
     const kbo_bodies = planets.filter(p => p.kbo && (p.observed || 0) >= 0);
-    const observed_all = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+    // CORE COMPONENTS: catalog-flagged central fragments (co-primaries). Excluded
+    // from the cascade fit entirely (no slot, no anchor weight, no target) — they
+    // belong to the core that DRIVES the dams, not the products it forms.
+    const core_bodies = planets.filter(p => !!p.core && (p.observed || 0) > 0);
+    const observed_all = planets.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
     if (auto_compress && (spin === undefined || spin === null)) {
-        // Anchor search sees only the interior population — KBOs carry no
-        // weight in the cascade geometry.
-        spin = auto_spin_with_anchor_search(planets.filter(p => !p.kbo), M_star, f_disc).spin;
+        // Anchor search sees only the interior population — KBOs and core
+        // components carry no weight in the cascade geometry.
+        spin = auto_spin_with_anchor_search(planets.filter(p => !p.kbo && !p.core), M_star, f_disc).spin;
     }
     else if (spin === undefined || spin === null) {
         spin = 1.0;
@@ -962,12 +966,14 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             bound.interpretation = `Martian-type scatter remnant: ~${pct}% of the slot ${bound.slot_n} parent (${bound.predicted.toFixed(0)} M⊕), stripped and flung under the dam to ${p.r} AU`;
             continue;
         }
-        // STELLAR FRAGMENT: a stellar-mass body interior to R_A that the disc
-        // reservoir cannot form. It isn't a planet — the core's primordial spin
-        // exceeded breakup (λ_break ≈ breakup_spin(M_star)) and tore off a sibling
-        // star (rotational fragmentation; the binary channel). Alpha Cen B is the
-        // exemplar: 0.91 M☉ at 23.5 AU, interior to R_A, > the whole reservoir.
-        const is_stellar = m_obs > M_STELLAR_BOUNDARY;
+        // CORE COMPONENT: a stellar-mass body interior to R_A that the disc reservoir
+        // cannot form. It isn't a planet or a slot product — it's a central fragment
+        // (co-primary): the core's primordial spin exceeded breakup (λ_break ≈
+        // breakup_spin(M_star)) and tore off a sibling star (rotational fragmentation;
+        // the binary channel). Alpha Cen B is the exemplar: 0.91 M☉ at 23.5 AU,
+        // interior to R_A, > the whole reservoir. Together with the predicted main
+        // star it's a core component — both masses drive the dams + barycentre.
+        const is_core = m_obs > M_STELLAR_BOUNDARY || !!p.core;
         const lam_break = breakup_spin(M_star);
         results.push({
             slot_n: -1, slot_r: p.r, r_used: p.r,
@@ -977,10 +983,10 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             predicted: m_obs, observed: m_obs,
             err_pct: 0, implied_dM: 0,
             stripped: is_stripped(p, M_star), in_void: true, external: true,
-            interior: true, stellar_fragment: is_stellar,
+            core_component: is_core,
             primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
-            interpretation: is_stellar
-                ? `stellar fragment (interior to R_A): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation SIBLING STAR, not a slot product. Its mass exceeds the disc reservoir, and seating it demands a spin far past breakup (λ_break ≈ ${lam_break.toFixed(1)}): the core spun up beyond cohesion and tore in two (the binary channel).`
+            interpretation: is_core
+                ? `core component (co-primary): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation SIBLING STAR, not a slot product. Its mass exceeds the disc reservoir, and seating it demands a spin far past breakup (λ_break ≈ ${lam_break.toFixed(1)}): the core spun up beyond cohesion and tore in two (the binary channel). With the main star, both masses drive the dams + barycentre.`
                 : (is_small && stripping_freed > 0
                     && m_obs / stripping_freed >= 0.04
                     && m_obs / stripping_freed <= 0.12)
@@ -988,6 +994,22 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
                     : is_small
                         ? `interior to Alfven Dam (Martian-type scatter remnant: ~5-10% of a ${(m_obs / SURVIVOR_MASS_FRAC_MAX).toFixed(0)}-${(m_obs / SURVIVOR_MASS_FRAC_MIN).toFixed(0)} M⊕ parent, stripped and flung under the dam; parent slot indeterminate)`
                         : "interior to Alfven Dam (void: no slot at observed r — delivered inward by scattering or migration; formation slot indeterminate)",
+        });
+    }
+    // CORE COMPONENTS (catalog-flagged): central fragments / co-primaries, NOT
+    // slot products. Reported alongside the predicted main star as the system's
+    // core, whose summed mass drives the dams + barycentre. predicted := observed.
+    for (const p of core_bodies) {
+        const m_obs = p.observed || 0;
+        const lam_break = breakup_spin(M_star);
+        results.push({
+            slot_n: -1, slot_r: p.r, r_used: p.r,
+            filled: true, name: p.name,
+            rock: 0, ice: 0, pebble: 0, core: 0, t_form: 0, h_he: 0,
+            predicted: m_obs, observed: m_obs, err_pct: 0, implied_dM: 0,
+            stripped: false, in_void: true, external: true, core_component: true,
+            primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
+            interpretation: `core component (co-primary): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation sibling star (λ_break ≈ ${lam_break.toFixed(1)}), not a slot product. With the predicted main star, both masses drive the wind/field dams and the barycentre the products orbit.`,
         });
     }
     // KBO-class population (the Kuiper mechanism): a distinct entity
@@ -2175,9 +2197,18 @@ function budgetFit(planets, budget, lambda, parent) {
     const inverted = is_inverted_budget(M);
     set_composition(Z, f_rock);
     try {
-        const obs = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+        // Interior fit population: slot products only — core components (co-primary
+        // fragments) and KBOs (factory products) don't anchor the cascade.
+        const obs = planets.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
         const ordered = obs.slice().sort((a, b) => b.r - a.r);
-        const outermost = ordered.length ? ordered[0].r : 1.0;
+        // Anchor the dam to the outermost slot product; if a system has NO surviving
+        // slot products (e.g. Alpha Cen — all planets destroyed, only core + factory
+        // product left), fall back to the outermost body of any class so the dam
+        // still lands somewhere physical instead of the 1 AU default.
+        const anyBody = planets.filter(p => (p.observed || 0) > 0)
+            .slice().sort((a, b) => b.r - a.r);
+        const outermost = ordered.length ? ordered[0].r
+            : (anyBody.length ? anyBody[0].r : 1.0);
         const omega = (lambda !== undefined && lambda !== null) ? lambda : undefined;
         const spin = (omega !== undefined)
             ? spin_for_disc_radius(M, outermost, omega)
@@ -2230,12 +2261,12 @@ function budgetFit(planets, budget, lambda, parent) {
         reset_snow_line();
         const fA = bisectF().f;
         set_snow_line(mulders_snow_line(M, Mdot_of(fA)));
-        // Non-igniter sub-disc: supply-limited formation clock (M_core/Z·ε·Ṁ) so the
-        // moons form in ~Myr, not the legacy AAF fudge's ~centuries. Igniters keep the
-        // legacy ∝r clock (preserves outer-planet gas timing). Moons are sub-threshold
-        // (no gas) ⇒ this is display-only; masses are unaffected.
-        if (M < IGNITION_MASS)
-            set_mdot(Mdot_of(fA));
+        // Supply-limited formation clock for EVERY system (igniters + sub-cascades):
+        // t = M_core·(r/R_disc)/(Z·Ṁ·K). Set Ṁ on every fit (the gate to non-igniters
+        // is gone — igniters use the same clock, the r/R_disc + gas-starvation in Ṁ
+        // handle both the ice-giant ladder and the compact-CPD timing). t exceeding
+        // the disc lifetime ⇒ the body can't accrete in time ⇒ collapse-formed.
+        set_mdot(Mdot_of(fA));
         const passB = bisectF();
         let f = passB.f;
         const fit = passB.fit;

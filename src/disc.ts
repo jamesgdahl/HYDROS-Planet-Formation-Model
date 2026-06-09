@@ -190,14 +190,23 @@ function slope(M_star: number, f_disc: number): number {
   return m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * f_disc * ETA_ROCK / r_disc;
 }
 
-// Formation time [Myr]. Budget non-igniter sub-disc (COMP_MDOT set): the
-// SUPPLY-limited clock M_core/(Z·ε·Ṁ) — how long to build the core at the disc's
-// solid accretion rate. Else: the legacy 0.10·r/AAF (∝r — outer planets slower).
+// Formation time [Myr] — ONE clock for igniters and non-igniters (the old
+// 0.10·r/AAF was wrong: it used ABSOLUTE r, so it read ~0 for a compact moon
+// disc and ~31 Gyr for a body at 13,000 AU). The supply-limited clock is
+//   t = M_core / Ṁ_local,   Ṁ_local = Ṁ · (R_disc / r),
+// i.e. the local accretion rate falls ∝1/r (Σ·Ω·R_Hill²), so t scales UP with AU
+// (outer planets slower → Sol's ice-giant ladder) while the gas-starvation term
+// in Ṁ keeps a compact CPD at ~Myr (the Galilean fix). Normalising by R_disc
+// (not absolute r) is what tames the 13,000 AU case. No ignition cap — an
+// igniter keeps accreting H/He into its envelope after it lights; formation just
+// runs until the gas disc disperses (the exp(−k·t) gas depletion does the rest).
+// A t_form exceeding the disc lifetime means the body can't assemble by
+// accretion → it is collapse-formed (a star), flagged downstream.
 function formation_time(r: number, core: number, M_star: number, f_disc: number): number {
-  if (COMP_MDOT > 0 && core > 0) {
-    return core / (COMP_Z * COMP_MDOT * CLOCK_COEFF);
+  if (COMP_MDOT > 0 && core > 0 && COMP_R_DISC > 0 && r > 0) {
+    return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF);
   }
-  return 0.10 * r / slope(M_star, f_disc);
+  return 0.10 * r / slope(M_star, f_disc);   // fallback: non-budget legacy systems
 }
 
 function intercept(M_star: number, spin: number): number {

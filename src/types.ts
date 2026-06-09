@@ -20,6 +20,13 @@ interface Planet {
    *  evaluated against the exterior ladder r = R_disc·(1/ρ)^n
    *  (half-integer rungs) anchored on the fitted Davis Dam. */
   kbo?: boolean;
+  /** CORE COMPONENT: a central fragment of the (over-spun) core, NOT a slot
+   *  product. The predicted main star + any `core` bodies are the system's core
+   *  components; their masses SUM to drive the wind pressure (Davis Dam), the
+   *  magnetic field (Alfvén Dam) and the barycentre the slot/factory products
+   *  orbit. Excluded from the cascade fit (predicted := observed). Alpha Cen B
+   *  is the exemplar — a rotational-fragmentation co-primary. */
+  core?: boolean;
 }
 
 interface SystemInputs {
@@ -90,13 +97,16 @@ interface FitSlot {
   // is the fit; mass calculus deferred (predicted := observed) —
   // excluded from f-bisection target. slot_n = -n (negative rung).
   exterior?: boolean;
-  // INTERIOR body: observed INSIDE R_A, where no cascade slot exists (the
-  // symmetric counterpart of `exterior`). Excluded from the fit target.
-  // `stellar_fragment` marks the special case where the body is stellar-mass
-  // and the reservoir can't form it: a rotational-fragmentation sibling — the
-  // core's spin exceeded breakup and tore off a second star (e.g. Alpha Cen B).
-  interior?: boolean;
-  stellar_fragment?: boolean;
+  // CORE COMPONENT: a central fragment (co-primary), not a slot product. The
+  // predicted main star + any core components are the system's core; their
+  // masses SUM to drive the wind pressure (Davis Dam), the magnetic field
+  // (Alfvén Dam) and the barycentre the slot/factory products orbit. Excluded
+  // from the cascade fit (predicted := observed). A stellar-mass body observed
+  // interior to R_A that the reservoir can't form IS one: a rotational-
+  // fragmentation sibling — the core's spin exceeded breakup and tore off a
+  // second star (Alpha Cen B). Replaces the earlier interior/stellar_fragment
+  // pair — they were the same thing.
+  core_component?: boolean;
   // Wrecking-class ledger: condensables of the interior slots this
   // migrant traversed and ate en route to its parking seat. Arrives
   // POST-H/He accumulation (heavy-element enrichment; not fed into the

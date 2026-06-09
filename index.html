@@ -67,6 +67,17 @@
   <table>
     <thead>
       <tr>
+        <th title="Core components (co-primary central fragments, e.g. Alpha Cen B): NOT slot products — the core's spin exceeded breakup and tore off a sibling star. Excluded from the cascade fit; their masses drive the wind/field dams + barycentre alongside the main star.">Core component (co-primary)</th>
+        <th>a (AU)</th>
+        <th>Observed M (M<sub>☉</sub>)</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="core-rows"></tbody>
+  </table>
+  <table style="margin-top: 0.6rem;">
+    <thead>
+      <tr>
         <th>Name</th>
         <th>r (AU)</th>
         <th>Observed M (M<sub>⊕</sub>)</th>
@@ -87,6 +98,7 @@
     </thead>
     <tbody id="kbo-rows"></tbody>
   </table>
+  <button id="add-core">+ Add core component</button>
   <button id="add-kbo">+ Add KBO</button>
   <button id="add-planet">+ Add planet</button>
   <button id="fill-predicted">+ Fill predicted slots</button>
@@ -331,9 +343,44 @@ function addPlanetRow(planet = {}) {
 }
 
 function setPlanets(planets) {
+  document.getElementById("core-rows").innerHTML = "";
   document.getElementById("planet-rows").innerHTML = "";
   document.getElementById("kbo-rows").innerHTML = "";
-  planets.forEach(p => p.kbo ? addKBORow(p) : addPlanetRow(p));
+  planets.forEach(p => p.core ? addCoreRow(p) : p.kbo ? addKBORow(p) : addPlanetRow(p));
+}
+
+// CORE COMPONENTS (co-primary central fragments, e.g. Alpha Cen B): a distinct
+// class — NOT slot products. Masses entered in M☉ (these are stars); converted
+// to M⊕ at the model boundary. Excluded from the cascade fit; the fit reports
+// them as 'core' and sums their mass with the main star for the dams/barycentre.
+const M_EARTH_PER_MSUN_OBS = 332946;  // current solar mass in Earth masses
+function getCoreComponents() {
+  const rows = document.querySelectorAll("#core-rows tr");
+  const core = [];
+  rows.forEach((row) => {
+    const inputs = row.querySelectorAll('input[type="text"], input[type="number"]');
+    if (inputs.length < 3) return;
+    const m_sol = parseFloat(inputs[2].value);
+    core.push({
+      name: inputs[0].value,
+      r: parseFloat(inputs[1].value),
+      observed: isFinite(m_sol) ? m_sol * M_EARTH_PER_MSUN_OBS : 0,  // M☉ → M⊕
+      core: true,
+    });
+  });
+  return core;
+}
+
+function addCoreRow(c = {}) {
+  const tbody = document.getElementById("core-rows");
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input type="text" value="${c.name || ''}"></td>
+    <td><input type="number" step="any" value="${c.r ?? 20}"></td>
+    <td><input type="number" step="any" value="${c.observed != null ? +(c.observed / M_EARTH_PER_MSUN_OBS).toPrecision(6) : 0}"></td>
+    <td><button class="delete-btn" onclick="this.closest('tr').remove()">×</button></td>
+  `;
+  tbody.appendChild(tr);
 }
 
 // KBO-class population (dam-exterior cohort): a DISTINCT entity with
@@ -420,7 +467,7 @@ function errClass(errPct) {
 
 function calculate() {
   const inp = getInputs();
-  const planets = getPlanets().concat(getKBOs());
+  const planets = getPlanets().concat(getKBOs()).concat(getCoreComponents());
   // v6: the inputs ARE a conserved budget. Run the shared budgetFit to DERIVE
   // mass, Z, f_rock, the archaic-spin Alfvén Dam, f_disc, snow line and Ṁ; park
   // the composition / anchored-dam / snow-line / clock contexts so the
@@ -571,8 +618,12 @@ function calculate() {
   // not lattice slots — display in ascending AU (mint order), not slot order
   // (the slot index is non-monotonic with AU once the factory interleaves).
   const inverted_disp = C >= 1.0;
-  const rows = fit.slots.slice().sort((x, y) =>
-    inverted_disp ? (x.slot_r - y.slot_r) : (y.slot_n - x.slot_n));
+  // Core components (co-primary fragments) render FIRST — they're the central
+  // body alongside the main star, not slot products — then the cascade slots.
+  const rows = fit.slots.slice().sort((x, y) => {
+    if (!!x.core_component !== !!y.core_component) return x.core_component ? -1 : 1;
+    return inverted_disp ? (x.slot_r - y.slot_r) : (y.slot_n - x.slot_n);
+  });
 
   // Always show all 11 cascade slots — the framework's slot count is
   // universal. Inner slots may have tiny primordial allocations or sit
@@ -646,7 +697,7 @@ function calculate() {
     }
     tr.innerHTML = `
       <td>${name}</td>
-      <td>${s.interior ? 'int' : s.exterior ? 'ext' : s.slot_n}</td>
+      <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? 'ext' : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
       <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
       <td>${fmt(s.t_form, 2)}</td>
@@ -977,7 +1028,7 @@ function renderTides(fit, M_star, spin, f_disc, strip) {
 
 function fillPredictedSlots() {
   const inp = getInputs();
-  const existing = getPlanets();
+  const existing = getPlanets().concat(getCoreComponents());
   // v6: derive the geometry from the conserved budget (shared budgetFit), then
   // use the slot-aware assignment so migrated planets occupy their FORMATION
   // slot rather than the slot nearest their current AU.
@@ -1285,7 +1336,7 @@ function findBestFit() {
   // Then write λ to the spin field and let calculate() re-derive everything.
   const inp = getInputs();
   const budget = inp.budget, parent = inp.parent;
-  const pl = getPlanets().concat(getKBOs());
+  const pl = getPlanets().concat(getKBOs()).concat(getCoreComponents());
   const obs = pl.filter(p => !p.kbo && (p.observed || 0) > 0);
   const M = mass_from_budget(budget);
   const evalLam = (lam) => {
@@ -1355,7 +1406,7 @@ function saveCurrentAsPreset() {
     return;
   }
   const inp = getInputs();
-  const planets = getPlanets().concat(getKBOs());
+  const planets = getPlanets().concat(getKBOs()).concat(getCoreComponents());
   const map = loadUserPresets();
   // v6: store the conserved budget at top level, matching loadPreset's schema.
   map[id] = {
@@ -1402,6 +1453,7 @@ function deleteCurrentUserPreset() {
 // Wire up controls
 document.getElementById("add-planet").onclick = () => addPlanetRow();
 document.getElementById("add-kbo").onclick = () => addKBORow();
+document.getElementById("add-core").onclick = () => addCoreRow();
 document.getElementById("fill-predicted").onclick = fillPredictedSlots;
 document.getElementById("find-fit").onclick = findBestFit;
 document.getElementById("calculate").onclick = calculate;

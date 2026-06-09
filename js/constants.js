@@ -64,17 +64,19 @@ function reset_r_disc_norm() { COMP_R_DISC = -1.0; }
 let COMP_R_SNOW = -1.0;
 function set_snow_line(r) { COMP_R_SNOW = r; }
 function reset_snow_line() { COMP_R_SNOW = -1.0; }
-// FORMATION-CLOCK OVERRIDE (v6 budget wiring). The legacy formation time
-// t_form = 0.10·r/AAF is fine for a spread stellar disc (its ∝r keeps outer
-// planets forming slowly → ice giants) but ABSURD for a compact sub-cascade
-// (the anchored-dam AAF is huge ⇒ the Galilean moons "form" in ~185 yr). The
-// supply-limited clock t_form = M_core/(Z·ε·Ṁ) gives ~Myr there. It's set ONLY
-// for a parent-fed (non-igniter) sub-disc — for an igniter (Sol) it would lose
-// the radial dependence and wrongly gas-up Neptune, so igniters keep the legacy
-// clock. COMP_MDOT < 0 ⇒ legacy. CLOCK_COEFF (= 1/(ε·M⊙→M⊕·1e-6)) calibrated so
-// Sol's Jupiter core forms in ~1.7 Myr; ε≈0.11 core-capture is ~universal.
+// FORMATION CLOCK (v6 budget wiring) — ONE supply-limited clock for igniters
+// AND non-igniters: t_form = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF). The local
+// accretion rate Ṁ_local = Ṁ·(R_disc/r) falls ∝1/r, so t scales UP with AU
+// (Sol's ice-giant ladder) while the gas-starvation term in Ṁ keeps a compact
+// CPD at ~Myr (Galileans). Normalising by R_disc (not absolute r) tames the
+// 13,000 AU case (Proxima 31 Gyr → 1.2 Gyr). COMP_MDOT is now set on EVERY
+// budget fit (igniters too); <0 only on the non-budget legacy path (which keeps
+// the 0.10·r/AAF fallback). FORM_CLOCK_COEFF calibrated so Sol's Jupiter forms
+// in ~1.9 Myr (Neptune ~9.8 → ice giant). No ignition cap — the envelope keeps
+// growing after the star lights; t_form > disc lifetime ⇒ collapse-formed.
 let COMP_MDOT = -1.0; // budget gas accretion rate Ṁ [M⊙/yr], or <0
-const CLOCK_COEFF = 3.735e10; // t_form[Myr] = M_core / (Z · Ṁ · CLOCK_COEFF)
+const FORM_CLOCK_COEFF = 6.669e9; // t[Myr] = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF)
+const CLOCK_COEFF = FORM_CLOCK_COEFF; // legacy alias (unused; kept for safety)
 function set_mdot(md) { COMP_MDOT = md; }
 function reset_mdot() { COMP_MDOT = -1.0; }
 const F_LODDERS_ICE = 3.5;

@@ -208,9 +208,10 @@ function printSlotTable(sys, r) {
   }
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
-  for (const s of [...r.fit.slots].sort((a, b) => b.slot_n - a.slot_n)) {
+  for (const s of [...r.fit.slots].sort((a, b) =>
+    (!!a.core_component !== !!b.core_component) ? (a.core_component ? -1 : 1) : (b.slot_n - a.slot_n))) {
     const name = (s.filled || s.exterior) ? s.name : `(slot ${s.slot_n})`;
-    const lbl = s.interior ? 'int' : s.exterior ? 'ext' : String(s.slot_n);
+    const lbl = s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? 'ext' : String(s.slot_n);
     const obs = s.observed > 0 ? fmtMass(s.observed) : '—';
     const pred = fmtMass(s.predicted);
     const dm = (s.filled && s.observed > 0 && !s.exterior)
