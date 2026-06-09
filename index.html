@@ -43,11 +43,14 @@
 <fieldset>
   <legend>System inputs</legend>
   <div class="input-grid">
-    <label title="Primordial-solar units: 1.0 ≡ 1.14 current M☉">M★ primordial (Sol 1.0)<input id="M_star" type="number" step="0.01" value="1.0"></label>
-    <label title="Stellar rotation Ω (Sol 1.0) — the INNER jaw. Sets the Alfvén Dam R_A = 0.20·M★·Ω^(4/7), capped at breakup. Independent of nebula density (v5: jaw-lock dropped).">Spin / rotation Ω (Sol 1.0) <input id="spin" type="number" step="0.1" value="1.0"></label>
-    <label title="Formation-cloud density D (Sol 1.0 ≈ 1e6 H₂ cm⁻³) — the OUTER jaw. Sets the Davis Dam R_disc = 30.07·M★·D^(−1/3), capped at ~100. Independent of spin (v5: jaw-lock dropped).">Nebula density (Sol 1.0) <input id="nebula_density" type="number" step="0.1" value="1.0"></label>
-    <label>Protoplanetary Disc/Star mass ratio (Sol 0.01)<input id="f_disc" type="number" step="0.005" value="0.01"></label>
-    <label title="Close stellar encounter edited this cascade (truncation, stirring, inward debris)"><input id="strip_on" type="checkbox" style="width:auto;"> Gravitational stripping</label>
+    <label title="Conserved ROCK budget — total silicate/iron mass allocated to the system, in Earth masses (Sol ≈ 1169 M⊕). Total mass, metallicity Z and f_rock are all DERIVED from the rock/ice/H budget.">Rock budget (M⊕)<input id="b_rock" type="number" step="any" value="1169.04"></label>
+    <label title="Conserved ICE budget — total water/volatile mass, in Earth masses (Sol ≈ 4145 M⊕). Pebbles fold into rock/ice, not a separate input.">Ice budget (M⊕)<input id="b_ice" type="number" step="any" value="4144.778"></label>
+    <label title="Conserved H/He budget — total hydrogen/helium mass, in Earth masses (Sol ≈ 374245 M⊕, ~99% ends up in the star). The disc's f_disc share feeds the gas envelopes; the rest closes onto the star.">H/He budget (M⊕)<input id="b_hydrogen" type="number" step="any" value="374244.62"></label>
+    <label title="Primordial spin λ (Sol 1.0) — inherited angular momentum. Sets the Alfvén Dam R_A and (via the dam) the regime; the Davis Dam / disc radius is derived to anchor the outermost body.">Spin λ (Sol 1.0) <input id="spin" type="number" step="0.1" value="1.0"></label>
+    <label title="OBSERVED PRIMORDIAL mass of the central body in Sol-primordial units (Sol=1 ≡ 1.14 current M☉). For a sub-cascade it's the central planet. The budget PREDICTS this as the reservoir minus the bodies it shed; predicted-vs-observed shows in the derived panel.">Observed stellar mass (Sol=1, primordial)<input id="obs_star" type="number" step="any" value="1.0"></label>
+    <label title="Close stellar encounter edited this cascade (truncation, stirring, inward debris). Toggle on to reveal the encounter parameters."><input id="strip_on" type="checkbox" style="width:auto;"> Gravitational stripping</label>
+  </div>
+  <div class="input-grid" id="encounter-inputs" style="display:none;margin-top:0.5rem;">
     <label>Perturber mass M_pert (Sol-primordial units)<input id="strip_mpert" type="number" step="0.05" value="0.44"></label>
     <label>Encounter periapsis q (AU; blank = best-fit)<input id="strip_q" type="number" step="0.5"></label>
     <label title="Bound companion: semi-major axis of the perturber's orbit. When set, the encounter is a RECURRING tide (standing tide-dam, conveyor erosion, water ledger) rather than a one-shot flyby.">Companion a_bin (AU; blank = one-shot flyby)<input id="strip_abin" type="number" step="1"></label>
@@ -179,13 +182,16 @@ function buildPresetDropdown() {
     { label: "Gas giant",          min:    0, max: 0.012 },
   ];
 
+  // Mass (Sol-primordial units) from the conserved budget.
+  const sysMassPrim = (s) => mass_from_budget(s.budget);
   const groups = bins.map(b => ({ ...b, systems: [] }));
   for (const sys of (window.EXOPLANETS || [])) {
-    const m = sys.inputs.M_star * 1.14;  // bins are in current M_sun
+    if (!sys.budget) continue;   // v6: only conserved-budget systems are fittable
+    const m = sysMassPrim(sys) * 1.14;  // bins are in current M_sun
     const bin = groups.find(g => m >= g.min && m < g.max);
     if (bin) bin.systems.push(sys);
   }
-  for (const g of groups) g.systems.sort((a, b) => b.inputs.M_star - a.inputs.M_star);
+  for (const g of groups) g.systems.sort((a, b) => sysMassPrim(b) - sysMassPrim(a));
 
   for (const g of groups) {
     if (!g.systems.length) continue;
@@ -194,7 +200,7 @@ function buildPresetDropdown() {
     for (const sys of g.systems) {
       const opt = document.createElement("option");
       opt.value = sys.id;
-      opt.textContent = `${sys.name} (${sys.inputs.M_star.toFixed(2)} M☉)`;
+      opt.textContent = `${sys.name} (${(sysMassPrim(sys) * 1.14).toFixed(2)} M☉)`;
       og.appendChild(opt);
     }
     sel.appendChild(og);
@@ -215,11 +221,20 @@ const PRESETS_READY = Promise.resolve();
 // ============================================================
 
 function getInputs() {
+  // v6: inputs ARE the conserved budget {rock, ice, hydrogen} (Earth masses) +
+  // primordial spin λ. Mass, Z, f_rock, f_disc and the dams are all DERIVED.
   const inp = {
-    M_star: parseFloat(document.getElementById("M_star").value),
+    budget: {
+      rock: parseFloat(document.getElementById("b_rock").value) || 0,
+      ice: parseFloat(document.getElementById("b_ice").value) || 0,
+      hydrogen: parseFloat(document.getElementById("b_hydrogen").value) || 0,
+    },
     spin: parseFloat(document.getElementById("spin").value),
-    nebula_density: parseFloat(document.getElementById("nebula_density").value),
-    f_disc: parseFloat(document.getElementById("f_disc").value),
+    // Observed central-body mass (M☉) — the budget predicts it.
+    star: parseFloat(document.getElementById("obs_star").value),
+    // The parent slot {a, M} for a sub-cascade (gas-starvation C); carried by
+    // the preset, kept across manual edits. Null ⇒ self-fed primary.
+    parent: window.CURRENT_PARENT || null,
   };
   if (document.getElementById("strip_on").checked) {
     const qv = document.getElementById("strip_q").value;
@@ -235,31 +250,19 @@ function getInputs() {
   return inp;
 }
 
-// Jaw-lock sync: nebula density D (outer jaw, Davis Dam) and spin Ω
-// (inner jaw record) are two readings of one dial under the default
-// lock Ω = D^(2/3) — Sol: spin 1, density 1, dam at 30.07 AU.
-function syncDensityFromSpin() {
-  const s = parseFloat(document.getElementById("spin").value);
-  if (isFinite(s) && s > 0) {
-    document.getElementById("nebula_density").value =
-      +Math.pow(s, 1.5).toPrecision(6);
-  }
-}
-function syncSpinFromDensity() {
-  const D = parseFloat(document.getElementById("nebula_density").value);
-  if (isFinite(D) && D > 0) {
-    document.getElementById("spin").value =
-      +Math.pow(D, 2 / 3).toPrecision(6);
-  }
-}
-
 function setInputs(inp) {
-  document.getElementById("M_star").value = inp.M_star;
-  document.getElementById("spin").value = inp.spin;
-  document.getElementById("f_disc").value = inp.f_disc;
-  document.getElementById("nebula_density").value =
-    (inp.nebula_density != null && isFinite(inp.nebula_density))
-      ? inp.nebula_density : +Math.pow(inp.spin, 1.5).toPrecision(6);
+  if (inp.budget) {
+    document.getElementById("b_rock").value = inp.budget.rock;
+    document.getElementById("b_ice").value = inp.budget.ice;
+    document.getElementById("b_hydrogen").value = inp.budget.hydrogen;
+  }
+  if (inp.spin != null && isFinite(inp.spin)) {
+    document.getElementById("spin").value = inp.spin;
+  }
+  if (inp.star != null && isFinite(inp.star)) {
+    document.getElementById("obs_star").value = inp.star;
+  }
+  window.CURRENT_PARENT = inp.parent || null;
   // Kinetic regime (impact-vapor natal disc, e.g. Earth/Theia):
   // carried as a preset flag, threaded into slot_aware_fit.
   window.CURRENT_KINETIC = !!inp.kinetic;
@@ -269,6 +272,7 @@ function setInputs(inp) {
   window.CURRENT_L = (inp.L && inp.L > 0) ? inp.L : null;
   const on = !!inp.stripping;
   document.getElementById("strip_on").checked = on;
+  document.getElementById("encounter-inputs").style.display = on ? "" : "none";
   if (on) {
     document.getElementById("strip_mpert").value = inp.stripping.M_pert ?? 0.5;
     document.getElementById("strip_q").value =
@@ -361,44 +365,20 @@ function addKBORow(k = {}) {
 
 function loadPreset(name) {
   const preset = PRESETS[name];
-  // Clear any budget contexts from a previously-loaded budget preset, so a
-  // legacy {M,D,spin,f_disc} preset renders with the universal composition.
+  // Every preset is a conserved-budget system: { budget {rock,ice,hydrogen} M⊕,
+  // archaic spin λ, optional parent slot }. Just populate the budget form;
+  // calculate() runs the shared budgetFit and parks the derived contexts.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
   window.CURRENT_BUDGET = null;
-
-  // v6 BUDGET PRESET: inputs are a conserved budget {rock,ice,hydrogen} (+ an
-  // archaic spin λ), not (M,D,spin,f_disc). Derive everything via the shared
-  // budgetFit, then translate to the UI's decoupled-jaw inputs (spin-field = ω
-  // = λ; nebula_density → the density dial that anchors the dam) and SET the
-  // composition / anchored-dam contexts persistently so calculate()'s
-  // slot_aware_fit reproduces the budget fit exactly.
-  if (preset.budget) {
-    const bp = preset.planets.map(p => ({ ...p }));
-    const r = budgetFit(bp, preset.budget, preset.spin, preset.parent);
-    set_composition(r.budget_Z, r.budget_f_rock);
-    const obs = bp.filter(p => !p.kbo && (p.observed || 0) > 0);
-    const outermost = obs.reduce((m, p) => Math.max(m, p.r), 0);
-    set_r_disc_norm(outermost);
-    // budgetFit resets the snow-line context on exit; re-park the DERIVED
-    // (Mulders, from the unified accretion rate) value so calculate()'s
-    // slot_aware_fit reproduces the budget composition (Io dry, etc.).
-    set_snow_line(r.budget_snow);
-    // Non-igniter sub-disc: supply-limited formation clock (moons form in ~Myr).
-    if (r.budget_M < 0.08) set_mdot(r.budget_Mdot);
-    window.CURRENT_BUDGET = { budget: preset.budget, parent: preset.parent,
-                             spin: preset.spin, ...r };
-    setInputs({
-      M_star: r.budget_M,
-      spin: (r.omega_rot != null) ? r.omega_rot : r.spin,
-      nebula_density: r.nebula_density,
-      f_disc: r.f_disc,
-      L: preset.inputs ? preset.inputs.L : undefined,
-    });
-    setPlanets(preset.planets);
-    calculate();
-    return;
-  }
-  setInputs(preset.inputs);
+  setInputs({
+    budget: preset.budget,
+    spin: (preset.spin != null) ? preset.spin : 1.0,
+    parent: preset.parent || null,
+    star: preset.star,
+    stripping: preset.stripping,
+    L: preset.L,
+    kinetic: preset.kinetic,
+  });
   setPlanets(preset.planets);
   calculate();
 }
@@ -427,20 +407,25 @@ function errClass(errPct) {
 function calculate() {
   const inp = getInputs();
   const planets = getPlanets().concat(getKBOs());
-  const { M_star, spin, f_disc } = inp;
-  // v5 DECOUPLED: nebula density D → Davis Dam (geometry); spin → Alfvén
-  // Dam (rotation ω). The codebase's "spin" arg is the geometry/density
-  // dial, so pass spin_geom = D^(2/3) there and omega = the rotation.
-  const D = (isFinite(inp.nebula_density) && inp.nebula_density > 0)
-    ? inp.nebula_density : Math.pow(spin, 1.5);   // legacy presets: D from spin
-  const spin_geom = spin_from_nebula_density(D);
-  const omega = spin;
+  // v6: the inputs ARE a conserved budget. Run the shared budgetFit to DERIVE
+  // mass, Z, f_rock, the archaic-spin Alfvén Dam, f_disc, snow line and Ṁ; park
+  // the composition / anchored-dam / snow-line / clock contexts so the
+  // slot_aware_fit below reproduces the budget fit exactly; expose CURRENT_BUDGET
+  // for the diagnostics panel + the sign-modulation / hydrogen-conservation pass.
+  reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
+  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent);
+  set_composition(rB.budget_Z, rB.budget_f_rock);
+  const obsB = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+  const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
+  if (outermostB > 0) set_r_disc_norm(outermostB);
+  set_snow_line(rB.budget_snow);
+  if (rB.budget_M < 0.08) set_mdot(rB.budget_Mdot);
+  window.CURRENT_BUDGET = { budget: inp.budget, parent: inp.parent, spin: inp.spin, ...rB };
 
-  // spin is intentionally NOT auto-overridden here. Some systems have
-  // undetected outer planets (RV detection bias at long periods) and
-  // anchoring R_disc to the outermost observed planet would put slot 0
-  // at the wrong radius. findBestFit auto-derives spin; user can edit
-  // it back manually if a long-period body is suspected.
+  const M_star = rB.budget_M;       // derived total mass (Sol-primordial units)
+  const f_disc = rB.f_disc;         // derived disc fraction (the gas reservoir)
+  const spin_geom = rB.spin;        // geometry spin that anchors the Davis Dam
+  const omega = (rB.omega_rot != null) ? rB.omega_rot : rB.spin;  // archaic λ → R_A
 
   // Derived properties. R_disc is f_disc-aware: in the inverted regime the
   // disc weight plunges the Davis Dam below R_A (the density only inverts).
@@ -474,14 +459,25 @@ function calculate() {
       }</span>`
     : "";
 
-  const D_neb = D;
-  // v6 budget diagnostics: when a conserved-budget preset is loaded, show the
-  // derived composition + the archaic-spin Alfvén Dam that the satellite
-  // configuration implied (its present rotation is not primordial).
+  const D_neb = rB.nebula_density;   // derived diagnostic (from the geometry spin)
+  // v6 budget diagnostics: show the derived composition + the archaic-spin
+  // Alfvén Dam that the satellite configuration implied (present rotation isn't
+  // primordial). bg is always set — calculate() runs budgetFit on the inputs.
   const bg = window.CURRENT_BUDGET;
+  // Star as a fitted body: predicted central mass = the conserved reservoir
+  // minus every body it shed (the dispersed gas closes back onto it). This is the
+  // PRIMORDIAL formation mass, so it's expressed in Sol-primordial units (Sol=1,
+  // ≡ M_SUN_TO_EARTH=379558 M⊕ ≡ 1.14 current M☉) and compared to the observed
+  // stellar mass entered in the SAME primordial units.
+  const budgetTotalMe = inp.budget.rock + inp.budget.ice + inp.budget.hydrogen;
+  let bodyMe = 0;
+  for (const s of rB.fit.slots) if (s.filled && s.predicted > 0) bodyMe += s.predicted;
+  const predStarMsun = (budgetTotalMe - bodyMe) / M_SUN_TO_EARTH;   // primordial (Sol=1)
+  const obsStarMsun = inp.star;                                     // primordial (Sol=1)
+  const starErr = (obsStarMsun > 0) ? (predStarMsun - obsStarMsun) / obsStarMsun * 100 : NaN;
   const budgetLine = bg ? `
-    <span class="label">Budget (Sol=1):</span> <span class="value">rock ${fmt(bg.budget.rock, 4)}, ice ${fmt(bg.budget.ice, 4)}, H ${fmt(bg.budget.hydrogen, 5)}</span> &nbsp;
-    <span class="label">→ M:</span> <span class="value">${fmt(bg.budget_M, 5)} M☉</span> &nbsp;
+    <span class="label">Budget (M⊕):</span> <span class="value">rock ${fmt(bg.budget.rock, 1)}, ice ${fmt(bg.budget.ice, 1)}, H ${fmt(bg.budget.hydrogen, 0)}</span> &nbsp;
+    <span class="label">Stellar mass (primordial):</span> <span class="value ${isFinite(starErr) ? errClass(starErr) : ''}">pred ${fmt(predStarMsun, 4)} / obs ${fmt(obsStarMsun, 4)} M☉ₚ (${isFinite(starErr) ? (starErr >= 0 ? '+' : '') + fmt(starErr, 1) + '%' : '—'})</span> &nbsp;
     <span class="label">Z:</span> <span class="value">${fmt(bg.budget_Z, 4)}</span> &nbsp;
     <span class="label">f_rock:</span> <span class="value">${fmt(bg.budget_f_rock, 3)}</span> &nbsp;
     <span class="label">archaic spin λ:</span> <span class="value">${fmt(bg.budget_lambda, 2)}</span> &nbsp;
@@ -547,7 +543,7 @@ function calculate() {
     if (dn) dn.forEach(n => deliveryNames.add(n));
   } catch (e) { console.warn('forensics:', e); }
   try {
-    tideRx = renderTides(fit, M_star, spin, f_disc, strip_active ? strip : null) || [];
+    tideRx = renderTides(fit, M_star, spin_geom, f_disc, strip_active ? strip : null) || [];
   } catch (e) { console.warn('tides:', e); }
   const hz = habitable_zone(M_star, window.CURRENT_L);
 
@@ -967,17 +963,21 @@ function renderTides(fit, M_star, spin, f_disc, strip) {
 
 function fillPredictedSlots() {
   const inp = getInputs();
-  let { M_star, spin, f_disc } = inp;
   const existing = getPlanets();
-  // Use the slot-aware assignment so migrated planets (e.g. Saturn observed
-  // at 9.58 AU, formed at slot 2 = 12.57 AU) are correctly identified as
-  // occupying their FORMATION slot rather than the slot nearest their
-  // current AU. Without this, fill would add a spurious "predicted" planet
-  // at the formation slot even though it's already filled.
-  if (spin === undefined || spin === null || isNaN(spin)) {
-    spin = auto_spin_with_anchor_search(existing, M_star, f_disc).spin;
-  }
-  const slot_data = assign_planets_to_slots(existing, M_star, spin, f_disc);
+  // v6: derive the geometry from the conserved budget (shared budgetFit), then
+  // use the slot-aware assignment so migrated planets occupy their FORMATION
+  // slot rather than the slot nearest their current AU.
+  reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
+  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent);
+  set_composition(rB.budget_Z, rB.budget_f_rock);
+  const obsB = existing.filter(p => (p.observed || 0) > 0);
+  const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
+  if (outermostB > 0) set_r_disc_norm(outermostB);
+  set_snow_line(rB.budget_snow);
+  if (rB.budget_M < 0.08) set_mdot(rB.budget_Mdot);
+  const M_star = rB.budget_M, f_disc = rB.f_disc, spin = rB.spin;
+  const omega = (rB.omega_rot != null) ? rB.omega_rot : rB.spin;
+  const slot_data = assign_planets_to_slots(existing, M_star, spin, f_disc, omega);
   const sl = slope(M_star, f_disc);
   let added = 0;
   for (const s of slot_data) {
@@ -1264,94 +1264,41 @@ function bisectionPass(planets, targets, M_star, spin, f_disc, r_snow, R_disc, c
 }
 
 function findBestFit() {
+  // v6: the inputs ARE the conserved budget; the one free parameter is the
+  // ARCHAIC spin λ (it sets R_A → the sign-modulation depth, and the dam anchor).
+  // For a non-igniter sub-disc with ≥2 satellites, scan λ to minimise the
+  // satellite mass residual (the archaic-spin determination); otherwise hold λ.
+  // Then write λ to the spin field and let calculate() re-derive everything.
   const inp = getInputs();
-  const { M_star, f_disc } = inp;
-  const planets_initial = getPlanets().concat(getKBOs());
-
-  // v6 BUDGET preset: the inputs are the conserved budget, not (M,D,spin,f_disc),
-  // so bruteFit doesn't apply. The one free parameter is the ARCHAIC spin λ (sets
-  // R_A → the sign-modulation depth). For a non-igniter sub-disc, scan λ to
-  // minimize the satellite mass residual (the archaic-spin determination); for an
-  // igniter (jaw-locked) there's no free λ, so just re-derive. Then set the
-  // composition/snow-line/clock contexts and render.
-  const bgNow = window.CURRENT_BUDGET;
-  if (bgNow) {
-    const budget = bgNow.budget, parent = bgNow.parent;
-    const pl = getPlanets().concat(getKBOs());
-    const obs = pl.filter(p => !p.kbo && (p.observed || 0) > 0);
-    const evalLam = (lam) => {
-      const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent);
-      let sse = 0, n = 0;
-      for (const p of obs) {
-        const s = rr.fit.slots.find(x => x.filled && x.name === p.name);
-        if (s && p.observed > 0) { const e = (s.predicted - p.observed) / p.observed; sse += e * e; n++; }
-      }
-      return { rms: n ? Math.sqrt(sse / n) : Infinity, r: rr };
-    };
-    let best;
-    if (bgNow.budget_M < 0.08 && obs.length >= 2) {        // non-igniter: scan λ
-      best = null;
-      for (let lam = 20; lam <= 120; lam += 4) {
-        const x = evalLam(lam); if (!best || x.rms < best.rms) best = { lam, ...x };
-      }
-      for (let lam = best.lam - 4; lam <= best.lam + 4; lam += 0.5) {
-        const x = evalLam(lam); if (x.rms < best.rms) best = { lam, ...x };
-      }
-      console.log(`findBestFit (budget): archaic spin λ=${best.lam.toFixed(1)}, satellite RMS ${(best.rms * 100).toFixed(2)}%`);
-    } else {                                                // igniter: jaw-lock, no free λ
-      best = { lam: bgNow.spin, ...evalLam(bgNow.spin) };
+  const budget = inp.budget, parent = inp.parent;
+  const pl = getPlanets().concat(getKBOs());
+  const obs = pl.filter(p => !p.kbo && (p.observed || 0) > 0);
+  const M = mass_from_budget(budget);
+  const evalLam = (lam) => {
+    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent);
+    let sse = 0, n = 0;
+    for (const p of obs) {
+      const s = rr.fit.slots.find(x => x.filled && x.name === p.name);
+      if (s && p.observed > 0) { const e = (s.predicted - p.observed) / p.observed; sse += e * e; n++; }
     }
-    const r = best.r;
-    set_composition(r.budget_Z, r.budget_f_rock);
-    const outermost = obs.reduce((m, p) => Math.max(m, p.r), 0);
-    set_r_disc_norm(outermost);
-    set_snow_line(r.budget_snow);
-    if (r.budget_M < 0.08) set_mdot(r.budget_Mdot); else reset_mdot();
-    window.CURRENT_BUDGET = { budget, parent, spin: best.lam, ...r };
-    setInputs({
-      M_star: r.budget_M,
-      spin: (r.omega_rot != null) ? r.omega_rot : r.spin,
-      nebula_density: r.nebula_density, f_disc: r.f_disc,
-    });
-    calculate();
-    return;
-  }
-
-  // Shared calibration entry point (js/fit.js): exhaustive joint scan
-  // over the anchor family with the exact f_disc bisection solved per
-  // candidate. Identical to the CLI fitter (tools/fit.js), so the UI
-  // and batch calibrations can never drift. When gravitational
-  // stripping is flagged with blank q, the periapsis is bisected too.
-  const r = bruteFit(planets_initial, M_star, inp.stripping || null, true);
-  // v5: bruteFit returns the geometry spin (→ nebula density) and the
-  // decoupled rotation omega_rot; map to the decoupled schema (ω
-  // breakup-clamped, falls back to the geometry dial if not refined).
-  const omega_rot = Math.min(
-    (r.omega_rot != null) ? r.omega_rot : r.spin, breakup_spin(M_star));
-  const newInputs = { M_star, nebula_density: r.nebula_density,
-                      spin: omega_rot, f_disc: r.f_disc };
-  if (inp.stripping) {
-    newInputs.stripping = {
-      M_pert: inp.stripping.M_pert,
-      q: (r.stripping_q !== null && r.stripping_q !== undefined)
-        ? Math.round(r.stripping_q * 10) / 10 : inp.stripping.q,
-    };
-    if (r.stripping_q != null) {
-      console.log(`findBestFit: stripping q=${r.stripping_q.toFixed(2)} AU, r_t=${r.stripping_rt.toFixed(3)} AU (M_pert=${inp.stripping.M_pert})`);
+    return { rms: n ? Math.sqrt(sse / n) : Infinity, r: rr };
+  };
+  let best;
+  if (M < 0.08 && obs.length >= 2) {            // non-igniter: scan archaic λ
+    best = null;
+    for (let lam = 20; lam <= 120; lam += 4) {
+      const x = evalLam(lam); if (!best || x.rms < best.rms) best = { lam, ...x };
     }
+    for (let lam = best.lam - 4; lam <= best.lam + 4; lam += 0.5) {
+      const x = evalLam(lam); if (x.rms < best.rms) best = { lam, ...x };
+    }
+    console.log(`findBestFit: archaic spin λ=${best.lam.toFixed(1)}, satellite RMS ${(best.rms * 100).toFixed(2)}%`);
+  } else {                                       // igniter / single body: hold λ
+    const lam = isFinite(inp.spin) ? inp.spin : 1.0;
+    best = { lam, ...evalLam(lam) };
+    console.log(`findBestFit: λ held at ${best.lam}, residual ${(best.r.target_residual * 100).toFixed(3)}%`);
   }
-  setInputs(newInputs);
-
-  if (r.anchor_slot > 0) {
-    console.log(`findBestFit: outermost planet anchored at slot ${r.anchor_slot} (slots 0..${r.anchor_slot - 1} treated as missing — ejected/scattered outer bodies)`);
-  }
-  const report = [];
-  for (const s of r.fit.slots) {
-    if (!s.filled) continue;
-    report.push(`  [slot ${s.slot_n}] ${s.name}  r_form=${s.slot_r.toFixed(3)}  tf=${s.t_form.toFixed(3)}  pred=${s.predicted.toFixed(3)}  obs=${s.observed.toFixed(3)}  dM=${s.implied_dM >= 0 ? '+' : ''}${s.implied_dM.toFixed(3)}`);
-  }
-  console.log(`findBestFit: spin=${r.spin.toFixed(4)}, f_disc=${r.f_disc.toFixed(5)}, target residual ${(r.target_residual * 100).toFixed(3)}% over [${r.target_names.join(', ')}], iterations=${r.iterations}${r.converged ? '' : ' (NOT converged)'}`);
-  console.log(report.join('\n'));
+  document.getElementById("spin").value = best.lam;   // archaic λ → calculate() re-derives
   calculate();
 }
 
@@ -1394,13 +1341,18 @@ function saveCurrentAsPreset() {
     return;
   }
   const inp = getInputs();
-  if (window.CURRENT_KINETIC) inp.kinetic = true;
-  if (window.CURRENT_L) inp.L = window.CURRENT_L;
   const planets = getPlanets().concat(getKBOs());
   const map = loadUserPresets();
+  // v6: store the conserved budget at top level, matching loadPreset's schema.
   map[id] = {
     id: "user:" + id,
-    inputs: inp,
+    budget: inp.budget,
+    spin: inp.spin,
+    star: inp.star,
+    parent: inp.parent || null,
+    stripping: inp.stripping || undefined,
+    kinetic: window.CURRENT_KINETIC || undefined,
+    L: window.CURRENT_L || undefined,
     planets: planets,
     notes: "User-saved system."
   };
@@ -1437,6 +1389,10 @@ document.getElementById("add-kbo").onclick = () => addKBORow();
 document.getElementById("fill-predicted").onclick = fillPredictedSlots;
 document.getElementById("find-fit").onclick = findBestFit;
 document.getElementById("calculate").onclick = calculate;
+// Encounter inputs are revealed only when gravitational stripping is toggled on.
+document.getElementById("strip_on").onchange = (e) => {
+  document.getElementById("encounter-inputs").style.display = e.target.checked ? "" : "none";
+};
 document.getElementById("save-preset").onclick = saveCurrentAsPreset;
 document.getElementById("delete-preset").onclick = deleteCurrentUserPreset;
 refreshUserPresetDropdown();
