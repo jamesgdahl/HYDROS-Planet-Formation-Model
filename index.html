@@ -196,7 +196,8 @@ function buildPresetDropdown() {
     { label: "K class",            min:  0.6, max: 0.85 },
     { label: "M class",            min: 0.08, max:  0.6 },
     { label: "Brown dwarf",        min: 0.012, max: 0.08 },
-    { label: "Gas giant",          min:    0, max: 0.012 },
+    { label: "Gas giant",          min: 0.000009, max: 0.012 },
+    { label: "Planet",             min: 0, max: 0.000009 },
   ];
 
   // Spectral-class binning uses the OBSERVED central-star mass, not the budget
@@ -219,7 +220,7 @@ function buildPresetDropdown() {
     for (const sys of g.systems) {
       const opt = document.createElement("option");
       opt.value = sys.id;
-      opt.textContent = `${sys.name} (${(sysMassPrim(sys) * 1.14).toFixed(2)} M☉)`;
+      opt.textContent = `${sys.name} (${sysMassPrim(sys).toFixed(2)} M☉)`;
       og.appendChild(opt);
     }
     sel.appendChild(og);
@@ -480,7 +481,7 @@ function calculate() {
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
   if (outermostB > 0) set_r_disc_norm(outermostB);
   set_snow_line(rB.budget_snow);
-  if (rB.budget_M < 0.08) set_mdot(rB.budget_Mdot);
+  set_mdot(rB.budget_Mdot);   // unified clock: Ṁ set for igniters too
   window.CURRENT_BUDGET = { budget: inp.budget, parent: inp.parent, spin: inp.spin, ...rB };
 
   const M_star = rB.budget_M;       // derived total mass (Sol-primordial units)
@@ -1039,7 +1040,7 @@ function fillPredictedSlots() {
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
   if (outermostB > 0) set_r_disc_norm(outermostB);
   set_snow_line(rB.budget_snow);
-  if (rB.budget_M < 0.08) set_mdot(rB.budget_Mdot);
+  set_mdot(rB.budget_Mdot);   // unified clock: Ṁ set for igniters too
   const M_star = rB.budget_M, f_disc = rB.f_disc, spin = rB.spin;
   const omega = (rB.omega_rot != null) ? rB.omega_rot : rB.spin;
   const slot_data = assign_planets_to_slots(existing, M_star, spin, f_disc, omega);

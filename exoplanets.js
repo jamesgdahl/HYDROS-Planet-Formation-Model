@@ -61,7 +61,7 @@ window.EXOPLANETS = [
   },
   {
     "id": "jupiter",
-    "name": "Jupiter (sub-cascade)",
+    "name": "Jupiter",
     "ly": 0.0000819,
     "budget": {"rock":4.73364,"ice":11.28209,"hydrogen":301.2335},
     "star": 0.0008374,
