@@ -4,39 +4,36 @@
 //
 // The object's allocated mass is DIFFERENTIATED into a conserved budget vector
 //   { b_rock, b_ice, b_hydrogen }  (+ primordial spin λ)
-// each component NORMALIZED so Sol = 1. PEBBLES are NOT a separate reservoir —
-// the model derives them as a drift flux (40% of the disc ICE, via
-// total_pebble_bonus_budget), so a body's inherited pebbles fold into its ICE
-// budget and are re-derived downstream (user, 2026-06-09). This REPLACES
+// each component an ABSOLUTE MASS in EARTH MASSES (M⊕) of that material — the
+// same unit as the planet masses / m_star_earth everywhere else in the model, so
+// the budget is composition-AGNOSTIC physical mass and Sol's own Z=0.014 /
+// f_rock=0.22 EMERGE from its numbers rather than being baked into the anchors
+// (user, 2026-06-09: budget in Earth masses to match composition elsewhere).
+// PEBBLES are NOT a separate reservoir — derived as a drift flux (40% of the
+// disc ICE), so inherited pebbles fold into the ICE budget. This REPLACES
 // (M_star, D_neb, f_disc):
 //  - D_neb is the interstellar-medium density → negligible, DROPPED.
 //  - the total mass, metallicity, f_disc and the Davis Dam are all DERIVED.
 //  - the budget is CONSERVED: star (≈99%) + planets (disc share) + Kuiper
 //    (closing remainder) — the star gets most of EVERY component.
-// Sol anchors the whole basis at (b_rock,b_ice,b_pebble,b_hydrogen,λ)=(1,1,1,1,1).
-// Global-script style; depends on constants.ts, disc.ts loaded first.
-// Sol's component masses as FRACTIONS of the Sol-primordial mass (so Sol's
-// budget (1,1,1) ⇒ total = 1). Metals Z = rock+ice = 0.014; H/He = 1−Z;
-// rock:ice = F_ROCK:(1−F_ROCK) = 0.22:0.78. Pebbles are inside the ice budget
-// (drift flux, derived downstream) — no separate anchor.
-const SOL_B_HYDROGEN = 1.0 - Z_METALLICITY; // 0.986
-const SOL_B_ROCK = Z_METALLICITY * F_ROCK; // 0.00308
-const SOL_B_ICE = Z_METALLICITY * (1.0 - F_ROCK); // 0.01092
-// Allocated (≈ stellar) mass from the budget, Sol-normalized (Sol → 1).
+// Sol: (b_rock,b_ice,b_hydrogen) = (1169.04, 4144.78, 374244.62) M⊕ (sum =
+// 379558 M⊕ = 1.14 M☉ = 1 Sol-primordial). constants.ts, disc.ts first.
+// Allocated (≈ stellar) mass from the budget, in Sol-primordial model units
+// (Sol → 1): the total Earth-mass budget divided by the Earth masses per Sol-
+// primordial unit (M_SUN_TO_EARTH = 379558), so all downstream physics — which
+// runs in M⊕ via m_star_earth — is unchanged.
 function mass_from_budget(b) {
-    return b.hydrogen * SOL_B_HYDROGEN + b.rock * SOL_B_ROCK + b.ice * SOL_B_ICE;
+    return (b.rock + b.ice + b.hydrogen) / M_SUN_TO_EARTH;
 }
-// Per-object metallicity Z = metals / total (replaces the universal constant).
+// Per-object metallicity Z = metals / total — now a PURE ratio of the absolute
+// masses (no Sol-composition anchor); Sol's (3.5112+12.4488)/1140 = 0.014 falls out.
 function metallicity_from_budget(b) {
-    const M = mass_from_budget(b);
-    if (!(M > 0))
-        return 0;
-    return (b.rock * SOL_B_ROCK + b.ice * SOL_B_ICE) / M;
+    const total = b.rock + b.ice + b.hydrogen;
+    return total > 0 ? (b.rock + b.ice) / total : 0;
 }
-// Per-object rock fraction of the rock+ice metal split (replaces F_ROCK).
+// Per-object rock fraction of the rock+ice metal split — pure ratio.
 function f_rock_from_budget(b) {
-    const r = b.rock * SOL_B_ROCK, i = b.ice * SOL_B_ICE;
-    return (r + i) > 0 ? r / (r + i) : 0;
+    return (b.rock + b.ice) > 0 ? b.rock / (b.rock + b.ice) : 0;
 }
 // DERIVED disc fraction from spin: the disc is the high-angular-momentum share
 // that missed the core. Anchored f_disc(Sol: λ=1, M=1) = 0.0103.
