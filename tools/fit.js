@@ -86,10 +86,12 @@ function budgetFit(planets, budget, lambda, parent) {
 function fitSystem(sys) {
   const planets = sys.planets.map(p => ({ ...p }));
   const M_star = sys.budget ? ctx.mass_from_budget(sys.budget) : sys.inputs.M_star;
-  // Gravitational-stripping flag: { M_pert, q } with q null => bisected.
-  const stripping = sys.inputs.stripping
-    ? { M_pert: sys.inputs.stripping.M_pert || 0.5,
-        q: (sys.inputs.stripping.q === undefined) ? null : sys.inputs.stripping.q }
+  // Gravitational-stripping flag: { M_pert, q } with q null => bisected. Budget
+  // systems carry it top-level (no legacy `inputs` block).
+  const strip_in = sys.budget ? sys.stripping : (sys.inputs && sys.inputs.stripping);
+  const stripping = strip_in
+    ? { M_pert: strip_in.M_pert || 0.5,
+        q: (strip_in.q === undefined) ? null : strip_in.q }
     : null;
   const r = sys.budget
     ? budgetFit(planets, sys.budget, sys.spin, sys.parent)
