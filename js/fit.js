@@ -2034,6 +2034,79 @@ function bruteFit(planets, M_star, stripping, vice) {
             : null,
     };
 }
+// ============================================================
+//  budgetFit — v6 budget-driven entry point (shared by CLI + web UI).
+//  Inputs: a conserved budget {rock, ice, hydrogen} (Sol = 1,1,1) and an
+//  optional ARCHAIC primordial spin λ. Derives M_star + per-object Z/f_rock
+//  (composition context), the regime (ignition gate), the anchored-dam slope
+//  normalization (so f_disc is the REAL disc fraction), and — when λ is given
+//  — the Alfvén Dam R_A = alfven_radius(M, λ) decoupled from the density dial
+//  (a gas giant's present rotation is not primordial, so λ is inferred from the
+//  satellite config). Positions stay anchored to the outermost body; f_disc is
+//  bisected to the observed target. All contexts are reset on exit, so the
+//  legacy {M,D,spin,f_disc} catalog is untouched.
+// ============================================================
+// SIGN-MODULATED SOLID TRANSFER (normal regime). The signed Alfvén–Maas standing
+// wave is a chain of alternating pressure BUMPS and DIPS — successive antinodes
+// are over- / under-densities. Solids drift toward the bumps, so where feeding
+// zones OVERLAP the contested solids go to the bump, not the dip: the NEGATIVE-
+// amplitude antinodes win (user, 2026-06-09; Galilean masses track the sign).
+// Modeled as an outer→inner CASCADE: each +amplitude slot (dip) drains a fraction
+// φ of its solids inward; each −amplitude slot (bump) traps a share and passes
+// the rest further in; the innermost bump catches the remainder (the inward
+// pile-up). The deposited solid is ROCK (drifted silicate; ice sublimates going
+// inward). Conserves total solid. BOTH φ and the leak scale with C = R_A/R_disc
+// (the Alfvén weight = the modulation depth / feeding-zone overlap), so the
+// effect is MINOR for Maas-dominant discs (Sol, C≈0.007 → tiny local exchange)
+// and strong for the compact higher-C Galilean disc (C≈0.135 → Io wins big).
+// φ scales with C² — the contested overlap is the PRODUCT of two neighboring
+// zones, so quadratic in the modulation depth — which makes the effect utterly
+// negligible at Sol's C≈0.007 (φ≈8e-4, no change) yet ~0.32 at Jupiter's 0.135.
+// Calibrated on the four Galileans.
+const SIGN_DRAIN_K = 17.6; // φ = drain fraction of a +slot's solids = K·C² (cap 0.6)
+const SIGN_LEAK_K = 6.4; // fraction a −slot passes further inward = K·C (cap 0.95)
+function apply_sign_modulation(slots, C, R_disc, R_A) {
+    const phi = Math.min(0.6, SIGN_DRAIN_K * C * C);
+    const leak = Math.min(0.95, SIGN_LEAK_K * C);
+    if (!(phi > 0) || !(R_disc > 0) || !(R_A > 0))
+        return;
+    const body = slots.filter(s => s.filled && !s.external && !s.exterior
+        && s.slot_r > 0 && s.core > 0).sort((a, b) => b.slot_r - a.slot_r); // outer→inner
+    let acc = 0;
+    let lastBump = null;
+    for (const s of body) {
+        const A = superposition_amplitude(s.slot_r, R_disc, R_A);
+        if (A >= 0) { // + (dip): drain solids inward
+            const drain = phi * s.core;
+            const keep = 1 - phi;
+            s.rock *= keep;
+            s.ice *= keep;
+            s.pebble *= keep;
+            s.core *= keep;
+            s.predicted -= drain;
+            acc += drain;
+        }
+        else { // − (bump): trap (1−leak)·acc, pass the rest
+            const gain = (1 - leak) * acc;
+            s.rock += gain;
+            s.core += gain;
+            s.predicted += gain;
+            acc -= gain;
+            lastBump = s;
+        }
+    }
+    if (acc > 0 && lastBump) { // innermost bump catches the remainder
+        lastBump.rock += acc;
+        lastBump.core += acc;
+        lastBump.predicted += acc;
+    }
+    for (const s of body) {
+        if (s.observed > 0) {
+            s.err_pct = (s.predicted - s.observed) / s.observed * 100;
+            s.implied_dM = s.observed - s.predicted;
+        }
+    }
+}
 function budgetFit(planets, budget, lambda, parent) {
     const M = mass_from_budget(budget);
     const Z = metallicity_from_budget(budget);
@@ -2050,45 +2123,63 @@ function budgetFit(planets, budget, lambda, parent) {
             : spin_for_disc_radius(M, outermost);
         set_r_disc_norm(outermost);
         // UNIFIED RATE → snow line. B = relative mass budget; C = capture fraction
-        // (1 self-fed, R_disc/R_Hill for a parent-fed sub-disc). The snow line is
-        // set from Ṁ(f_disc) BEFORE each fit so it co-converges with the f_disc
-        // bisection (the rock/ice split feeds back into the mass match).
+        // (1 self-fed, R_disc/R_Hill for a parent-fed sub-disc).
         const B = M / SOL_M_PRIMORDIAL;
         const C = parent ? capture_fraction(outermost, parent.a, M, parent.M) : 1.0;
         const Mdot_of = (fd) => accretion_rate(M, Z, f_rock, fd, outermost, B, C);
-        const set_snow_for = (fd) => set_snow_line(mulders_snow_line(M, Mdot_of(fd)));
         const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
         const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior
             && (immut.size ? immut.has(s.name) : true));
-        let lo = 0.0005, hi = 0.5, f = 0.01;
-        set_snow_for(f);
-        let fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
-        const tgt0 = sel(fit);
-        const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
-        if (totalTarget > 0) {
-            const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
-            const tol = Math.max(1e-6, 0.001 * smallest);
-            for (let i = 0; i < 60; i++) {
-                const fm = Math.sqrt(lo * hi);
-                set_snow_for(fm);
-                const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega });
-                const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
-                f = fm;
-                fit = f2;
-                if (Math.abs(e) < tol)
-                    break;
-                if (e > 0)
-                    hi = fm;
-                else
-                    lo = fm;
+        // f_disc bisection at a FIXED snow line (no per-iteration snow-line update —
+        // co-converging the snow line with the rock/ice split runs away: rocky moons
+        // → less ice → higher f_disc → higher Ṁ → snow line pushed out → more rocky).
+        const bisectF = () => {
+            let lo = 0.0005, hi = 0.5, f = 0.01;
+            let fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
+            const tgt0 = sel(fit);
+            const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
+            if (totalTarget > 0) {
+                const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
+                const tol = Math.max(1e-6, 0.001 * smallest);
+                for (let i = 0; i < 60; i++) {
+                    const fm = Math.sqrt(lo * hi);
+                    const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega });
+                    const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
+                    f = fm;
+                    fit = f2;
+                    if (Math.abs(e) < tol)
+                        break;
+                    if (e > 0)
+                        hi = fm;
+                    else
+                        lo = fm;
+                }
             }
-        }
+            return { f, fit };
+        };
+        // Pass A: all-icy baseline (snow line off) → a STABLE f_disc free of the
+        // rocky-suppression feedback. Pass B: freeze the snow line from that
+        // baseline's accretion rate, then bisect once more.
+        reset_snow_line();
+        const fA = bisectF().f;
+        set_snow_line(mulders_snow_line(M, Mdot_of(fA)));
+        const passB = bisectF();
+        let f = passB.f;
+        const fit = passB.fit;
+        // Sign-modulated solid transfer: + dips drain inward to − bumps (negative
+        // wins), cascade scaled by C = R_A/R_disc. Conserves total ⇒ the bisection's
+        // mass match is preserved; only the per-slot distribution shifts.
+        const om_for_RA = (omega !== undefined) ? omega : spin;
+        const R_A_used = alfven_radius(M, om_for_RA);
+        apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used);
         const tgt = sel(fit);
         const tot = tgt.reduce((a, s) => a + s.observed, 0);
         const resid = tot > 0
             ? Math.abs(tgt.reduce((a, s) => a + (s.predicted - s.observed), 0)) / tot : 0;
         const om_eff = (omega !== undefined) ? omega : spin;
-        const Mdot = Mdot_of(f);
+        // Report the accretion rate / snow line ACTUALLY USED (from the all-icy
+        // baseline fA that froze the snow line), not the final mass-matching f_disc.
+        const Mdot = Mdot_of(fA);
         return {
             spin, nebula_density: nebula_density_from_spin(spin),
             omega_rot: (omega !== undefined) ? omega : null,
