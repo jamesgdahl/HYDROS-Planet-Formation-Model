@@ -2126,10 +2126,11 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
 // gas it wants up to what's left; if the reservoir empties before all are
 // satisfied the rest are STARVED (capped) and `exhausted` flags an under-budget
 // system — the lever to fix it is a bigger budget / higher spin (more disc), not
-// a fudge. The un-captured remainder is `dispersed` — the gas that closed onto
+// a fudge. The un-captured remainder is `dispersed` — disc GAS that closed onto
 // the star or was flung out (the self-similar analogue of the Kuiper closing
-// term; for a high-spin reservoir like a forming binary this is the bulk — the
-// "disc of destruction"). Conserves total H: captured + dispersed = reservoir.
+// term). NB: this is NOT planet destruction — in a multi-star system the
+// companions gravitationally obliterate the planet slots (the scattering/purge
+// diagnostics handle that separately). Conserves total H: captured+dispersed=reservoir.
 function apply_hydrogen_conservation(slots, reservoir) {
     const giants = slots
         .filter(s => s.filled && !s.external && !s.exterior && (s.predicted - s.core) > 1e-9)
