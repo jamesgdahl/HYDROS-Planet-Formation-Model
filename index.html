@@ -519,6 +519,10 @@ function calculate() {
     fit = slot_aware_fit(planets, M_star, spin_geom, f_disc,
                          Object.assign({}, fitOpts, { devour_credit: credits }));
   }
+  // v6 budget path: apply the sign-modulated solid transfer (negative antinodes
+  // win, cascade scaled by C²) — the same post-process budgetFit runs, so the
+  // browser shows the moons landed (Io massive+dry, etc.), not the raw cascade.
+  if (window.CURRENT_BUDGET) apply_sign_modulation(fit.slots, C, R_disc, R_A);
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
   // forensics receiver, e.g. Earth; or tide-ledger receiver, e.g.
