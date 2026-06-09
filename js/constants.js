@@ -7,6 +7,36 @@
 // Composition (solar)
 const Z_METALLICITY = 0.014;
 const F_ROCK = 0.22;
+// PER-OBJECT COMPOSITION CONTEXT (v6 budget wiring). The allocation
+// AMPLITUDE constants Z·F_ROCK are no longer universal — a budget-input
+// object overrides them with its own metallicity / rock fraction (Jupiter
+// is metal-enriched, so its disc carries ~2× the solids a solar-Z disc
+// would). These default to the solar globals, so any system NOT using a
+// budget (the entire legacy {M,D,spin,f_disc} catalog) is bit-identical.
+// set_composition() is called on the budget path and ALWAYS paired with
+// reset_composition() after the fit, so the context never leaks between
+// systems. Z_METALLICITY / F_ROCK themselves stay fixed — they anchor the
+// Sol budget basis in budget.ts (SOL_B_* must not move).
+let COMP_Z = Z_METALLICITY;
+let COMP_F_ROCK = F_ROCK;
+function set_composition(z, f_rock) {
+    COMP_Z = z;
+    COMP_F_ROCK = f_rock;
+}
+function reset_composition() {
+    COMP_Z = Z_METALLICITY;
+    COMP_F_ROCK = F_ROCK;
+}
+// SNOW-LINE OVERRIDE (v6 budget wiring). The disc-temperature snow line in
+// disc.ts scales with the primary's MAIN-SEQUENCE luminosity (L∝M⁴ → the M²
+// term), which vanishes for a substellar primary — so a gas giant's sub-disc
+// would read as ice-everywhere. But the Galilean snow line (Io dry/rocky,
+// Europa+ icy) is set by young Jupiter's FORMATION luminosity (KH/accretion),
+// not fusion. The budget path computes that snow line and parks it here; a
+// negative sentinel means "use the formula." Always reset after the fit.
+let COMP_R_SNOW = -1.0;
+function set_snow_line(r) { COMP_R_SNOW = r; }
+function reset_snow_line() { COMP_R_SNOW = -1.0; }
 const F_LODDERS_ICE = 3.5;
 const GAS_FRACTION = 0.95;
 const H_FRACTION = 0.74;

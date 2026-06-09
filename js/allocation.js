@@ -69,7 +69,7 @@ function rock_allocation(r, M_star, spin, f_disc, omega) {
     const r_visc = viscous_snow_line(M_star, f_disc);
     if (r > r_visc)
         return 0; // past the viscous snow line: cool ⇒ ice, not rock
-    const disc_solid = f_disc * m_star_earth(M_star) * Z_METALLICITY * F_ROCK * ETA_ROCK;
+    const disc_solid = f_disc * m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * ETA_ROCK;
     // STEEP descent: rock is ferromagnetic, so the magnetic slots (slot 0 + the
     // marching factory) concentrate it strongly ⇒ fast, front-loaded consumption.
     const descent = Math.pow(r_disc / Math.max(r, r_disc), INV_ROCK_DESCENT);
@@ -98,7 +98,7 @@ function ice_allocation(r, M_star, spin, f_disc, omega) {
             return 0; // PHASE 1 (rock): viscously hot, water gaseous
         const om = (omega === undefined) ? spin : omega;
         const r_A = alfven_radius(M_star, om);
-        const disc_ice = f_disc * m_star_earth(M_star) * Z_METALLICITY * F_ROCK * ETA_ROCK;
+        const disc_ice = f_disc * m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * ETA_ROCK;
         // The assembly DESCENT resets at each phase boundary, giving the
         // big-small-big pattern (comparable peaks, same coefficient):
         //   PHASE 2 (ice):    r_visc..R_A — descent from the viscous line.
@@ -127,7 +127,7 @@ function ice_allocation(r, M_star, spin, f_disc, omega) {
     return base_ice * f_trunc + snow_bump;
 }
 function total_pebble_bonus_budget(M_star, f_disc) {
-    const disc_ice = f_disc * Z_METALLICITY * (1 - F_ROCK) * m_star_earth(M_star);
+    const disc_ice = f_disc * COMP_Z * (1 - COMP_F_ROCK) * m_star_earth(M_star);
     return disc_ice * PEBBLE_CAPTURE_EFFICIENCY;
 }
 function pebble_allocation_weight(r, M_star, f_disc) {

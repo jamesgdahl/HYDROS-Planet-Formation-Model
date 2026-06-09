@@ -28,7 +28,8 @@ const load = (rel) => vm.runInContext(
 
 load('exoplanets.js');
 for (const f of ['constants.js', 'disc.js', 'allocation.js',
-                 'classify.js', 'cascade.js', 'fit.js', 'impactors.js']) {
+                 'classify.js', 'cascade.js', 'budget.js', 'fit.js',
+                 'impactors.js']) {
   load(path.join('js', f));
 }
 
@@ -57,23 +58,94 @@ const doBrute = !args.includes('--iterated'); // brute (joint scan) is the defau
 const doVice = !args.includes('--no-vice');
 const bruteFit = ctx.bruteFit;
 
+// v6 BUDGET-DRIVEN FIT (wiring pass 1: composition + regime). The system
+// supplies a conserved budget {rock, ice, pebble, hydrogen} (Sol = 1,1,1,1)
+// instead of (M_star, D, spin, f_disc). From it we derive M_star, the
+// per-object metallicity Z and rock fraction f_rock (Jupiter is metal-
+// enriched, so its disc carries ~2x the solids a solar-Z disc would), and
+// the regime (is_inverted_budget — the ignition gate holds non-igniters
+// like Jupiter NORMAL). Positions are still data-anchored (outermost
+// interior body at slot 0) and f_disc is still bisected to the observed
+// target; deriving R_disc and f_disc from physics is the next pass. The
+// composition context is set here and ALWAYS reset, so the legacy catalog
+// is untouched.
+function budgetFit(planets, budget) {
+  const M = ctx.mass_from_budget(budget);
+  const Z = ctx.metallicity_from_budget(budget);
+  const f_rock = ctx.f_rock_from_budget(budget);
+  const inverted = ctx.is_inverted_budget(M);
+  ctx.set_composition(Z, f_rock);
+  // NOTE: the protolunar snow line (viscous heating behind the disc's own
+  // opacity, derived from rock/dust density) is NOT set here — it needs the
+  // real disc surface density (real f_disc), which arrives in the f_disc-
+  // normalization pass. Until then the base snow line reads ~0 for a substellar
+  // primary, so the moons classify icy (Io's dry/rocky identity is pending).
+  try {
+    const obs = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+    const ordered = [...obs].sort((a, b) => b.r - a.r);
+    const outermost = ordered.length ? ordered[0].r : 1.0;
+    // Davis Dam anchored to the outermost interior body's orbit (slot 0).
+    // The sub-cascade spin is far below the stellar-cloud floor — a
+    // circumplanetary disc is compact, not a diffuse cloud — so no floor.
+    const spin = ctx.spin_for_disc_radius(M, outermost);
+    const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
+    const sel = (fit) => fit.slots.filter(s => s.filled && !s.external
+      && !s.remnant && !s.exterior && (immut.size ? immut.has(s.name) : true));
+    // Low rail dropped vs the legacy fit: slope() normalizes mass density to
+    // disc_radius(M, spin=1), which for a sub-cascade primary (tiny M) is far
+    // inside the anchored Hill-based dam, so f_disc must absorb that geometry
+    // factor and runs small. (A consistent slope normalization is the next
+    // pass; here f_disc is still just the bisected scale knob.)
+    let lo = 1e-7, hi = 0.5, f = 0.01;
+    let fit = ctx.slot_aware_fit(planets, M, spin, f, { auto_compress: false });
+    const tgt0 = sel(fit);
+    const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
+    if (totalTarget > 0) {
+      const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
+      const tol = Math.max(1e-6, 0.001 * smallest);
+      for (let i = 0; i < 60; i++) {
+        const fm = Math.sqrt(lo * hi);
+        const f2 = ctx.slot_aware_fit(planets, M, spin, fm, { auto_compress: false });
+        const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
+        f = fm; fit = f2;
+        if (Math.abs(e) < tol) break;
+        if (e > 0) hi = fm; else lo = fm;
+      }
+    }
+    const tgt = sel(fit);
+    const tot = tgt.reduce((a, s) => a + s.observed, 0);
+    const resid = tot > 0
+      ? Math.abs(tgt.reduce((a, s) => a + (s.predicted - s.observed), 0)) / tot : 0;
+    return {
+      spin, nebula_density: ctx.nebula_density_from_spin(spin), omega_rot: null,
+      f_disc: f, anchor_slot: 0, iterations: 1, converged: true,
+      target_residual: resid, target_names: tgt.map(s => s.name), fit,
+      score: 0, stripping_q: null, stripping_rt: null,
+      _budget: { M, Z, f_rock, inverted },
+    };
+  } finally { ctx.reset_composition(); ctx.reset_snow_line(); }
+}
+
 function fitSystem(sys) {
   const planets = sys.planets.map(p => ({ ...p }));
+  const M_star = sys.budget ? ctx.mass_from_budget(sys.budget) : sys.inputs.M_star;
   // Gravitational-stripping flag: { M_pert, q } with q null => bisected.
   const stripping = sys.inputs.stripping
     ? { M_pert: sys.inputs.stripping.M_pert || 0.5,
         q: (sys.inputs.stripping.q === undefined) ? null : sys.inputs.stripping.q }
     : null;
-  const r = doBrute
-    ? bruteFit(planets, sys.inputs.M_star, stripping, doVice)
-    : bestFit(planets, sys.inputs.M_star, sys.inputs.f_disc);
+  const r = sys.budget
+    ? budgetFit(planets, sys.budget)
+    : doBrute
+    ? bruteFit(planets, M_star, stripping, doVice)
+    : bestFit(planets, M_star, sys.inputs.f_disc);
   // EVENT CLOSURES: bodies whose deviation is explained by an
   // identified, budget-closed event (impact/merger/survivor/delivery)
   // count as PERFECT fits — the deviation is model output, not error.
   // n_diag counts only the OPEN (unexplained) deviations.
   let closures = [];
   try {
-    const F = ctx.impact_forensics(r.fit.slots, planets, sys.inputs.M_star, r.f_disc);
+    const F = ctx.impact_forensics(r.fit.slots, planets, M_star, r.f_disc);
     closures = F.closures || [];
   } catch (e) { /* forensics unavailable: all deviations stay open */ }
   const closedNames = new Set(closures.map(c => c.name));
@@ -132,7 +204,7 @@ function fitSystem(sys) {
     const m_n = Math.max(n.observed, n.predicted);
     if (m_o <= 0 || m_n <= 0) continue;
     const a_avg = (o.slot_r + n.slot_r) / 2;
-    const RHm = a_avg * Math.pow((m_o + m_n) * (3e-6 / 1.14) / (3 * sys.inputs.M_star), 1 / 3);
+    const RHm = a_avg * Math.pow((m_o + m_n) * (3e-6 / 1.14) / (3 * M_star), 1 / 3);
     minPack = Math.min(minPack, (o.slot_r - n.slot_r) / RHm);
   }
   if (minPack < 7) flags.push('PACKED:' + minPack.toFixed(1));
@@ -148,7 +220,7 @@ function fitSystem(sys) {
   if (doVice && r.omega_rot != null) flags.push('OMEGA:' + r.omega_rot.toFixed(2));
   // INVERTED-regime predictor from observables (compact + multi-big mass
   // pattern): independent of the geometric fit — corroboration check.
-  const isig = ctx.inverted_signature(sys.planets, sys.inputs.M_star);
+  const isig = ctx.inverted_signature(sys.planets, M_star);
   if (isig.likely) flags.push('INV_PRED:' + isig.maxima + 'max');
   if (stripping && r.stripping_q != null) {
     flags.push('STRIPPED:q=' + r.stripping_q.toFixed(1)
@@ -166,7 +238,12 @@ function fmtMass(m) {
   return m < 0.01 ? (m * 1000).toPrecision(4) + 'm' : m.toFixed(3);
 }
 function printSlotTable(sys, r) {
-  console.log(`\n${sys.name}  (M*=${sys.inputs.M_star})`);
+  const Mshow = r._budget ? r._budget.M : sys.inputs.M_star;
+  console.log(`\n${sys.name}  (M*=${(+Mshow.toPrecision(6))}${r._budget ? ' [budget-derived]' : ''})`);
+  if (r._budget) {
+    const b = sys.budget;
+    console.log(`  budget=[rock ${b.rock}, ice ${b.ice}, H ${b.hydrogen}]  Z=${r._budget.Z.toFixed(4)}  f_rock=${r._budget.f_rock.toFixed(3)}  regime=${r._budget.inverted ? 'INVERTED' : 'NORMAL'}`);
+  }
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
   for (const s of [...r.fit.slots].sort((a, b) => b.slot_n - a.slot_n)) {
@@ -212,7 +289,7 @@ if (!onlyId) {
     const D = o.r.nebula_density != null
       ? o.r.nebula_density : Math.pow(o.r.spin, 1.5);
     console.log(o.sys.name.slice(0, 25).padEnd(26),
-      o.sys.inputs.M_star.toFixed(3).padStart(6),
+      (o.r._budget ? o.r._budget.M : o.sys.inputs.M_star).toFixed(3).padStart(6),
       o.r.spin.toFixed(3).padStart(10),
       (D >= 100 ? D.toFixed(0) : D.toFixed(3)).padStart(9),
       o.r.f_disc.toFixed(4).padStart(8),
@@ -238,6 +315,7 @@ if (doWrite) {
           && !f.startsWith('OMEGA:') && !f.startsWith('CLOSED:'));
     if (o.error || blocking.length) continue; // only write converged fits
     if (WRITE_EXCLUDE.has(o.sys.id)) continue;
+    if (o.sys.budget) continue; // budget systems use a different schema
     // Inputs may contain one nested object (the stripping config) —
     // match braces one level deep, and preserve/refresh the flag.
     const re = new RegExp(`("id": "${o.sys.id}",[\\s\\S]*?"inputs": )\\{(?:[^{}]|\\{[^{}]*\\})*\\}`);

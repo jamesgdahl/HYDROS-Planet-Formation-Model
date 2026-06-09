@@ -412,7 +412,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // Undo the nebula metallicity chain (the disc IS condensables), and
     // zero the nebula-only channels (ice, pebbles, H/He).
     if (opts.kinetic) {
-        const KIN = 1 / (Z_METALLICITY * F_ROCK * ETA_ROCK);
+        const KIN = 1 / (COMP_Z * COMP_F_ROCK * ETA_ROCK);
         for (const s of results) {
             if (s.external)
                 continue;
@@ -1003,7 +1003,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             // dam sweeps it up inner-first, so the closest KBO to R_A collects most
             // of the nebula and outer ones are thinning tails — "the nebula used most
             // of its matter to produce the first product."
-            const B_neb = f_disc * m_star_earth(M_star) * Z_METALLICITY * INV_NEB_FRAC * ETA_ROCK;
+            const B_neb = f_disc * m_star_earth(M_star) * COMP_Z * INV_NEB_FRAC * ETA_ROCK;
             // Depletion DERIVED from local CONCENTRATION Σ = D / R_factory² (density +
             // geometry): a compact factory ⇒ high Σ ⇒ first product takes most (one
             // big); a far-flung factory ⇒ low Σ ⇒ many similar. R_factory = R_A here.

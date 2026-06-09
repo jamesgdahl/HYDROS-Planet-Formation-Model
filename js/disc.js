@@ -161,6 +161,8 @@ function compression(M_star, spin, omega, f_disc) {
     return alfven_radius(M_star, om) / disc_radius(M_star, spin, om, f_disc);
 }
 function snow_line(M_star, f_disc) {
+    if (COMP_R_SNOW >= 0)
+        return COMP_R_SNOW; // budget-path formation-L override
     const r_small = 1.6, r_large = 3.3, q = 2.2;
     const grain_term = r_small + (r_large - r_small) * Math.pow(GRAIN_OPACITY, q);
     const fd_ratio = f_disc / 0.01;
@@ -171,7 +173,7 @@ function snow_line(M_star, f_disc) {
 /** Annulus Allocation Factor sigma_AAF [M_earth/AU]. */
 function slope(M_star, f_disc) {
     const r_disc = disc_radius(M_star, 1.0); // slope uses spin=1 R_disc by convention
-    return m_star_earth(M_star) * Z_METALLICITY * F_ROCK * f_disc * ETA_ROCK / r_disc;
+    return m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * f_disc * ETA_ROCK / r_disc;
 }
 function intercept(M_star, spin) {
     return SOL_INTERCEPT * (M_star / SOL_M_PRIMORDIAL) * Math.pow(spin, 2.0 / 7.0);

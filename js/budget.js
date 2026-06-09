@@ -3,8 +3,12 @@
 // (Memory: two-zone-architecture, collapse-capture-physics.)
 //
 // The object's allocated mass is DIFFERENTIATED into a conserved budget vector
-//   { b_rock, b_ice, b_pebble, b_hydrogen }  (+ primordial spin λ)
-// each component NORMALIZED so Sol = 1. This REPLACES (M_star, D_neb, f_disc):
+//   { b_rock, b_ice, b_hydrogen }  (+ primordial spin λ)
+// each component NORMALIZED so Sol = 1. PEBBLES are NOT a separate reservoir —
+// the model derives them as a drift flux (40% of the disc ICE, via
+// total_pebble_bonus_budget), so a body's inherited pebbles fold into its ICE
+// budget and are re-derived downstream (user, 2026-06-09). This REPLACES
+// (M_star, D_neb, f_disc):
 //  - D_neb is the interstellar-medium density → negligible, DROPPED.
 //  - the total mass, metallicity, f_disc and the Davis Dam are all DERIVED.
 //  - the budget is CONSERVED: star (≈99%) + planets (disc share) + Kuiper
@@ -12,26 +16,22 @@
 // Sol anchors the whole basis at (b_rock,b_ice,b_pebble,b_hydrogen,λ)=(1,1,1,1,1).
 // Global-script style; depends on constants.ts, disc.ts loaded first.
 // Sol's component masses as FRACTIONS of the Sol-primordial mass (so Sol's
-// budget (1,1,1,1) ⇒ total = 1). Metals Z = rock+ice(+pebble) = 0.014;
-// H/He = 1−Z; rock:ice = F_ROCK:(1−F_ROCK) = 0.22:0.78.
-// PEBBLE is carried as a fourth budget but its Sol anchor is left 0 for now
-// (pebbles handled as the existing drift-flux bonus until SOL_B_PEBBLE is
-// pinned from total_pebble_bonus_budget) — TODO.
+// budget (1,1,1) ⇒ total = 1). Metals Z = rock+ice = 0.014; H/He = 1−Z;
+// rock:ice = F_ROCK:(1−F_ROCK) = 0.22:0.78. Pebbles are inside the ice budget
+// (drift flux, derived downstream) — no separate anchor.
 const SOL_B_HYDROGEN = 1.0 - Z_METALLICITY; // 0.986
 const SOL_B_ROCK = Z_METALLICITY * F_ROCK; // 0.00308
 const SOL_B_ICE = Z_METALLICITY * (1.0 - F_ROCK); // 0.01092
-const SOL_B_PEBBLE = 0.0; // placeholder
 // Allocated (≈ stellar) mass from the budget, Sol-normalized (Sol → 1).
 function mass_from_budget(b) {
-    return b.hydrogen * SOL_B_HYDROGEN + b.rock * SOL_B_ROCK
-        + b.ice * SOL_B_ICE + b.pebble * SOL_B_PEBBLE;
+    return b.hydrogen * SOL_B_HYDROGEN + b.rock * SOL_B_ROCK + b.ice * SOL_B_ICE;
 }
 // Per-object metallicity Z = metals / total (replaces the universal constant).
 function metallicity_from_budget(b) {
     const M = mass_from_budget(b);
     if (!(M > 0))
         return 0;
-    return (b.rock * SOL_B_ROCK + b.ice * SOL_B_ICE + b.pebble * SOL_B_PEBBLE) / M;
+    return (b.rock * SOL_B_ROCK + b.ice * SOL_B_ICE) / M;
 }
 // Per-object rock fraction of the rock+ice metal split (replaces F_ROCK).
 function f_rock_from_budget(b) {
@@ -74,20 +74,34 @@ function alfven_radius_standoff(M) {
 function compression_budget(M) {
     return alfven_radius_standoff(M) / disc_radius_wind(M);
 }
-// Inversion requires an IGNITER. The Davis Dam's FALLBACK (no/feeble wind) is
-// the HILL RADIUS — the gravitational disc edge — NOT the atmosphere. Without a
-// wind to advance it, the dam sits at the Hill radius; whether that inverts
-// depends on R_A vs R_Hill: for a star's strong magnetosphere the Hill-radius
-// fallback is too small to beat it ⇒ would invert — so RED DWARFS invert
-// (strong field, but feeble wind ⇒ dam stuck at the small fallback). For a
-// gas giant (Jupiter) the planetary Hill radius is LARGE vs its weaker
-// magnetosphere ⇒ NORMAL (Alfvén-dominant). Proxy for now: below the H-burning
-// limit there is no stellar wind, force NORMAL (kills the M→0 wind blow-up for
-// sub-cascades); proper non-igniter handling = R_A vs R_Hill. TODO.
+// The DAVIS DAM is set by a WIND, and the wind is UNIVERSAL: fusion (stars) +
+// thermal/Kelvin-Helmholtz (gas giants) + MAGNETICALLY-DRIVEN particle wind
+// (ANY magnetic object — the magnetosphere flings charged particles outward,
+// piling them against the inflow at the BOW SHOCK). So a magnetic non-igniter
+// gets a REAL Davis Dam (its bow shock, a product of its own field), NOT just a
+// gravitational fallback; the HILL RADIUS is only the ultimate outer cap. The
+// Alfvén Dam (R_A) = the magnetopause (the model's R_A is correctly located).
+// REGIME = R_A vs R_disc(total wind front): NORMAL when the wind shocks BEYOND
+// the magnetosphere (bow shock past magnetopause — Jupiter), INVERTED when the
+// wind is too feeble to do so (red dwarf: strong field, feeble wind ⇒ R_A beats
+// its own wind's reach). Mass discriminates for igniters (fusion-wind ∝ M^3.27).
+// Proxy for now: below the H-burning limit force NORMAL (magnetic-wind bow-shock
+// dam not yet modelled; kills the M→0 fusion-wind blow-up for sub-cascades).
+// TODO: model the magnetic-wind Davis Dam (bow shock) for non-igniters.
 const IGNITION_MASS = 0.08; // M⊙, hydrogen-burning limit
 function is_inverted_budget(M) {
     return M >= IGNITION_MASS && compression_budget(M) >= 1.0;
 }
+// SNOW LINE of the circum-primary (protolunar / protoplanetary) disc — VISCOUS
+// (accretional) heating, the SAME physics at every scale (user, 2026-06-09).
+// The disc midplane temperature is set by viscous dissipation behind the disc's
+// own OPACITY: T_mid⁴ ∝ κ·Σ·Ṁ·Ω², so the snow line is DERIVED from the disc's
+// rock(dust)-density-set opacity, calibrated on Sol with Jupiter a PREDICTION —
+// NOT tuned to land at Io. BLOCKED in pass 1: κ, Σ and Ṁ all need the disc's
+// real solid surface density, which needs the REAL f_disc — and pass-1 f_disc is
+// the bisection artifact (slope normalized to disc_radius(M, spin=1), not the
+// anchored dam). So this snow line is built in the f_disc-normalization pass,
+// once the real disc density exists. (COMP_R_SNOW is the hook it will park into.)
 // Convenience: the full derived parameter set from a budget + spin.
 function params_from_budget(b, spin) {
     const M = mass_from_budget(b);
