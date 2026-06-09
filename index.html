@@ -1295,6 +1295,12 @@ function findBestFit() {
 // as { id: {inputs, planets, notes?} }. User-saved systems show up in the
 // "User" optgroup of the preset selector.
 const USER_KEY = "hydros_user_presets";
+// Last-viewed system: persisted so a reload restores what you were looking at
+// (the dropdown value — works for built-in and "user:" presets alike).
+const LAST_KEY = "hydros_last_system";
+function rememberLastSystem(v) {
+  try { if (v) localStorage.setItem(LAST_KEY, v); } catch { /* storage off */ }
+}
 function loadUserPresets() {
   try { return JSON.parse(localStorage.getItem(USER_KEY) || "{}"); }
   catch { return {}; }
@@ -1337,6 +1343,7 @@ function saveCurrentAsPreset() {
   saveUserPresets(map);
   refreshUserPresetDropdown();
   document.getElementById("preset-select").value = "user:" + id;
+  rememberLastSystem("user:" + id);
   console.log(`Saved user preset "${id}"`);
 }
 function updateDeleteButtonState() {
@@ -1372,14 +1379,23 @@ refreshUserPresetDropdown();
 updateDeleteButtonState();
 document.getElementById("preset-select").onchange = (e) => {
   const v = e.target.value;
-  if (v && PRESETS[v]) loadPreset(v);
+  if (v && PRESETS[v]) { loadPreset(v); rememberLastSystem(v); }
   updateDeleteButtonState();
 };
 
-// Start with Sol loaded once the JSON has been fetched.
+// Restore the last-viewed system once the JSON has been fetched (fall back to
+// Sol if nothing stored or the stored id no longer exists).
 PRESETS_READY.then(() => {
-  document.getElementById("preset-select").value = "sol";
-  if (PRESETS.sol) loadPreset("sol");
+  let start = "sol";
+  try {
+    const last = localStorage.getItem(LAST_KEY);
+    if (last && PRESETS[last]) start = last;
+  } catch { /* storage off */ }
+  const sel = document.getElementById("preset-select");
+  sel.value = start;
+  if (PRESETS[start]) loadPreset(start);
+  else if (PRESETS.sol) { sel.value = "sol"; loadPreset("sol"); }
+  updateDeleteButtonState();
 });
 </script>
 
