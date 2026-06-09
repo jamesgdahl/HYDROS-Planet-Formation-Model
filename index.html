@@ -525,7 +525,12 @@ function calculate() {
   // v6 budget path: apply the sign-modulated solid transfer (negative antinodes
   // win, cascade scaled by C²) — the same post-process budgetFit runs, so the
   // browser shows the moons landed (Io massive+dry, etc.), not the raw cascade.
-  if (window.CURRENT_BUDGET) apply_sign_modulation(fit.slots, C, R_disc, R_A, M_star, f_disc);
+  // ISU bodies are exempt (passed as immune), matching budgetFit — so checking
+  // "in situ unchanged" on the dam anchor doesn't drain it and skew the fit.
+  if (window.CURRENT_BUDGET) {
+    const immuneNames = new Set(planets.filter(p => p.immutable).map(p => p.name));
+    apply_sign_modulation(fit.slots, C, R_disc, R_A, M_star, f_disc, immuneNames);
+  }
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
   // forensics receiver, e.g. Earth; or tide-ledger receiver, e.g.

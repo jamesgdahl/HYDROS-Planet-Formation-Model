@@ -2065,13 +2065,21 @@ function bruteFit(planets, M_star, stripping, vice) {
 // Calibrated on the four Galileans.
 const SIGN_DRAIN_K = 17.6; // φ = drain fraction of a +slot's solids = K·C² (cap 0.6)
 const SIGN_LEAK_K = 6.4; // fraction a −slot passes further inward = K·C (cap 0.95)
-function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc) {
+function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
     const phi = Math.min(0.6, SIGN_DRAIN_K * C * C);
     const leak = Math.min(0.95, SIGN_LEAK_K * C);
     if (!(phi > 0) || !(R_disc > 0) || !(R_A > 0))
         return;
+    // ISU (in-situ-unchanged) bodies are EXEMPT — "unchanged" means their solids
+    // were never redistributed by the feeding-zone transfer, so it skips them.
+    // This is what lets the f_disc bisection target an ISU subset cleanly: the
+    // transfer can't drain an anchor-frozen ISU slot (e.g. Sol's dam Neptune,
+    // pinned to observed) that the bisection then can't restore — which would
+    // force f_disc to run away and balloon the gas giants. Non-ISU bodies (e.g.
+    // Jupiter's moons, where the transfer is what lands them) are still moved.
     const body = slots.filter(s => s.filled && !s.external && !s.exterior
-        && s.slot_r > 0 && s.core > 0).sort((a, b) => b.slot_r - a.slot_r); // outer→inner
+        && s.slot_r > 0 && s.core > 0
+        && !(immune && immune.has(s.name))).sort((a, b) => b.slot_r - a.slot_r); // outer→inner
     let acc = 0;
     let lastBump = null;
     for (const s of body) {
@@ -2132,12 +2140,18 @@ function budgetFit(planets, budget, lambda, parent) {
         const B = M / SOL_M_PRIMORDIAL;
         const C = parent ? capture_fraction(outermost, parent.a, M, parent.M) : 1.0;
         const Mdot_of = (fd) => accretion_rate(M, Z, f_rock, fd, outermost, B, C);
+        const om_for_RA = (omega !== undefined) ? omega : spin;
+        const R_A_used = alfven_radius(M, om_for_RA);
         const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
         const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior
             && (immut.size ? immut.has(s.name) : true));
         // f_disc bisection at a FIXED snow line (no per-iteration snow-line update —
         // co-converging the snow line with the rock/ice split runs away: rocky moons
         // → less ice → higher f_disc → higher Ṁ → snow line pushed out → more rocky).
+        // The sign-modulation is NOT applied here: it exempts the ISU targets (so the
+        // target masses are the clean allocation values) and otherwise conserves the
+        // non-target total, so the bisected f_disc is unaffected — it's applied once
+        // as a post-process below, only redistributing the non-ISU slots.
         const bisectF = () => {
             let lo = 0.0005, hi = 0.5, f = 0.01;
             let fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
@@ -2177,12 +2191,9 @@ function budgetFit(planets, budget, lambda, parent) {
         const passB = bisectF();
         let f = passB.f;
         const fit = passB.fit;
-        // Sign-modulated solid transfer: + dips drain inward to − bumps (negative
-        // wins), cascade scaled by C = R_A/R_disc. Conserves total ⇒ the bisection's
-        // mass match is preserved; only the per-slot distribution shifts.
-        const om_for_RA = (omega !== undefined) ? omega : spin;
-        const R_A_used = alfven_radius(M, om_for_RA);
-        apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used, M, f);
+        // Sign-modulated solid transfer (post-process; conserves total, ISU-exempt):
+        // + dips drain inward to − bumps, cascade scaled by C = R_A/R_disc.
+        apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used, M, f, immut);
         const tgt = sel(fit);
         const tot = tgt.reduce((a, s) => a + s.observed, 0);
         const resid = tot > 0
