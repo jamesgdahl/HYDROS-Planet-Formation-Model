@@ -52,21 +52,47 @@ function f_disc_from_spin(spin: number, M: number): number {
   return Math.min(F_DISC_SOL * spin * spin / Math.max(M, 1e-12), F_DISC_MAX);
 }
 
-// DAM = WIND vs MAGNETIC FIELD (D-free; user, 2026-06-09). On ignition the wind
-// must establish a pressure differential HIGHER THAN THE MAGNETIC FIELD across
-// the future disc. If it does (NORMAL): the field is confined to a small R_A
-// (holds the inner disc), and the Davis Dam — the wind front — advances FAR OUT
-// to where the wind weakens to balance the outer disc (~30 AU). If the wind is
-// too feeble (INVERTED): the field is unconfined ⇒ R_A stands far out, and the
-// feeble wind cannot advance the Davis Dam ⇒ it stays plunged in. So the regime
-// is a WIND-vs-B comparison (a stellar property of M, spin) — D never enters.
-// Model mapping: R_disc = wind reach, R_A = magnetic reach, regime = which is
-// outer. NEXT PIECE (not a blocker): the scalings must make feeble/low-spin
-// M-dwarfs invert ⇒ the magnetic reach grows as the wind weakens — the OPEN
-// R_A–Ω^(4/7) SIGN issue from the paper review. The naive centrifugal form
-// below is a PLACEHOLDER until the wind/B scalings are settled.
-function disc_radius_from_budget(M: number, spin: number): number {
-  return SOL_R_DISC * spin * spin / Math.max(M, 1e-12);  // PLACEHOLDER — wind/B dam pending
+// DAM = WIND vs MAGNETIC FIELD, D-free (user + research, 2026-06-09).
+// Regime is set at the YOUNG DIM SUN epoch (T-Tauri high spin → saturated kG
+// field; pre-Hayashi dim → feeble wind). At formation all young stars are
+// saturated, so the FIELD doesn't discriminate — MASS does, via the wind:
+//   R_disc = WIND REACH (Davis Dam): NON-LINEAR in mass — bigger/hotter stars
+//     burn heavier elements and drive disproportionately strong winds, so the
+//     wind front reaches far out for big stars and barely at all for M-dwarfs.
+//   R_A = MAGNETOSPHERE stand-off (Alfvén Dam): grows only weakly with mass, so
+//     for low mass it overtakes the collapsed wind reach.
+// Regime: C = R_A/R_disc. C<1 NORMAL (Maas- or Alfvén-waveform-dominant by the
+// see-saw); C>1 TRULY INVERTED (dams swapped, the assembly-line pile). The v5
+// "inverted" K/G-dwarfs are really NORMAL Alfvén-dominant (C<1 but high) — only
+// genuine late-M-dwarfs invert. Non-igniters (BD/giants) have NO wind ⇒ their
+// Davis Dam is the gravitational disc edge (Hill radius) ⇒ always NORMAL.
+// CALIBRATED to the two clean anchors: Sol (R_disc=30.07, R_A=0.20, C=0.0067,
+// Maas-dominant normal) and TRAPPIST (M=0.089: R_disc=0.011 at b, R_A=0.047 at
+// the first KBO, C=4.3, inverted) ⇒ exponents below; inversion boundary ~0.15 M⊙.
+const WIND_MASS_EXP = 3.27;   // R_disc ∝ M^3.27 (non-linear stellar wind)
+const FIELD_MASS_EXP = 0.60;  // R_A   ∝ M^0.60 (magnetosphere stand-off)
+function disc_radius_wind(M: number): number {
+  return SOL_R_DISC * Math.pow(M / SOL_M_PRIMORDIAL, WIND_MASS_EXP);
+}
+function alfven_radius_standoff(M: number): number {
+  return SOL_R_A_FORMATION * Math.pow(M / SOL_M_PRIMORDIAL, FIELD_MASS_EXP);
+}
+function compression_budget(M: number): number {
+  return alfven_radius_standoff(M) / disc_radius_wind(M);
+}
+// Inversion requires an IGNITER. The Davis Dam's FALLBACK (no/feeble wind) is
+// the HILL RADIUS — the gravitational disc edge — NOT the atmosphere. Without a
+// wind to advance it, the dam sits at the Hill radius; whether that inverts
+// depends on R_A vs R_Hill: for a star's strong magnetosphere the Hill-radius
+// fallback is too small to beat it ⇒ would invert — so RED DWARFS invert
+// (strong field, but feeble wind ⇒ dam stuck at the small fallback). For a
+// gas giant (Jupiter) the planetary Hill radius is LARGE vs its weaker
+// magnetosphere ⇒ NORMAL (Alfvén-dominant). Proxy for now: below the H-burning
+// limit there is no stellar wind, force NORMAL (kills the M→0 wind blow-up for
+// sub-cascades); proper non-igniter handling = R_A vs R_Hill. TODO.
+const IGNITION_MASS = 0.08;  // M⊙, hydrogen-burning limit
+function is_inverted_budget(M: number): boolean {
+  return M >= IGNITION_MASS && compression_budget(M) >= 1.0;
 }
 
 // Convenience: the full derived parameter set from a budget + spin.
@@ -79,7 +105,7 @@ function params_from_budget(b: Budget, spin: number): {
     Z: metallicity_from_budget(b),
     f_rock: f_rock_from_budget(b),
     f_disc: f_disc_from_spin(spin, M),
-    R_disc: disc_radius_from_budget(M, spin),
-    R_A: alfven_radius(M, spin),
+    R_disc: disc_radius_wind(M),
+    R_A: alfven_radius_standoff(M),
   };
 }
