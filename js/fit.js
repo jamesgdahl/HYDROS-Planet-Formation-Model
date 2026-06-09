@@ -962,6 +962,13 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             bound.interpretation = `Martian-type scatter remnant: ~${pct}% of the slot ${bound.slot_n} parent (${bound.predicted.toFixed(0)} M⊕), stripped and flung under the dam to ${p.r} AU`;
             continue;
         }
+        // STELLAR FRAGMENT: a stellar-mass body interior to R_A that the disc
+        // reservoir cannot form. It isn't a planet — the core's primordial spin
+        // exceeded breakup (λ_break ≈ breakup_spin(M_star)) and tore off a sibling
+        // star (rotational fragmentation; the binary channel). Alpha Cen B is the
+        // exemplar: 0.91 M☉ at 23.5 AU, interior to R_A, > the whole reservoir.
+        const is_stellar = m_obs > M_STELLAR_BOUNDARY;
+        const lam_break = breakup_spin(M_star);
         results.push({
             slot_n: -1, slot_r: p.r, r_used: p.r,
             filled: true, name: p.name,
@@ -970,14 +977,17 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             predicted: m_obs, observed: m_obs,
             err_pct: 0, implied_dM: 0,
             stripped: is_stripped(p, M_star), in_void: true, external: true,
+            interior: true, stellar_fragment: is_stellar,
             primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
-            interpretation: (is_small && stripping_freed > 0
-                && m_obs / stripping_freed >= 0.04
-                && m_obs / stripping_freed <= 0.12)
-                ? `interior to Alfven Dam (encounter fragment: ~${(m_obs / stripping_freed * 100).toFixed(1)}% of the ${stripping_freed.toFixed(1)} M⊕ encounter-stripped inventory — the inward share of the 5%/95% split, flung under the dam)`
-                : is_small
-                    ? `interior to Alfven Dam (Martian-type scatter remnant: ~5-10% of a ${(m_obs / SURVIVOR_MASS_FRAC_MAX).toFixed(0)}-${(m_obs / SURVIVOR_MASS_FRAC_MIN).toFixed(0)} M⊕ parent, stripped and flung under the dam; parent slot indeterminate)`
-                    : "interior to Alfven Dam (void: no slot at observed r — delivered inward by scattering or migration; formation slot indeterminate)",
+            interpretation: is_stellar
+                ? `stellar fragment (interior to R_A): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation SIBLING STAR, not a slot product. Its mass exceeds the disc reservoir, and seating it demands a spin far past breakup (λ_break ≈ ${lam_break.toFixed(1)}): the core spun up beyond cohesion and tore in two (the binary channel).`
+                : (is_small && stripping_freed > 0
+                    && m_obs / stripping_freed >= 0.04
+                    && m_obs / stripping_freed <= 0.12)
+                    ? `interior to Alfven Dam (encounter fragment: ~${(m_obs / stripping_freed * 100).toFixed(1)}% of the ${stripping_freed.toFixed(1)} M⊕ encounter-stripped inventory — the inward share of the 5%/95% split, flung under the dam)`
+                    : is_small
+                        ? `interior to Alfven Dam (Martian-type scatter remnant: ~5-10% of a ${(m_obs / SURVIVOR_MASS_FRAC_MAX).toFixed(0)}-${(m_obs / SURVIVOR_MASS_FRAC_MIN).toFixed(0)} M⊕ parent, stripped and flung under the dam; parent slot indeterminate)`
+                        : "interior to Alfven Dam (void: no slot at observed r — delivered inward by scattering or migration; formation slot indeterminate)",
         });
     }
     // KBO-class population (the Kuiper mechanism): a distinct entity

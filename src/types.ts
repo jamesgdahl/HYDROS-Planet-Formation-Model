@@ -90,6 +90,13 @@ interface FitSlot {
   // is the fit; mass calculus deferred (predicted := observed) —
   // excluded from f-bisection target. slot_n = -n (negative rung).
   exterior?: boolean;
+  // INTERIOR body: observed INSIDE R_A, where no cascade slot exists (the
+  // symmetric counterpart of `exterior`). Excluded from the fit target.
+  // `stellar_fragment` marks the special case where the body is stellar-mass
+  // and the reservoir can't form it: a rotational-fragmentation sibling — the
+  // core's spin exceeded breakup and tore off a second star (e.g. Alpha Cen B).
+  interior?: boolean;
+  stellar_fragment?: boolean;
   // Wrecking-class ledger: condensables of the interior slots this
   // migrant traversed and ate en route to its parking seat. Arrives
   // POST-H/He accumulation (heavy-element enrichment; not fed into the
