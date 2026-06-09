@@ -50,6 +50,11 @@
     <label title="OBSERVED PRIMORDIAL mass of the central body in Sol-primordial units (Sol=1 ≡ 1.14 current M☉). For a sub-cascade it's the central planet. The budget PREDICTS this as the reservoir minus the bodies it shed; predicted-vs-observed shows in the derived panel.">Observed stellar mass (Sol=1, primordial)<input id="obs_star" type="number" step="any" value="1.0"></label>
     <label title="Close stellar encounter edited this cascade (truncation, stirring, inward debris). Toggle on to reveal the encounter parameters."><input id="strip_on" type="checkbox" style="width:auto;"> Gravitational stripping</label>
   </div>
+  <div class="input-grid" style="margin-top:0.5rem;align-items:end;">
+    <label title="[Fe/H] iron metallicity (dex, solar = 0). Sets Z = Z☉·10^[Fe/H] — the total metal (rock+ice) budget.">[Fe/H] (dex)<input id="feh" type="number" step="0.05" value="0.0"></label>
+    <label title="C/O number ratio (solar ≈ 0.55). The WATER indicator: higher C/O → less free oxygen → less ice, more rock; above ~0.8 the disc is essentially dry.">C/O ratio<input id="cto" type="number" step="0.05" value="0.55"></label>
+    <button type="button" id="derive-budget" title="Reconstruct the rock/ice/H budget from the observed stellar mass + [Fe/H] + C/O, then recompute.">⟸ Derive budget from [Fe/H], C/O &amp; mass</button>
+  </div>
   <div class="input-grid" id="encounter-inputs" style="display:none;margin-top:0.5rem;">
     <label>Perturber mass M_pert (Sol-primordial units)<input id="strip_mpert" type="number" step="0.05" value="0.44"></label>
     <label>Encounter periapsis q (AU; blank = best-fit)<input id="strip_q" type="number" step="0.5"></label>
@@ -232,6 +237,9 @@ function getInputs() {
     spin: parseFloat(document.getElementById("spin").value),
     // Observed central-body mass (M☉) — the budget predicts it.
     star: parseFloat(document.getElementById("obs_star").value),
+    // Abundances (for the derive-from-spectroscopy convenience + persistence).
+    feh: parseFloat(document.getElementById("feh").value),
+    cto: parseFloat(document.getElementById("cto").value),
     // The parent slot {a, M} for a sub-cascade (gas-starvation C); carried by
     // the preset, kept across manual edits. Null ⇒ self-fed primary.
     parent: window.CURRENT_PARENT || null,
@@ -262,6 +270,8 @@ function setInputs(inp) {
   if (inp.star != null && isFinite(inp.star)) {
     document.getElementById("obs_star").value = inp.star;
   }
+  if (inp.feh != null && isFinite(inp.feh)) document.getElementById("feh").value = inp.feh;
+  if (inp.cto != null && isFinite(inp.cto)) document.getElementById("cto").value = inp.cto;
   window.CURRENT_PARENT = inp.parent || null;
   // Kinetic regime (impact-vapor natal disc, e.g. Earth/Theia):
   // carried as a preset flag, threaded into slot_aware_fit.
@@ -375,6 +385,8 @@ function loadPreset(name) {
     spin: (preset.spin != null) ? preset.spin : 1.0,
     parent: preset.parent || null,
     star: preset.star,
+    feh: preset.feh,
+    cto: preset.cto,
     stripping: preset.stripping,
     L: preset.L,
     kinetic: preset.kinetic,
@@ -1349,6 +1361,8 @@ function saveCurrentAsPreset() {
     budget: inp.budget,
     spin: inp.spin,
     star: inp.star,
+    feh: inp.feh,
+    cto: inp.cto,
     parent: inp.parent || null,
     stripping: inp.stripping || undefined,
     kinetic: window.CURRENT_KINETIC || undefined,
@@ -1389,6 +1403,17 @@ document.getElementById("add-kbo").onclick = () => addKBORow();
 document.getElementById("fill-predicted").onclick = fillPredictedSlots;
 document.getElementById("find-fit").onclick = findBestFit;
 document.getElementById("calculate").onclick = calculate;
+// Reconstruct the rock/ice/H budget from observed mass + [Fe/H] + C/O, then recompute.
+document.getElementById("derive-budget").onclick = () => {
+  const M = parseFloat(document.getElementById("obs_star").value) || 1;
+  const feh = parseFloat(document.getElementById("feh").value) || 0;
+  const cto = parseFloat(document.getElementById("cto").value) || CO_SUN;
+  const b = budget_from_abundances(M, feh, cto);
+  document.getElementById("b_rock").value = +b.rock.toPrecision(6);
+  document.getElementById("b_ice").value = +b.ice.toPrecision(6);
+  document.getElementById("b_hydrogen").value = +b.hydrogen.toPrecision(7);
+  calculate();
+};
 // Encounter inputs are revealed only when gravitational stripping is toggled on.
 document.getElementById("strip_on").onchange = (e) => {
   document.getElementById("encounter-inputs").style.display = e.target.checked ? "" : "none";
