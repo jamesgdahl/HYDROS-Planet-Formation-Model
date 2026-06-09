@@ -108,7 +108,26 @@ const NEB_CONC_HALF = 133.0;
 const NEB_CONC_STEEP = 0.174;
 
 // Universal physics
+// THRESHOLD_GAS: the giant-class MASS boundary used by the classifier
+// (rock/ice/gas giant). The runaway gas-accretion GATE is no longer this fixed
+// value — it is derived per system as runaway_core_mass() (Ikoma τ_KH = τ_disc),
+// which evaluates to ~2.9 M⊕ for Sol (so Sol is unchanged) but rises for
+// gas-poor discs and falls for gas-rich ones.
 const THRESHOLD_GAS = 3.0;
+// GAS CAPTURE (core-accretion, derived — replaces the old fit constant
+// A_0·M_core²). The local Tanigawa-Watanabe (2002) disc-limited rate
+// (0.29·(M_p/M_*)^4/3·(H/r)^-2·Σ_gas·r²·Ω) hugely exceeds the disc gas SUPPLY at
+// runaway (verified ~10^4 M⊕/Myr at 30 M⊕), so a runaway giant's envelope is
+// SUPPLY-limited: it captures a universal fraction ε of the DISC GAS RESERVOIR
+// (f_disc·M_star — a stable disc property, NOT the fluctuating cascade core, so
+// it never needs re-tuning when the slot machinery moves), with exp(−k·t_form)
+// the capture-window closing (gap-opening/local depletion, e-fold ~1.45 Myr).
+// ε = 0.2864 is Sol-anchored ONCE on Jupiter's in-situ envelope (physical
+// gas-capture-fraction range 0.1–0.3); k carries its gas-poor steepening.
+// TAU_KH0_MYR = Ikoma, Nakazawa & Emori (2000) KH-contraction prefactor 10^8 yr.
+const GAS_CAPTURE_EFF = 0.2864;
+const GAS_WINDOW_K = 0.691;
+const TAU_KH0_MYR = 100.0;
 const PEBBLE_CAPTURE_EFFICIENCY = 0.40;
 const ETA_ROCK = 0.78;
 const SNOW_PILEUP_FACTOR = 0.5;

@@ -88,7 +88,7 @@ function slot_predicted_mass(r, M_star, spin, f_disc, t_form_cascade, omega) {
     const core = rock + ice;
     // Inverted aggregates can also capture gas IF the core reaches the gas
     // threshold (an inverted hot Jupiter) — so no inverted-specific suppression.
-    if (core <= THRESHOLD_GAS)
+    if (core <= runaway_core_mass(M_star, f_disc))
         return core;
     const sl = slope(M_star, f_disc);
     const tf = (t_form_cascade === undefined) ? formation_time(r, rock + ice, M_star, f_disc) : t_form_cascade;

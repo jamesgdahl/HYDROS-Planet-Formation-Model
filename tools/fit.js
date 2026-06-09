@@ -78,6 +78,8 @@ function budgetFit(planets, budget, lambda, parent) {
     M: r.budget_M, Z: r.budget_Z, f_rock: r.budget_f_rock,
     inverted: r.budget_inverted, R_A: r.budget_R_A, lambda: r.budget_lambda,
     Mdot: r.budget_Mdot, snow: r.budget_snow, C: r.budget_C,
+    h_reservoir: r.budget_h_reservoir, h_captured: r.budget_h_captured,
+    h_dispersed: r.budget_h_dispersed, h_exhausted: r.budget_h_exhausted,
   };
   return r;
 }
@@ -199,6 +201,8 @@ function printSlotTable(sys, r) {
     const b = sys.budget;
     console.log(`  budget=[rock ${b.rock}, ice ${b.ice}, H ${b.hydrogen}]  Z=${r._budget.Z.toFixed(4)}  f_rock=${r._budget.f_rock.toFixed(3)}  regime=${r._budget.inverted ? 'INVERTED' : 'NORMAL'}`);
     console.log(`  archaic spin λ=${r._budget.lambda.toExponential(3)}  R_A=${r._budget.R_A.toExponential(3)} AU  C=R_A/R_disc=${(r._budget.R_A / r.fit.R_disc).toFixed(4)}`);
+    const hb = r._budget;
+    console.log(`  H budget: reservoir=${hb.h_reservoir.toFixed(1)} → captured=${hb.h_captured.toFixed(1)} + dispersed=${hb.h_dispersed.toFixed(1)} M⊕${hb.h_exhausted ? '  ⚠ EXHAUSTED — raise budget/spin' : ''}`);
   }
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);

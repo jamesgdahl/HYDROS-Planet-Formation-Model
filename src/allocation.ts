@@ -144,24 +144,31 @@ function hydrogen_capture(core_mass: number, t_form_myr: number, spin: number,
                           r: number, M_star: number, f_disc: number,
                           omega?: number): number {
   spin = (omega === undefined) ? spin : omega;  // wind term is inner-jaw
-  if (core_mass < THRESHOLD_GAS) return 0;
-  // Tanigawa-Ikoma (2007) gas accretion: dM_gas/dt ∝ M_core² during
-  // runaway phase. Integrating with exponentially-decaying disc gas
-  // density gives M_gas = A_0 · M_core² · exp(-k·t_form) · wind_supp.
-  // A_0 and k calibrated against Sol's Jupiter and Neptune under the
-  // geometric cascade ρ = 1 − √(ln 2)/2 ≈ 0.584, with allocation at
-  // SLOT radii (on-slot doctrine: Jupiter at its formation slot
-  // 5.981 AU, not its displaced 5.203 AU — the old value 4.45 carried
-  // that conflation). k corresponds to disc-gas-dispersal e-folding
-  // time ~1.45 Myr.
-  const A_0 = 4.3899;  // units of 1/M_E (so M_core² · A_0 gives M_E)
+  // Runaway gate: the core must beat the Kelvin-Helmholtz clock (Ikoma 2000)
+  // before the gas disperses, i.e. exceed the derived critical core mass.
+  if (core_mass < runaway_core_mass(M_star, f_disc)) return 0;
+  // DERIVED supply-limited capture (core-accretion paradigm). Once a core runs
+  // away, the local Tanigawa-Watanabe disc-limited rate (∝ M^4/3·Σ_gas·...)
+  // vastly outstrips the disc gas supply, so the captured envelope is set by
+  // how much of the DISC GAS RESERVOIR is still available — NOT by M_core (a
+  // forming giant swallows essentially everything its gap can reach). So:
+  //   M_gas = ε · M_gas_disc · exp(−k·t_form) · wind_supp,
+  // M_gas_disc = f_disc·M_star (the reservoir), ε the universal capture
+  // fraction, exp(−k·t_form) the closing capture window. This is what makes
+  // Jupiter's H/He fall out of Sol's DISC (f_disc, M_star) instead of a fit
+  // amplitude re-tuned to the cascade's current core allocation; with all four
+  // Sol giants' cores ≈ 16 M⊕, the old A_0·M_core² was a disguised constant ≈
+  // ε·M_gas_disc and the whole Jupiter→Neptune envelope ladder is TIMING (the
+  // exp term), which this preserves.
+  const M_gas_disc = f_disc * m_star_earth(M_star);
   const sol_disc = 0.01 * m_star_earth(SOL_M_PRIMORDIAL);
-  const system_disc = f_disc * m_star_earth(M_star);
-  const k = 0.691 * Math.max(1.0, Math.pow(sol_disc / system_disc, 2.0));
-  const amplification = A_0 * Math.exp(-k * t_form_myr);
+  // k = capture-window e-fold; steepens in gas-poor discs (less reservoir, the
+  // window shuts faster relative to the reservoir already being thin).
+  const k = GAS_WINDOW_K * Math.max(1.0, Math.pow(sol_disc / M_gas_disc, 2.0));
+  const window = Math.exp(-k * t_form_myr);
   const spin_ref = 30.0;
   const r_ref = 0.5;
   const wind_term = (spin / spin_ref) * Math.pow(r_ref / Math.max(r, 0.01), 2);
   const wind_suppression = 1.0 / (1.0 + wind_term);
-  return core_mass * core_mass * amplification * wind_suppression;
+  return GAS_CAPTURE_EFF * M_gas_disc * window * wind_suppression;
 }

@@ -256,7 +256,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     for (const s of slot_data) {
         const r = fit_r(s);
         const tf_casc = formation_time(r, cores[s.slot_n], M_star, f_disc);
-        const eligible = (cores[s.slot_n] > THRESHOLD_GAS) && (tf_casc < T_DISC_DISPERSAL_MYR);
+        const eligible = (cores[s.slot_n] > runaway_core_mass(M_star, f_disc)) && (tf_casc < T_DISC_DISPERSAL_MYR);
         weights[s.slot_n] = eligible ? pebble_allocation_weight(r, M_star, f_disc) : 0.0;
     }
     const total_w = Object.values(weights).reduce((a, b) => a + b, 0);
@@ -287,7 +287,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         // Inverted bodies CAN become gas giants too — if the aggregate core
         // reaches the gas threshold and an envelope is available (an inverted hot
         // Jupiter). So no special suppression: gas-eligible on core mass alone.
-        const gas_eligible = (core > THRESHOLD_GAS);
+        const gas_eligible = (core > runaway_core_mass(M_star, f_disc));
         // Strip detection: filled slots use observed mass as escape gate;
         // lost slots use primordial core mass (what would have been there).
         // Lost-slot predictions then reflect post-strip survival mass.
@@ -1028,7 +1028,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
                 let peb = 0;
                 let core = rock + ice + peb;
                 const t_form = 0.10 * rr / Math.max(sl, 1e-12);
-                let h_he = (core > THRESHOLD_GAS)
+                let h_he = (core > runaway_core_mass(M_star, f_disc))
                     ? hydrogen_capture(core, t_form, spin, rr, M_star, f_disc, omega) : 0;
                 let total = core + h_he;
                 const primordial = { rock, ice, pebble: peb, h_he, core, total };
@@ -2120,6 +2120,37 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
         }
     }
 }
+// CONSERVED hydrogen draw-down. The gas-giant envelopes draw from ONE finite
+// disc-hydrogen reservoir (= f_disc·M_star, the disc's share of b_hydrogen),
+// earliest-forming giant first (it reaches the gas supply first). Each takes the
+// gas it wants up to what's left; if the reservoir empties before all are
+// satisfied the rest are STARVED (capped) and `exhausted` flags an under-budget
+// system — the lever to fix it is a bigger budget / higher spin (more disc), not
+// a fudge. The un-captured remainder is `dispersed` — the gas that closed onto
+// the star or was flung out (the self-similar analogue of the Kuiper closing
+// term; for a high-spin reservoir like a forming binary this is the bulk — the
+// "disc of destruction"). Conserves total H: captured + dispersed = reservoir.
+function apply_hydrogen_conservation(slots, reservoir) {
+    const giants = slots
+        .filter(s => s.filled && !s.external && !s.exterior && (s.predicted - s.core) > 1e-9)
+        .sort((a, b) => (a.t_form || 0) - (b.t_form || 0)); // earliest-forming first
+    let remaining = Math.max(0, reservoir);
+    let captured = 0, exhausted = false;
+    for (const s of giants) {
+        const want = s.predicted - s.core;
+        const got = Math.min(want, remaining);
+        if (got < want - 1e-6)
+            exhausted = true;
+        remaining -= got;
+        captured += got;
+        s.predicted = s.core + got;
+        if (s.observed > 0) {
+            s.err_pct = (s.predicted - s.observed) / s.observed * 100;
+            s.implied_dM = s.observed - s.predicted;
+        }
+    }
+    return { captured, dispersed: remaining, exhausted };
+}
 function budgetFit(planets, budget, lambda, parent) {
     const M = mass_from_budget(budget);
     const Z = metallicity_from_budget(budget);
@@ -2194,6 +2225,12 @@ function budgetFit(planets, budget, lambda, parent) {
         // Sign-modulated solid transfer (post-process; conserves total, ISU-exempt):
         // + dips drain inward to − bumps, cascade scaled by C = R_A/R_disc.
         apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used, M, f, immut);
+        // Conserved hydrogen draw-down: the gas envelopes draw from the finite disc
+        // hydrogen reservoir (f_disc·M_star = the disc's share of b_hydrogen). The
+        // un-captured remainder is dispersed (onto the star / flung out). `exhausted`
+        // ⇒ the giants want more gas than the disc holds: raise the budget / spin.
+        const H_reservoir = f * m_star_earth(M);
+        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
         const tgt = sel(fit);
         const tot = tgt.reduce((a, s) => a + s.observed, 0);
         const resid = tot > 0
@@ -2211,6 +2248,8 @@ function budgetFit(planets, budget, lambda, parent) {
             budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
             budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
             budget_Mdot: Mdot, budget_snow: mulders_snow_line(M, Mdot), budget_C: C,
+            budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
+            budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
         };
     }
     finally {

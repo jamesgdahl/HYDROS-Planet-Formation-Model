@@ -217,3 +217,17 @@ function gas_dispersal_time(M_star: number, f_disc: number): number {
   const sol_disc_mass = 0.01 * m_star_earth(SOL_M_PRIMORDIAL);
   return T_DISC_DISPERSAL_MYR * Math.pow(disc_mass / sol_disc_mass, 0.5);
 }
+
+// Runaway gas-accretion GATE: the core mass at which the Kelvin-Helmholtz
+// envelope-contraction timescale (Ikoma, Nakazawa & Emori 2000, τ_KH ∝ M^−2.5·κ)
+// equals the gas-disc lifetime — below it the envelope can't run away before the
+// gas is gone (ice giant / terrestrial), above it the planet goes runaway.
+// τ_KH = TAU_KH0_MYR·(M/M⊕)^−2.5·κ; set τ_KH = τ_disc and solve for M:
+//   M_crit = (TAU_KH0_MYR·κ / τ_disc)^(1/2.5).
+// κ is taken as the grain-opacity knob (GRAIN_OPACITY ≈ 0.75 cm²/g in this fit).
+// Sol → 2.93 M⊕ (≈ the legacy THRESHOLD_GAS=3); gas-poor discs read HIGHER
+// (giants harder, e.g. TRAPPIST 4.4), gas-rich LOWER (Beta Pic 1.5).
+function runaway_core_mass(M_star: number, f_disc: number): number {
+  const tau_disc = Math.max(gas_dispersal_time(M_star, f_disc), 0.01);
+  return Math.pow(TAU_KH0_MYR * GRAIN_OPACITY / tau_disc, 1.0 / 2.5);
+}

@@ -489,7 +489,8 @@ function calculate() {
     <span class="label">f_disc (real):</span> <span class="value">${fmt(bg.f_disc, 5)}</span><br>
     <span class="label">Accretion rate Ṁ:</span> <span class="value">${bg.budget_Mdot.toExponential(2)} M☉/yr</span> &nbsp;
     <span class="label">Capture fraction C:</span> <span class="value">${fmt(bg.budget_C, 4)}</span> &nbsp;
-    <span class="label">Viscous snow line (Mulders):</span> <span class="value">${bg.budget_snow < 0.01 ? (bg.budget_snow*1000).toPrecision(3)+'m' : fmt(bg.budget_snow,3)} AU</span><br>` : "";
+    <span class="label">Viscous snow line (Mulders):</span> <span class="value">${bg.budget_snow < 0.01 ? (bg.budget_snow*1000).toPrecision(3)+'m' : fmt(bg.budget_snow,3)} AU</span><br>
+    <span class="label">H budget [M⊕]:</span> <span class="value">reservoir ${fmt(bg.budget_h_reservoir,0)} → captured ${fmt(bg.budget_h_captured,1)} + dispersed ${fmt(bg.budget_h_dispersed,1)}${bg.budget_h_exhausted ? ' ⚠ EXHAUSTED (raise budget/spin)' : ''}</span><br>` : "";
   document.getElementById("derived").innerHTML = budgetLine + `
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
     <span class="label">Disc outer edge (Davis Dam):</span> <span class="value">${fmt(R_disc, 3)} AU</span> &nbsp;
@@ -530,6 +531,10 @@ function calculate() {
   if (window.CURRENT_BUDGET) {
     const immuneNames = new Set(planets.filter(p => p.immutable).map(p => p.name));
     apply_sign_modulation(fit.slots, C, R_disc, R_A, M_star, f_disc, immuneNames);
+    // Conserved hydrogen draw-down: the gas envelopes deplete the finite disc
+    // hydrogen reservoir (f_disc·M_star); same as budgetFit, so the browser
+    // shows budget-obeying masses and the dispersed/destruction remainder.
+    window.CURRENT_H = apply_hydrogen_conservation(fit.slots, f_disc * m_star_earth(M_star));
   }
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
