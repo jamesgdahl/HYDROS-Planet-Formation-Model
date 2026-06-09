@@ -4,7 +4,7 @@
 
 function cascade_slot_positions(M_star: number, spin: number,
                                 min_slots: number = 0,
-                                omega?: number): number[] {
+                                omega?: number, f_disc?: number): number[] {
   // Slot count: keep adding slots until next would fall inside R_A.
   // Inverted regime (R_A >= R_disc): the compressed inner reservoir
   // defaults to 11 slots, but the observed planet count constrains the
@@ -12,22 +12,66 @@ function cascade_slot_positions(M_star: number, spin: number,
   // slots, so the inverted reservoir packs max(11, min_slots). (The
   // normal regime cannot be extended this way: its slot count is fixed
   // by the R_A terminus, so insufficient slots invalidate the spin.)
-  // VICE: the regime CLASSIFICATION stays on the geometry dial (spin =
-  // D^(2/3)), but the normal-regime ladder TERMINUS is the physical
-  // inner jaw — alfven_radius at omega (defaults to spin: jaw-lock).
+  // v5: both dams are physical now — R_disc from the wind⇄density balance
+  // (depends on M, D=spin^1.5, and rotation Ω=omega) and R_A from rotation.
+  // INVERTED when the magnetosphere reaches past the Davis Dam (R_A ≥
+  // R_disc) — the feeble-wind M-dwarf case; the compressed reservoir packs
+  // max(11, min_slots). Normal regime: the ladder terminates at R_A.
   const om = (omega === undefined) ? spin : omega;
-  const R_disc = disc_radius(M_star, spin);
-  const R_A_geom = alfven_radius(M_star, spin);
+  const R_disc = disc_radius(M_star, spin, om, f_disc);
   const R_A_phys = alfven_radius(M_star, om);
-  let n_slots: number;
-  if (R_A_geom >= R_disc) {
-    n_slots = Math.max(11, min_slots);
-  } else {
-    n_slots = Math.max(1, Math.floor(Math.log(R_A_phys / R_disc) / Math.log(CASCADE_RATIO)) + 1);
-  }
   const out: number[] = [];
-  for (let n = 0; n < n_slots; n++) out.push(R_disc * Math.pow(CASCADE_RATIO, n));
+  if (R_A_phys >= R_disc) {
+    // INVERTED (v5): the cascade runs OUTWARD from the Davis Dam (R_disc,
+    // the INNER pile-up) to the magnetosphere (R_A, OUTER). This regime is
+    // factory/pile-up minting, NOT a reflecting standing-wave cavity, so it
+    // is a plain ρ-ladder (no superposition phase shift): r_n = R_disc·ρ^(−n),
+    // bounded by R_A. Half-steps (the second, Alfvén-anchored factory) are
+    // added in cascade_sites. See memory: inverted-regime-model.
+    const span = Math.floor(Math.log(R_A_phys / R_disc) / (-Math.log(CASCADE_RATIO))) + 1;
+    const n_slots = Math.max(span, Math.ceil(min_slots / 2), 1);
+    for (let n = 0; n < n_slots; n++) out.push(R_disc * Math.pow(CASCADE_RATIO, -n));
+    return out;
+  }
+  // NORMAL: the two FUNDAMENTAL waveforms — Maas (Davis Dam, R_disc) and
+  // Alfvén (Alfvén Dam, R_A) — share frequency α (φ_M + φ_A = const), so they
+  // sum to ONE cosine, ρ-spaced but phase-shifted by δ: antinodes
+  // r_n = R_disc·e^(−δ/α)·ρⁿ (δ→0 ⇒ r_n = R_disc·ρⁿ when Maas dominates).
+  // Ladder terminates at the inner Alfvén Dam.
+  const n_slots = Math.max(1, Math.floor(Math.log(R_A_phys / R_disc) / Math.log(CASCADE_RATIO)) + 1);
+  const shift = superposition_phase_shift(R_disc, R_A_phys);
+  for (let n = 0; n < n_slots; n++) out.push(R_disc * shift * Math.pow(CASCADE_RATIO, n));
   return out;
+}
+
+// Alfvén–Maas superposition primitives (v5). ALPHA = π/(−ln ρ) ≈ 5.836 is
+// the cascade's angular wavenumber: one full antinode cycle per ρ-step.
+const CASCADE_ALPHA = Math.PI / (-Math.log(CASCADE_RATIO));
+
+// Dam see-saw weights from compression C = R_A/R_disc: the dominant dam is
+// normalized to 1, the weaker scaled by the ratio. Davis/Maas dominates the
+// normal regime (C<1); Alfvén dominates when inverted (C>1).
+function dam_weights(R_disc: number, R_A: number): { wM: number; wA: number } {
+  const C = R_A / R_disc;
+  return C >= 1 ? { wM: 1 / C, wA: 1 } : { wM: 1, wA: C };
+}
+
+// Constant phase shift δ of the merged ρ-ladder, returned as the radial
+// factor e^(−δ/α) that multiplies R_disc. 1.0 when Alfvén is negligible.
+function superposition_phase_shift(R_disc: number, R_A: number): number {
+  if (!(R_disc > 0) || !(R_A > 0)) return 1.0;
+  const Phi_tot = CASCADE_ALPHA * Math.log(R_disc / R_A);
+  const { wM, wA } = dam_weights(R_disc, R_A);
+  const delta = Math.atan2(wA * Math.sin(Phi_tot), wM + wA * Math.cos(Phi_tot));
+  return Math.exp(-delta / CASCADE_ALPHA);
+}
+
+// Net (signed) Alfvén–Maas amplitude at radius r — the quantity the chart
+// plots and the fit scores. Antinodes (|A| maximal) are the slot seats.
+function superposition_amplitude(r: number, R_disc: number, R_A: number): number {
+  const { wM, wA } = dam_weights(R_disc, R_A);
+  return wM * Math.cos(CASCADE_ALPHA * Math.log(R_disc / r))
+       + wA * Math.cos(CASCADE_ALPHA * Math.log(r / R_A));
 }
 
 // Predict the cascade: r_n = R_disc * 0.5837^n (geometric ratio from the
@@ -47,8 +91,10 @@ function slot_predicted_mass(r: number, M_star: number, spin: number,
                              f_disc: number, t_form_cascade?: number,
                              omega?: number): number {
   const rock = rock_allocation(r, M_star, spin, f_disc, omega);
-  const ice = ice_allocation(r, M_star, spin, f_disc);
+  const ice = ice_allocation(r, M_star, spin, f_disc, omega);
   const core = rock + ice;
+  // Inverted aggregates can also capture gas IF the core reaches the gas
+  // threshold (an inverted hot Jupiter) — so no inverted-specific suppression.
   if (core <= THRESHOLD_GAS) return core;
   const sl = slope(M_star, f_disc);
   const tf = (t_form_cascade === undefined) ? 0.10 * r / sl : t_form_cascade;
@@ -77,8 +123,18 @@ function auto_spin_from_outermost(planets: Planet[], M_star: number, anchor_slot
   }
   // anchor_slot > 0: outermost observed sits at slot k, not slot 0.
   // Slots 0..k-1 are "missing" — ejected/scattered outer bodies.
-  const R_disc_target = max_r / Math.pow(CASCADE_RATIO, anchor_slot);
-  return Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc_target, 2);
+  // v5: the outermost sits at slot k of the SHIFTED superposition ladder
+  // (r_k = R_disc·shift·ρ^k), so solve R_disc by fixed point — the shift
+  // depends on R_disc/R_A, so iterate (converges fast; shift→1 in the
+  // Maas-dominant regime, recovering the old closed form).
+  let shift = 1.0, spin = 1.0;
+  for (let i = 0; i < 6; i++) {
+    const R_disc_target = max_r / (shift * Math.pow(CASCADE_RATIO, anchor_slot));
+    spin = spin_for_disc_radius(M_star, R_disc_target);   // inverts the v5 wind-balance formula
+    shift = superposition_phase_shift(disc_radius(M_star, spin),
+                                      alfven_radius(M_star, spin));
+  }
+  return spin;
 }
 
 // EXISTENCE JUSTIFICATION (fit gate): every observed body must have a

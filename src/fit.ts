@@ -30,15 +30,22 @@ interface CascadeSite { n: number; r: number; interstitial: boolean }
 // All candidate formation sites: the full rungs, plus (inverted regime
 // only) the interstitial midpoints at r_n·√ρ.
 function cascade_sites(M_star: number, spin: number,
-                       min_slots: number, omega?: number): CascadeSite[] {
-  const slots_r = cascade_slot_positions(M_star, spin, min_slots, omega);
+                       min_slots: number, omega?: number, f_disc?: number): CascadeSite[] {
+  const slots_r = cascade_slot_positions(M_star, spin, min_slots, omega, f_disc);
   const sites: CascadeSite[] = slots_r.map((r, n) =>
     ({ n, r, interstitial: false }));
-  const inverted = alfven_radius(M_star, spin) >= disc_radius(M_star, spin);
+  const om_s = (omega === undefined) ? spin : omega;
+  const inverted = alfven_radius(M_star, om_s) >= disc_radius(M_star, spin, om_s, f_disc);
   if (inverted) {
+    // INVERTED regime = a SINGLE Davis assembly line. The Alfvén Dam REPELS
+    // material (magnetosphere — it cannot accrete), so there is NO second
+    // factory. Outward half-steps (√ρ cadence) between the integer slots give
+    // the assembly drop points. Composition + mass differentiate by PHASE
+    // down the line (rocky → icy → nebula KBOs) via the rocky-budget clock in
+    // slot_aware_fit. (Memory: inverted-regime-model.)
     const SQRT_RHO = Math.sqrt(CASCADE_RATIO);
-    for (let n = 0; n < slots_r.length - 1; n++) {
-      sites.push({ n: n + 0.5, r: slots_r[n] * SQRT_RHO, interstitial: true });
+    for (let n = 0; n < slots_r.length; n++) {
+      sites.push({ n: n + 0.5, r: slots_r[n] / SQRT_RHO, interstitial: true });
     }
   }
   return sites;
@@ -48,7 +55,7 @@ function assign_planets_to_slots(planets: Planet[], M_star: number,
                                  spin: number, f_disc: number,
                                  omega?: number): AssignedSlot[] {
   const observed = planets.filter(p => (p.observed || 0) > 0);
-  const sites = cascade_sites(M_star, spin, observed.length, omega);
+  const sites = cascade_sites(M_star, spin, observed.length, omega, f_disc);
   const site_pred = sites.map(s => slot_predicted_mass(s.r, M_star, spin, f_disc, undefined, omega));
 
   // Rocky inventory at each site (rock + ice). Used as match target for
@@ -256,7 +263,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   const omega = (opts.omega === undefined || opts.omega === null)
     ? (spin as number) : opts.omega;
   const R_A_now = alfven_radius(M_star, omega);
-  const inverted = R_A_now >= disc_radius(M_star, spin);
+  const inverted = R_A_now >= disc_radius(M_star, spin, omega, f_disc);
   // Only the DEEP void (r < 0.5 R_A) is exclusion-eligible: the dam
   // edge is not razor-sharp, and marginal cases remain fittable.
   const VOID_DEPTH = 0.5;
@@ -277,7 +284,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // minus slot position is post-formation displacement (the event
   // ledger), not a formation input. Nearest-site machinery retained for
   // migration tagging.
-  const sites_pre = cascade_sites(M_star, spin, disc_planets.length, omega);
+  const sites_pre = cascade_sites(M_star, spin, disc_planets.length, omega, f_disc);
   const R_disc_local = sites_pre.length ? sites_pre[0].r : 0;
   const nearest_site_n = (r_obs: number): number => {
     const log_obs = Math.log(r_obs);
@@ -298,7 +305,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   for (const s of slot_data) {
     const r = fit_r(s);
     cores[s.slot_n] = rock_allocation(r, M_star, spin, f_disc, omega)
-                    + ice_allocation(r, M_star, spin, f_disc);
+                    + ice_allocation(r, M_star, spin, f_disc, omega);
   }
   const weights: Record<number, number> = {};
   for (const s of slot_data) {
@@ -327,11 +334,14 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     const n = s.slot_n;
     const r = fit_r(s);
     let rock = rock_allocation(r, M_star, spin, f_disc, omega);
-    let ice = ice_allocation(r, M_star, spin, f_disc);
+    let ice = ice_allocation(r, M_star, spin, f_disc, omega);
     let peb = pebble[n];
     let core = rock + ice + peb;
     const in_void = false;
     const observed = s.filled ? s.observed : 0;
+    // Inverted bodies CAN become gas giants too — if the aggregate core
+    // reaches the gas threshold and an envelope is available (an inverted hot
+    // Jupiter). So no special suppression: gas-eligible on core mass alone.
     const gas_eligible = (core > THRESHOLD_GAS);
     // Strip detection: filled slots use observed mass as escape gate;
     // lost slots use primordial core mass (what would have been there).
@@ -1006,7 +1016,70 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // position and displacement exactly as for interior rows.
   if (kbo_bodies.length > 0) {
     const R_dam = R_disc_local > 0 ? R_disc_local
-      : disc_radius(M_star, spin as number);
+      : disc_radius(M_star, spin as number, omega, f_disc);
+    if (inverted) {
+      // INVERTED PHASE-3 NEBULA products (exterior, KBO-class). UNIFIED
+      // minting: every body — interior planet, factory product, exterior KBO —
+      // is allocated rock/ice/pebble, runs gas capture + mantle stripping, and
+      // is classified by the SAME machinery (no predicted:=observed shortcut,
+      // no zero composition). The Davis Dam has marched past R_A into the
+      // Alfvén-repelled nebula; the ice allocation's PHASE-3 branch gives these
+      // a real ICE composition and a PREDICTED mass. (Memory: inverted-regime-model.)
+      const r_snow_k = snow_line(M_star, f_disc);
+      // PHASE-3 nebula is a CONSERVED pile (no slots beyond R_A): the marching
+      // dam sweeps it up inner-first, so the closest KBO to R_A collects most
+      // of the nebula and outer ones are thinning tails — "the nebula used most
+      // of its matter to produce the first product."
+      const B_neb = f_disc * m_star_earth(M_star) * Z_METALLICITY * INV_NEB_FRAC * ETA_ROCK;
+      // Depletion DERIVED from local CONCENTRATION Σ = D / R_factory² (density +
+      // geometry): a compact factory ⇒ high Σ ⇒ first product takes most (one
+      // big); a far-flung factory ⇒ low Σ ⇒ many similar. R_factory = R_A here.
+      // Use the PHYSICAL (inversion-threshold) density, not the degenerate
+      // pre-clamp search spin, so Σ matches the reported modest nebula density.
+      const R_factory = alfven_radius(M_star, omega);
+      const D_local = inversion_threshold_density(M_star, omega);
+      const conc = D_local / Math.max(R_factory * R_factory, 1e-12);
+      const neb_depl = 1 / (1 + Math.pow(NEB_CONC_HALF / Math.max(conc, 1e-12), NEB_CONC_STEEP));
+      const neb_sorted = [...kbo_bodies].sort((a, b) => a.r - b.r);
+      const neb_ice: Record<string, number> = {};
+      let neb_left = B_neb;
+      for (const bp of neb_sorted) {
+        const take = neb_left * neb_depl;
+        neb_ice[bp.name] = take;
+        neb_left -= take;
+      }
+      for (const p of kbo_bodies) {
+        const rr = p.r, observed = p.observed || 0;
+        let rock = rock_allocation(rr, M_star, spin, f_disc, omega);   // 0 beyond r_visc
+        let ice = neb_ice[p.name] || 0;
+        let peb = 0;
+        let core = rock + ice + peb;
+        const t_form = 0.10 * rr / Math.max(sl, 1e-12);
+        let h_he = (core > THRESHOLD_GAS)
+          ? hydrogen_capture(core, t_form, spin, rr, M_star, f_disc, omega) : 0;
+        let total = core + h_he;
+        const primordial: Composition = { rock, ice, pebble: peb, h_he, core, total };
+        const stripped = is_stripped({ r: rr, observed }, M_star);
+        if (stripped) {
+          const [rk, ic, pb, hh] = apply_mantle_stripping(rock, ice, peb, h_he, rr, M_star);
+          rock = rk; ice = ic; peb = pb; h_he = hh; core = rock + ice + peb; total = core + h_he;
+        }
+        const comp = classify_slot(
+          { filled: true, slot_r: rr, r_used: rr, observed, stripped,
+            predicted: total, rock, ice, pebble: peb, h_he },
+          primordial, r_snow_k, false, migrants);
+        results.push({
+          slot_n: -Math.max(0.01, Math.log(rr / Math.max(R_dam, 1e-6)) / Math.log(1 / CASCADE_RATIO)),
+          slot_r: rr, r_used: rr, filled: true, name: p.name,
+          rock, ice, pebble: peb, core, t_form, h_he,
+          predicted: total, observed,
+          err_pct: observed > 0 ? (total - observed) / observed * 100 : 0,
+          implied_dM: observed > 0 ? observed - total : 0,
+          stripped, in_void: false, exterior: true, primordial,
+          interpretation: `phase-3 nebula product (inverted, ${comp})`,
+        });
+      }
+    } else {
     // product-mass law, Sol-anchored at the dam face
     const SIGMA_SOL = 0.0103830 * m_star_earth(1.0) / Math.pow(30.07, 2);
     // anchor = TRITON, the firstborn: captured by the dam-keeper at
@@ -1122,6 +1195,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         interpretation: `PREDICTED cohort, undiscovered: ~${m_t < 0.01 ? (m_t * 1000).toPrecision(3) + ' mE' : m_t.toFixed(1) + ' M⊕'} products minted ~${t_epoch.toFixed(0)} Myr at ${R_t.toFixed(1)} AU; N~${N} expected at this stance, none catalogued`,
       });
     }
+    }   // end normal-regime size-clock (else of the inverted branch)
   }
 
   // Append external (stellar) bodies as informational entries — bound
@@ -1272,7 +1346,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   return {
     slots: results,
     ratio: CASCADE_RATIO,
-    R_disc: disc_radius(M_star, spin),
+    R_disc: disc_radius(M_star, spin, omega),
     spin,
   };
 }
@@ -1317,7 +1391,7 @@ function bestFit(planets: Planet[], M_star: number, f_disc_initial: number,
     const totalTarget = sel(fit).reduce((a, s) => a + s.observed, 0);
     let f_new = f_disc;
     if (totalTarget > 0) {
-      let lo = 0.0005, hi = 2.0;
+      let lo = 0.0005, hi = F_DISC_MAX;
       // Tolerance: tight enough that the smallest target planet's
       // individual error stays below ~0.1% of ITS observed mass.
       const smallest = sel(fit).reduce((m, s) => Math.min(m, s.observed), Infinity);
@@ -1369,6 +1443,34 @@ interface BruteFitResult extends BestFitResult {
   stripping_rt?: number | null;  // Breslau truncation radius at that q
 }
 
+// Predict the INVERTED regime from OBSERVABLES alone (no input flag).
+// Inverted = dense nebula + feeble wind ⇒ (1) very close-in formation (the
+// outermost body sits far inside the D=1 reference dam — the dam was shoved
+// in), and (2) a multi-phase assembly line that, fed by the dense nebula,
+// mints THREE big products — a big ROCK (phase-1 start, innermost/hot-Jupiter),
+// a big ICE (phase-2 start), and a big NEBULA/KBO (phase-3 start, beyond R_A,
+// possibly undetected) — each heading a descending sequence, giving the
+// "big-small-big-small-big" mass pattern (≥2 local maxima). Sol oscillates
+// (Earth/Jupiter/Neptune maxima) but is NOT compact; TRAPPIST is both.
+function inverted_signature(planets: Planet[], M_star: number):
+    { compact: boolean; maxima: number; likely: boolean } {
+  const obs = planets.filter(p => (p.observed || 0) > 0 && !p.kbo)
+    .sort((a, b) => a.r - b.r);
+  if (obs.length < 3) return { compact: false, maxima: 0, likely: false };
+  const compact = obs[obs.length - 1].r < 0.2 * disc_radius(M_star, 1.0);
+  // Count local mass maxima INCLUDING endpoints — the phase-start "bigs"
+  // (rock / ice / nebula) often sit at the ends (the innermost rock product
+  // is the first body). ≥2 ⇒ the big-small-big multi-phase fingerprint.
+  let maxima = 0;
+  for (let i = 0; i < obs.length; i++) {
+    const m = obs[i].observed || 0;
+    const lok = (i === 0) || m > (obs[i - 1].observed || 0);
+    const rok = (i === obs.length - 1) || m > (obs[i + 1].observed || 0);
+    if (lok && rok) maxima++;
+  }
+  return { compact, maxima, likely: compact && maxima >= 2 };
+}
+
 function bruteFit(planets: Planet[], M_star: number,
                   stripping?: StrippingConfig | null,
                   vice?: boolean): BruteFitResult {
@@ -1409,7 +1511,7 @@ function bruteFit(planets: Planet[], M_star: number,
     let fit = slot_aware_fit(planets, M_star, spin, f, fit_opts(q, omega));
     const totalTarget = sel(fit).reduce((a, s) => a + s.observed, 0);
     if (totalTarget <= 0) return { f, fit, residual: 0 };
-    let lo = 0.0005, hi = 2.0;
+    let lo = 0.0005, hi = F_DISC_MAX;
     const smallest = sel(fit).reduce((m, s) => Math.min(m, s.observed), Infinity);
     const tol = Math.max(1e-6, 0.001 * smallest);
     let e = Infinity;
@@ -1608,12 +1710,22 @@ function bruteFit(planets: Planet[], M_star: number,
     if (spin < 0.02) return null;
     const om_eff = (omega === undefined) ? spin : omega;
     const R_A_try = alfven_radius(M_star, om_eff);
-    const inv_try = alfven_radius(M_star, spin) >= disc_radius(M_star, spin);
+    const inv_try = alfven_radius(M_star, om_eff) >= disc_radius(M_star, spin, om_eff);
+    // DENSITY GUARDRAIL (v5): a NORMAL-regime Davis Dam is a stellar-wind ⇄
+    // nebula gas-pressure balance, so it cannot demand a cloud denser than
+    // MAX_NEBULA_DENSITY (forces compact systems off the impossible anchor).
+    // The INVERTED dam sits beneath the magnetosphere and is held by the
+    // disc's OWN gas pressure (∝ f_disc), NOT external nebula density — so
+    // its high "effective density" is a compression diagnostic, not a gas
+    // requirement. Exempt it; f_disc≤0.5 + breakup bind the inverted regime.
+    if (!inv_try && nebula_density_from_spin(spin) > MAX_NEBULA_DENSITY) return null;
     const n_void_pre = inv_try ? 0
       : planets.filter(p => (p.observed || 0) > 0 && p.r < 0.5 * R_A_try).length;
     const n_eff = n_obs - n_void_pre;
     if (n_eff < 1) return null;
-    if (cascade_slot_positions(M_star, spin, n_eff, omega).length < n_eff) return null;
+    // count SITES (integer + inverted half-steps), not just integer slots —
+    // the inverted regime fills two interleaved factory ladders.
+    if (cascade_sites(M_star, spin, n_eff, omega).length < n_eff) return null;
     // Resolve the stripping periapsis: given q used directly; null q
     // golden-sectioned (in log space) to minimize the mean PER-PLANET
     // |log(pred/obs)| — exactly the quantity the consensus f-bisection
@@ -1677,8 +1789,20 @@ function bruteFit(planets: Planet[], M_star: number,
     // Gross mass non-closure is rejection-grade: the books must close
     // at percent level. (Without this, a 46%-residual fit can outrank
     // an honest last-resort void fit purely on structure.)
+    // PARSIMONY (v5): among PHYSICAL fits (the hard caps already removed
+    // impossible inputs), prefer the most SOL-LIKE disc — Sol is the
+    // calibration anchor and a typical disc, so minimize log-space
+    // DEVIATION from Sol's values (nebula density → 1, f_disc → 0.01),
+    // NOT the absolute lowest (which biased every system toward extreme
+    // diffuse discs). Gentle tie-breakers — the residual (10×) and
+    // structural BIG penalties dominate. (Empty outer slots are penalized
+    // separately via K_PENALTY/missing_cost; ledger-explained absences —
+    // eviction/annihilation — are exempted there.)
+    const D_neb = nebula_density_from_spin(spin);
+    const parsimony = 0.08 * Math.abs(Math.log10(Math.max(0.003, D_neb)))
+                    + 0.08 * Math.abs(Math.log10(Math.max(1e-4, f) / 0.01));
     const score = scoreFit(fit, pen) + 10 * residual + 2 * J
-      + (residual > 0.05 ? BIG : 0);
+      + (residual > 0.05 ? BIG : 0) + parsimony;
     return { score, spin, f, k, fit, residual, q: q_used,
              omega: (omega === undefined) ? null : omega, penalty_base: penalty };
   };
@@ -1708,11 +1832,11 @@ function bruteFit(planets: Planet[], M_star: number,
         const R_disc = second.r / Math.pow(CASCADE_RATIO, k1);
         if (outermost.r <= R_disc) continue;
         if ((outermost.observed || 0) > GAS_OBS_THRESHOLD) {
-          const spin_check = Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc, 2);
+          const spin_check = spin_for_disc_radius(M_star, R_disc);
           const wind_term = (spin_check / 30.0) * Math.pow(0.5 / Math.max(R_disc, 0.01), 2);
           if (1.0 / (1.0 + wind_term) < 0.1) continue;
         }
-        const spin = Math.pow(SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) / R_disc, 2);
+        const spin = spin_for_disc_radius(M_star, R_disc);
         consider(spin, 0, STAGE2_PENALTY + 1.0 * (k1 - 1));
       }
       // EVERY OBSERVED BODY IS A CANDIDATE DAM-ANCHOR: stage 2 assumes
@@ -1722,9 +1846,45 @@ function bruteFit(planets: Planet[], M_star: number,
       // observed radius at slot 0 and let allocation-matched
       // assignment seat the rest.
       for (const pl of obs_disc) {
-        const spin_anchor = Math.pow(30.07 * M_star / pl.r, 2);
+        const spin_anchor = spin_for_disc_radius(M_star, pl.r);
         if (!(spin_anchor > 0.02 && spin_anchor < 1e7)) continue;
         consider(spin_anchor, 0, 0.5);
+      }
+    }
+    // INVERTED-REGIME anchor (feeble-wind M-dwarf): the Davis Dam is the
+    // INNERMOST planet (f_disc-pressure pile-up) and the magnetosphere R_A is
+    // the OUTERMOST — the cascade marches outward between them (memory:
+    // inverted-regime-model). ω back-solved from R_A (breakup-checked); the
+    // density dial back-solved so R_disc = innermost (density-cap exempt in
+    // evalCandidate because inverted). Evaluated with decoupled ω.
+    if (obs_disc.length >= 2) {
+      const sorted = [...obs_disc].sort((a, b) => a.r - b.r);
+      const innermost = sorted[0].r, outermost = sorted[sorted.length - 1].r;
+      if (outermost > innermost) {
+        // Inverted planets form INSIDE-OUT, so the pattern's OUTERMOST planet
+        // is the end of the assembly line; the magnetosphere R_A — where the
+        // phase-3 KBOs begin — sits one half-step beyond it (R_A = r_out·ρ^(−½),
+        // the first exterior site). R_A is read from the planet PATTERN, never
+        // from a KBO flag. The nebula density only has to INVERT the system
+        // (spin = the modest inversion threshold); the disc weight f_disc then
+        // plunges the Davis Dam from R_A down to the innermost planet — so the
+        // STORED density stays modest. (Memory: inverted-regime-model.)
+        const R_A_target = outermost / Math.sqrt(CASCADE_RATIO);
+        const omega_inv = omega_for_alfven_radius(M_star, R_A_target);
+        if (omega_inv > 0.02 && omega_inv <= breakup_spin(M_star)) {
+          // spin just above the inversion threshold (R_density ≲ R_A → inverted);
+          // f_disc carries the deep drop. Density-cap exempt because inverted.
+          const spin_inv = Math.pow(inversion_threshold_density(M_star, omega_inv) * 1.05, 2.0 / 3.0);
+          if (spin_inv > 0.02) {
+            const r = evalCandidate(spin_inv, 0, 0.5, omega_inv);
+            if (r) {
+              topCands.push({ score: r.score, spin: spin_inv, k: 0, penalty_base: 0.5 });
+              topCands.sort((a, b) => a.score - b.score);
+              if (topCands.length > 4) topCands.length = 4;
+              if (best === null || r.score < best.score) best = r;
+            }
+          }
+        }
       }
     }
   };
@@ -1811,6 +1971,18 @@ function bruteFit(planets: Planet[], M_star: number,
     } else { devour_credit = null; break; }
   }
   devour_credit = null;
+  // Inverted winners are spin-DEGENERATE: once past inversion the Davis Dam
+  // = R_A·drop(f_disc) is fixed by ω and f_disc, NOT by spin, so the geometry
+  // (and b.fit) is identical for any spin above the inversion threshold. The
+  // brute search may carry a high-spin twin; report instead the MODEST
+  // inversion-threshold density — "enough to invert, no more" — which
+  // reproduces the same dam in the UI via the f_disc plunge.
+  {
+    const om_w = (b.omega === undefined || b.omega === null) ? b.spin : b.omega;
+    if (alfven_radius(M_star, om_w) >= disc_radius(M_star, b.spin, om_w, b.f)) {
+      b = { ...b, spin: Math.pow(inversion_threshold_density(M_star, om_w) * 1.05, 2.0 / 3.0) };
+    }
+  }
   return {
     spin: b.spin,
     nebula_density: nebula_density_from_spin(b.spin),

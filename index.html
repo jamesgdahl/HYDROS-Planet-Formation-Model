@@ -44,8 +44,8 @@
   <legend>System inputs</legend>
   <div class="input-grid">
     <label title="Primordial-solar units: 1.0 ≡ 1.14 current M☉">M★ primordial (Sol 1.0)<input id="M_star" type="number" step="0.01" value="1.0"></label>
-    <label>Spin relative (Sol 1.0) <input id="spin" type="number" step="0.1" value="1.0" oninput="syncDensityFromSpin()"></label>
-    <label title="The vice's outer jaw: formation-cloud density (Sol 1.0 ≈ 1e6 H₂ cm⁻³) establishes the Davis Dam at R_disc = 30.07·M★·D^(−1/3). Jaw-locked to spin: Ω = D^(2/3).">Nebula density (Sol 1.0) <input id="nebula_density" type="number" step="0.1" value="1.0" oninput="syncSpinFromDensity()"></label>
+    <label title="Stellar rotation Ω (Sol 1.0) — the INNER jaw. Sets the Alfvén Dam R_A = 0.20·M★·Ω^(4/7), capped at breakup. Independent of nebula density (v5: jaw-lock dropped).">Spin / rotation Ω (Sol 1.0) <input id="spin" type="number" step="0.1" value="1.0"></label>
+    <label title="Formation-cloud density D (Sol 1.0 ≈ 1e6 H₂ cm⁻³) — the OUTER jaw. Sets the Davis Dam R_disc = 30.07·M★·D^(−1/3), capped at ~100. Independent of spin (v5: jaw-lock dropped).">Nebula density (Sol 1.0) <input id="nebula_density" type="number" step="0.1" value="1.0"></label>
     <label>Protoplanetary Disc/Star mass ratio (Sol 0.01)<input id="f_disc" type="number" step="0.005" value="0.01"></label>
     <label title="Close stellar encounter edited this cascade (truncation, stirring, inward debris)"><input id="strip_on" type="checkbox" style="width:auto;"> Gravitational stripping</label>
     <label>Perturber mass M_pert (Sol-primordial units)<input id="strip_mpert" type="number" step="0.05" value="0.44"></label>
@@ -119,6 +119,7 @@
     <tbody id="result-rows"></tbody>
     <tfoot id="result-total"></tfoot>
   </table>
+<div id="waveform" style="margin-top:14px"></div>
 <div id="forensics" style="margin-top:14px"></div>
 <div id="tides" style="margin-top:14px"></div>
 </fieldset>
@@ -217,6 +218,7 @@ function getInputs() {
   const inp = {
     M_star: parseFloat(document.getElementById("M_star").value),
     spin: parseFloat(document.getElementById("spin").value),
+    nebula_density: parseFloat(document.getElementById("nebula_density").value),
     f_disc: parseFloat(document.getElementById("f_disc").value),
   };
   if (document.getElementById("strip_on").checked) {
@@ -255,6 +257,9 @@ function setInputs(inp) {
   document.getElementById("M_star").value = inp.M_star;
   document.getElementById("spin").value = inp.spin;
   document.getElementById("f_disc").value = inp.f_disc;
+  document.getElementById("nebula_density").value =
+    (inp.nebula_density != null && isFinite(inp.nebula_density))
+      ? inp.nebula_density : +Math.pow(inp.spin, 1.5).toPrecision(6);
   // Kinetic regime (impact-vapor natal disc, e.g. Earth/Theia):
   // carried as a preset flag, threaded into slot_aware_fit.
   window.CURRENT_KINETIC = !!inp.kinetic;
@@ -262,7 +267,6 @@ function setInputs(inp) {
   // real stars scatter around the M-L estimate habitable_zone falls
   // back on (ACen B: true 0.50 vs estimate 0.41).
   window.CURRENT_L = (inp.L && inp.L > 0) ? inp.L : null;
-  syncDensityFromSpin();
   const on = !!inp.stripping;
   document.getElementById("strip_on").checked = on;
   if (on) {
@@ -387,6 +391,13 @@ function calculate() {
   const inp = getInputs();
   const planets = getPlanets().concat(getKBOs());
   const { M_star, spin, f_disc } = inp;
+  // v5 DECOUPLED: nebula density D → Davis Dam (geometry); spin → Alfvén
+  // Dam (rotation ω). The codebase's "spin" arg is the geometry/density
+  // dial, so pass spin_geom = D^(2/3) there and omega = the rotation.
+  const D = (isFinite(inp.nebula_density) && inp.nebula_density > 0)
+    ? inp.nebula_density : Math.pow(spin, 1.5);   // legacy presets: D from spin
+  const spin_geom = spin_from_nebula_density(D);
+  const omega = spin;
 
   // spin is intentionally NOT auto-overridden here. Some systems have
   // undetected outer planets (RV detection bias at long periods) and
@@ -394,13 +405,14 @@ function calculate() {
   // at the wrong radius. findBestFit auto-derives spin; user can edit
   // it back manually if a long-period body is suspected.
 
-  // Derived properties
-  const R_disc = disc_radius(M_star, spin);
-  const R_A = alfven_radius(M_star, spin);
-  const C = compression(M_star, spin);
+  // Derived properties. R_disc is f_disc-aware: in the inverted regime the
+  // disc weight plunges the Davis Dam below R_A (the density only inverts).
+  const R_disc = disc_radius(M_star, spin_geom, omega, f_disc);
+  const R_A = alfven_radius(M_star, omega);
+  const C = R_A / R_disc;
   const r_snow = snow_line(M_star, f_disc);
   const sl = slope(M_star, f_disc);
-  const a = intercept(M_star, spin);
+  const a = intercept(M_star, spin_geom);
   const t_disc = gas_dispersal_time(M_star, f_disc);
   const regime = C >= 1.0 ? "INVERTED" : "normal";
   const regimeClass = C >= 1.0 ? "regime-inverted" : "regime-normal";
@@ -408,7 +420,7 @@ function calculate() {
   // Slot count is now dynamic: cascade_slot_positions generates as
   // many slots as fit between R_disc and R_A (normal regime) or
   // defaults to 11 (inverted regime where R_A > R_disc).
-  const n_possible = cascade_slot_positions(M_star, spin).length;
+  const n_possible = cascade_slot_positions(M_star, spin_geom, 0, omega, f_disc).length;
 
   // Gravitational stripping display + fit option. A blank q means the
   // factor has not been fitted yet (press best-fit); the transform is
@@ -425,7 +437,7 @@ function calculate() {
       }</span>`
     : "";
 
-  const D_neb = nebula_density_from_spin(spin);
+  const D_neb = D;
   document.getElementById("derived").innerHTML = `
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
     <span class="label">Disc outer edge (Davis Dam):</span> <span class="value">${fmt(R_disc, 3)} AU</span> &nbsp;
@@ -445,7 +457,8 @@ function calculate() {
     ? { auto_compress: false, stripping: strip }
     : { auto_compress: false };
   if (window.CURRENT_KINETIC) fitOpts.kinetic = true;
-  let fit = slot_aware_fit(planets, M_star, spin, f_disc, fitOpts);
+  fitOpts.omega = omega;   // decoupled rotation → Alfvén Dam
+  let fit = slot_aware_fit(planets, M_star, spin_geom, f_disc, fitOpts);
   // Devour-aware second pass: wrecking migrants refit to formation
   // mass (observed - meals); the gain is post-prediction output.
   const credits = {};
@@ -454,7 +467,7 @@ function calculate() {
     if (s.filled && s.devoured > 0.1) { credits[s.name] = s.devoured; anyCredit = true; }
   }
   if (anyCredit) {
-    fit = slot_aware_fit(planets, M_star, spin, f_disc,
+    fit = slot_aware_fit(planets, M_star, spin_geom, f_disc,
                          Object.assign({}, fitOpts, { devour_credit: credits }));
   }
   // Volatile-delivery receipts feed the habitability flag: a seat in
@@ -479,12 +492,18 @@ function calculate() {
 
   // Sort by slot # descending — slot 10 (innermost) first, slot 0
   // (outermost) last, matching the conventional Mercury→Neptune order.
-  const rows = fit.slots.slice().sort((x, y) => y.slot_n - x.slot_n);
+  // Inverted regime: bodies are assembly-line FACTORY PRODUCTS (vintages),
+  // not lattice slots — display in ascending AU (mint order), not slot order
+  // (the slot index is non-monotonic with AU once the factory interleaves).
+  const inverted_disp = C >= 1.0;
+  const rows = fit.slots.slice().sort((x, y) =>
+    inverted_disp ? (x.slot_r - y.slot_r) : (y.slot_n - x.slot_n));
 
   // Always show all 11 cascade slots — the framework's slot count is
   // universal. Inner slots may have tiny primordial allocations or sit
   // inside R_A (magnetospheric void), but they're still part of the
   // cascade and the user should see that explicitly.
+  let vintage_n = 0;
   for (const s of rows) {
 
     let name, r_form, dr_au, dm, predicted, observed, interp;
@@ -518,6 +537,10 @@ function calculate() {
       total_pred += s.primordial.total;
     }
     interp = s.interpretation;
+    // Inverted regime: tag each body as an assembly-line factory product
+    // with its mint vintage (0 = first/innermost/biggest, ascending outward).
+    if (inverted_disp && s.filled && !s.exterior)
+      interp = `factory product (vintage ${vintage_n++}) — ${interp}`;
     const dm_pct = (s.filled && observed > 0 && !s.exterior)
       ? 100 * dm / predicted : NaN;
 
@@ -530,6 +553,10 @@ function calculate() {
     const wetHZ = !s.exterior && !s.external
       && r_now >= hz[0] && r_now <= hz[1]
       && (deliveryNames.has(s.name) || rx);
+    // waveform-chart styling: colour by type, sized by mass downstream
+    s._chart = planetStyle(s,
+      !s.exterior && !s.external && r_now >= hz[0] && r_now <= hz[1],
+      deliveryNames.has(s.name) || !!rx);
     if (wetHZ) {
       const oc = rx
         ? `${rx.oceans_lo.toFixed(0)}–${rx.oceans_hi.toFixed(0)} oceans${rx.oceans_lo > 20 ? ' — ocean world' : rx.oceans_hi > 20 ? ' — possibly an ocean world' : ''}`
@@ -569,6 +596,165 @@ function calculate() {
       <th></th><th></th>
     </tr>
   `;
+
+  try { renderWaveform(fit, R_disc, R_A, r_snow); }
+  catch (e) { console.warn('waveform:', e); }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Waveform-chart planet styling: colour by composition + habitability,
+// returned with a short type label. Precedence: stripped core remnant →
+// gas giant → ice/pebble world → rocky+ice → habitable-zone classes.
+function planetStyle(s, inHZ, delivered) {
+  const rock = s.rock || 0, ice = s.ice || 0, peb = s.pebble || 0, gas = s.h_he || 0;
+  const core = rock + ice + peb;
+  const m = (s.observed > 0 ? s.observed : s.predicted) || 0;
+  if (s.stripped) return { c: '#9aa0a6', t: 'core remnant (stripped)' };          // grey
+  if (gas > 0.5 * (core + gas) || (m > 50 && gas > core))
+    return { c: '#e0922e', t: 'gas giant' };                                      // orange
+  if (peb + ice > rock) return { c: '#a9dcec', t: 'ice / pebble world' };          // uranus/europa pale blue
+  if (ice > 0.15 * Math.max(core, 1e-9)) return { c: '#3a6ea5', t: 'rocky + ice' };// neptune blue
+  if (inHZ && delivered) return { c: '#3b7be0', t: 'habitable zone + delivery' };  // earth blue
+  if (inHZ) return { c: '#d8c49a', t: 'rocky, habitable zone' };                   // venus beige
+  return { c: '#c1502e', t: 'rocky, outside HZ' };                                 // martian red
+}
+
+// Alfvén–Maas Superposition chart: the two component waveforms (Davis-dam
+// reverberation inward = "Maas"; Alfvén-dam radiation outward) and their
+// NET (signed) superposition, with each slot plotted at its net amplitude.
+// The dams are a SEE-SAW (ampRatio = w_Alfvén/w_Maas, default = compression
+// C, uncapped): the dominant waveform is normalized to 100% and the weaker
+// is scaled down by the ratio. Davis dominates the normal regime, Alfvén
+// dominates when inverted (the gas-pressure Davis wave is suppressed as the
+// magnetosphere expands past it), equal only at the C=1 crossover.
+// EXPLORATORY: the component amplitudes/envelopes are not yet derived; the
+// ratio is tunable in-panel — a concept visualizer, not a calibrated mass
+// prediction.
+function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
+  window._wf = { fit, R_disc, R_A, r_snow };
+  const el = document.getElementById("waveform");
+  const slots = fit.slots.filter(s => isFinite(s.slot_r) && s.slot_r > 0 && !s.exterior);
+  if (!slots.length || !isFinite(R_disc) || !isFinite(R_A) || R_A <= 0) { el.innerHTML = ""; return; }
+
+  const rho = 1 - Math.sqrt(Math.log(2)) / 2;          // 0.5837
+  const alpha = Math.PI / (-Math.log(rho));            // 5.836
+  // The two dams are a SEE-SAW, not independent. ampRatio = w_Alfvén/w_Maas
+  // defaults to compression C = R_A/R_disc (no cap). The dominant waveform
+  // is normalized to 100% and the weaker is scaled down by the ratio:
+  // normal regime (C<1) → Davis at 1.0, Alfvén = C; inverted (C>1) → Alfvén
+  // at 1.0, Davis = 1/C (the gas-pressure dam is suppressed as the
+  // magnetosphere expands past it); equal only at the C=1 crossover.
+  const C = R_A / R_disc;
+  if (ampRatio == null || !isFinite(ampRatio) || ampRatio < 0) ampRatio = C;
+  const wA = ampRatio >= 1 ? 1 : ampRatio;   // dominant → 100%
+  const wM = ampRatio >= 1 ? 1 / ampRatio : 1;
+  const maas   = r => wM * Math.cos(alpha * Math.log(R_disc / r));  // Davis reverberation (inward)
+  const alfven = r => wA * Math.cos(alpha * Math.log(r / R_A));     // Alfvén radiation (outward)
+  const sup    = r => maas(r) + alfven(r);             // NET (signed) superposition
+
+  const rs = slots.map(s => s.slot_r);
+  const rmin = Math.min(...rs) * 0.82, rmax = Math.max(...rs) * 1.18;
+  const W = 880, H = 360, ML = 56, MR = 18, MT = 26, MB = 46;
+  const plotW = W - ML - MR, plotH = H - MT - MB;
+  const umin = Math.log(rmin), umax = Math.log(rmax);
+  const X = r => ML + (Math.log(r) - umin) / (umax - umin) * plotW;
+  const aLim = Math.max(1.05, wM + wA) * 1.05;   // symmetric range for the signed net
+  const Y = a => MT + (aLim - a) / (2 * aLim) * plotH;
+
+  const N = 500;
+  const poly = fn => {
+    const pts = [];
+    for (let i = 0; i <= N; i++) {
+      const r = Math.exp(umin + (i / N) * (umax - umin));
+      pts.push(X(r).toFixed(1) + "," + Y(fn(r)).toFixed(1));
+    }
+    return pts.join(" ");
+  };
+
+  let ticks = "";
+  for (let i = 0; i <= 6; i++) {
+    const r = Math.exp(umin + (i / 6) * (umax - umin)), x = X(r);
+    const lbl = r >= 10 ? r.toFixed(0) : r >= 1 ? r.toFixed(1) : r >= 0.1 ? r.toFixed(2) : r.toPrecision(2);
+    ticks += `<line x1="${x.toFixed(1)}" y1="${MT + plotH}" x2="${x.toFixed(1)}" y2="${MT + plotH + 4}" stroke="#888"/>`
+           + `<text x="${x.toFixed(1)}" y="${MT + plotH + 16}" font-size="10" text-anchor="middle" fill="#aaa">${lbl}</text>`;
+  }
+
+  let snow = "";
+  if (r_snow > rmin && r_snow < rmax) {
+    const xs = X(r_snow);
+    snow = `<line x1="${xs.toFixed(1)}" y1="${MT}" x2="${xs.toFixed(1)}" y2="${MT + plotH}" stroke="#3cb371" stroke-width="1.4" stroke-dasharray="5,3"/>`
+         + `<text x="${(xs + 4).toFixed(1)}" y="${MT + 12}" font-size="10" fill="#3cb371">snow line ${r_snow.toFixed(2)} AU</text>`;
+  }
+
+  // total interior system mass — dots scale by mass fraction
+  const total_mass = slots.reduce((a, s) =>
+    a + ((s.filled && !s.exterior && !s.external && s.observed > 0) ? s.observed : 0), 0) || 1;
+
+  // sup grid → zero crossings → each planet owns the lobe (zero-to-zero)
+  // around its antinode; that whole area is its tooltip hover zone.
+  const G = 600, gr = [], gv = [];
+  for (let i = 0; i <= G; i++) { const r = Math.exp(umin + (i / G) * (umax - umin)); gr.push(r); gv.push(sup(r)); }
+  const zci = [0];
+  for (let i = 1; i <= G; i++) if (gv[i - 1] === 0 || gv[i - 1] * gv[i] < 0) zci.push(i);
+  if (zci[zci.length - 1] !== G) zci.push(G);
+  const zeroY = Y(0);
+  const lobePath = (i0, i1) => {
+    let p = `M${X(gr[i0]).toFixed(1)},${zeroY.toFixed(1)}`;
+    for (let i = i0; i <= i1; i++) p += `L${X(gr[i]).toFixed(1)},${Y(gv[i]).toFixed(1)}`;
+    return p + `L${X(gr[i1]).toFixed(1)},${zeroY.toFixed(1)}Z`;
+  };
+
+  let lobes = "", dots = "";
+  for (const s of slots) {
+    const u = (Math.log(s.slot_r) - umin) / (umax - umin);
+    const gi = Math.max(0, Math.min(G, Math.round(u * G)));
+    let i0 = 0, i1 = G;
+    for (let z = 0; z < zci.length - 1; z++)
+      if (zci[z] <= gi && gi <= zci[z + 1]) { i0 = zci[z]; i1 = zci[z + 1]; break; }
+    const v = sup(s.slot_r), cx = X(s.slot_r), cy = Y(v);
+    const half = !Number.isInteger(s.slot_n);
+    const st = s._chart || { c: s.filled ? '#e0b000' : '#666', t: s.filled ? 'planet' : 'empty slot' };
+    const nm = s.filled ? s.name : `(slot ${s.slot_n})`;
+    const frac = (s.filled && s.observed > 0) ? s.observed / total_mass : 0;
+    const massTxt = (s.filled && s.observed > 0)
+      ? (s.observed < 0.01 ? (s.observed * 1000).toPrecision(3) + ' mE' : s.observed.toFixed(3) + ' M⊕')
+        + ` (${(frac * 100).toFixed(1)}% of system)`
+      : '—';
+    const tip = `${nm} | slot ${s.slot_n} | ${s.slot_r.toFixed(s.slot_r < 0.1 ? 4 : 3)} AU | ${st.t} | mass ${massTxt} | net amp ${v.toFixed(2)}${s.interpretation ? ' | ' + s.interpretation : ''}`;
+    lobes += `<path d="${lobePath(i0, i1)}" fill="${s.filled ? st.c : '#888'}" fill-opacity="${s.filled ? 0.22 : 0.05}" style="cursor:pointer"><title>${escapeHtml(tip)}</title></path>`;
+    const rr = s.filled ? Math.max(2.5, 3 + 16 * Math.sqrt(frac)) : 2.5;
+    dots += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rr.toFixed(1)}" fill="${st.c}" stroke="${half ? '#fff' : '#111'}" stroke-width="${half ? 1 : 0.7}" style="pointer-events:none"/>`;
+  }
+
+  const sw = (c, t) => `<span style="color:${c}">●</span> ${t}`;
+  el.innerHTML =
+    `<h3 style="margin:6px 0">Alfvén–Maas Superposition <span style="font-weight:normal;font-size:0.8em;color:#999">(exploratory — amplitudes not yet calibrated)</span></h3>`
+    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">Alfvén/Maas ratio (dam see-saw; default C=${C.toFixed(3)} → ${ampRatio > 1 ? 'Alfvén-dominant' : ampRatio < 1 ? 'Davis-dominant' : 'balanced'}, dominant=100%): `
+    + `<input type="number" step="0.05" min="0" value="${(+ampRatio).toFixed(3)}" style="width:6rem;padding:0.2rem" onchange="renderWaveform(window._wf.fit, window._wf.R_disc, window._wf.R_A, window._wf.r_snow, parseFloat(this.value))"></div>`
+    + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px;line-height:1.7">`
+      + sw('#9aa0a6', 'core remnant') + ' &nbsp; ' + sw('#d8c49a', 'rocky HZ') + ' &nbsp; ' + sw('#3b7be0', 'HZ + delivery')
+      + ' &nbsp; ' + sw('#c1502e', 'rocky outside HZ') + ' &nbsp; ' + sw('#e0922e', 'gas giant')
+      + ' &nbsp; ' + sw('#a9dcec', 'ice/pebble') + ' &nbsp; ' + sw('#3a6ea5', 'rocky + ice')
+      + ` &nbsp;·&nbsp; size ∝ √(mass/total) &nbsp;·&nbsp; hover a shaded lobe for details</div>`
+    + `<svg viewBox="0 0 ${W} ${H}" width="100%" style="background:#15151c;border:1px solid #333;border-radius:4px">`
+    + lobes
+    + `<line x1="${ML}" y1="${zeroY.toFixed(1)}" x2="${ML + plotW}" y2="${zeroY.toFixed(1)}" stroke="#555" style="pointer-events:none"/>`
+    + `<line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT + plotH}" stroke="#888" style="pointer-events:none"/>`
+    + `<line x1="${ML}" y1="${MT + plotH}" x2="${ML + plotW}" y2="${MT + plotH}" stroke="#888" style="pointer-events:none"/>`
+    + ticks + snow
+    + `<polyline points="${poly(maas)}" fill="none" stroke="#5aa9e6" stroke-width="1" opacity="0.6" style="pointer-events:none"/>`
+    + `<polyline points="${poly(alfven)}" fill="none" stroke="#e6695a" stroke-width="1" opacity="0.6" style="pointer-events:none"/>`
+    + `<polyline points="${poly(sup)}" fill="none" stroke="#b07cff" stroke-width="2" style="pointer-events:none"/>`
+    + dots
+    + `<text x="${ML}" y="15" font-size="11" fill="#5aa9e6" style="pointer-events:none">— Maas (Davis, w=${wM.toFixed(2)})</text>`
+    + `<text x="${ML + 165}" y="15" font-size="11" fill="#e6695a" style="pointer-events:none">— Alfvén (w=${wA.toFixed(2)})</text>`
+    + `<text x="${ML + 310}" y="15" font-size="11" fill="#b07cff" style="pointer-events:none">— net superposition</text>`
+    + `<text x="16" y="${(MT + plotH / 2).toFixed(1)}" font-size="10" fill="#aaa" transform="rotate(-90 16 ${(MT + plotH / 2).toFixed(1)})" text-anchor="middle" style="pointer-events:none">net amplitude</text>`
+    + `<text x="${(ML + plotW / 2).toFixed(1)}" y="${H - 6}" font-size="10" fill="#aaa" text-anchor="middle" style="pointer-events:none">AU (log scale)</text>`
+    + `</svg>`;
 }
 
 // Fill predicted slots: generate Hill-cascade chain + outer R_disc anchors,
@@ -1023,8 +1209,14 @@ function findBestFit() {
   // candidate. Identical to the CLI fitter (tools/fit.js), so the UI
   // and batch calibrations can never drift. When gravitational
   // stripping is flagged with blank q, the periapsis is bisected too.
-  const r = bruteFit(planets_initial, M_star, inp.stripping || null);
-  const newInputs = { M_star, spin: r.spin, f_disc: r.f_disc };
+  const r = bruteFit(planets_initial, M_star, inp.stripping || null, true);
+  // v5: bruteFit returns the geometry spin (→ nebula density) and the
+  // decoupled rotation omega_rot; map to the decoupled schema (ω
+  // breakup-clamped, falls back to the geometry dial if not refined).
+  const omega_rot = Math.min(
+    (r.omega_rot != null) ? r.omega_rot : r.spin, breakup_spin(M_star));
+  const newInputs = { M_star, nebula_density: r.nebula_density,
+                      spin: omega_rot, f_disc: r.f_disc };
   if (inp.stripping) {
     newInputs.stripping = {
       M_pert: inp.stripping.M_pert,

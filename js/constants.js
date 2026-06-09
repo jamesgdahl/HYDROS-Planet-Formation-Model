@@ -14,6 +14,37 @@ const H_FRACTION = 0.74;
 // M = 1, spin = 1, nebula density = 1). Earth masses per unit:
 const M_PRIM_TO_MSUN = 1.14;
 const M_SUN_TO_EARTH = 332946.0 * M_PRIM_TO_MSUN; // 379,558 M_E per M_prim
+// Inverted-factory descent exponents (assembly mass ∝ (origin/r)^exp down the
+// line). The Alfvén slots are MAGNETIC, so they concentrate FERROMAGNETIC
+// material — rock/iron — and slot 0 + the cascade slots accrete rock fast and
+// front-loaded (STEEP descent ⇒ rock consumed quickly). Water ICE is NOT
+// ferromagnetic, so the slots can't concentrate it; ice accretes by
+// gravity/drift alone, more slowly and spread out (SHALLOW descent). Hence rock
+// is exhausted faster than ice along the vintages. (Memory: inverted-regime-model.)
+// Inverted-factory knobs — CALIBRATED against TRAPPIST-1 (the clean in-situ
+// reference). VISC_COEFF sets the viscous snow line r_visc = VISC_COEFF·
+// (f_disc·M²)^(1/3) (the rock→ice phase boundary). Descents: rock steep/fast
+// (ferromagnetic, slot-concentrated), ice shallow/slow (non-magnetic).
+const VISC_COEFF = 0.67;
+const INV_ROCK_DESCENT = 0.75;
+const INV_ICE_DESCENT = 0.40;
+// PHASE-3 nebula (beyond R_A, no slots): a single Alfvén-repelled pile the
+// marching dam sweeps up inner-first. INV_NEB_FRAC sets the swept nebula
+// budget (× f_disc·M·Z·ETA); NEB_DEPLETION is the fraction the first (inner)
+// product takes, the next taking that fraction of the remainder, etc. — so the
+// inner KBO consumes most of the nebula and outer ones are small tails.
+const INV_NEB_FRAC = 0.318;
+// The depletion fraction is DERIVED per system from the local nebula
+// CONCENTRATION — density AND factory geometry — not a hard value:
+//   Σ = D / R_factory²   (R_factory = R_A inverted / outer dam normal, in AU)
+//   depletion = 1/(1 + (NEB_CONC_HALF/Σ)^NEB_CONC_STEEP).
+// A compact factory packs the same nebula into a tiny area → high Σ → the first
+// product takes most (ONE big body); a far-flung factory dilutes it → low Σ →
+// many SIMILAR bodies. This is why TRAPPIST (D≈320, R_A≈0.04 AU ⇒ Σ huge) minted
+// one big g + small h, while Sol (D≈1, dam ≈ 30 AU ⇒ Σ tiny) minted a swarm of
+// Pluto-sized KBOs. Calibrated: TRAPPIST Σ≈2e5 → 0.75; Sol Σ≈1e-3 → ~0.1.
+const NEB_CONC_HALF = 133.0;
+const NEB_CONC_STEEP = 0.174;
 // Universal physics
 const THRESHOLD_GAS = 3.0;
 const PEBBLE_CAPTURE_EFFICIENCY = 0.40;
@@ -23,11 +54,15 @@ const SNOW_PILEUP_WIDTH_FRAC = 0.15;
 const T_DISC_DISPERSAL_MYR = 5.0;
 const ETA_ICE_DECAY_FRACTION = 0.80;
 // Grain-opacity parameter (paper §2): 0 = fully grain-grown (opacity-poor),
-// 1 = ISM-like small-grain-dominated (opacity-rich). Calibrated on Sol and
-// identical across every calibrated system, so treated as a constant —
-// uniform at least across the local galactic neighbourhood our calibration
-// sample occupies; not necessarily universal.
-const GRAIN_OPACITY = 0.82;
+// 1 = ISM-like small-grain-dominated (opacity-rich). Set to 0.75 → Sol snow
+// line 2.50 AU. The grain-axis midpoint 0.5 (snow line 1.97 AU, the Mulders
+// disc-population median) pulled the line in far enough to hand Theia's slot
+// an ice budget that pushed it over the gas-giant threshold — unphysical; so
+// 0.75 keeps the terrestrial slots rock-dominant while still sitting inside
+// the old Sol-fit 0.82/2.70 AU value (an artifact of anchoring on the
+// Mars/Theia annihilation zone). Held constant across systems; the snow line
+// then scales with M^2 and sqrt(f_disc).
+const GRAIN_OPACITY = 0.75;
 // Sol reference values (calibration anchors)
 const SOL_M_PRIMORDIAL = 1.0; // Sol IS the unit (1 = 1.14 current M_sun)
 // The family constant IS Neptune's orbit (J2000 semi-major axis):
@@ -68,3 +103,17 @@ const LATE_DELIVERY_FRAC = 0.5 * (0.02 / 0.107);
 // Mass class boundaries (Earth masses)
 const M_STELLAR_BOUNDARY = 25400.0; // 0.08 M_sun, hydrogen burning
 const DISC_TRUNCATION_FACTOR = 0.15; // Holman-Wiegert fallback only
+// ---- Physical guardrails (v5: reject fits requiring impossible inputs) ----
+// A disc cannot exceed half the stellar mass (gravitationally it would be
+// a binary, not a disc). The f_disc bisection is bounded by this.
+const F_DISC_MAX = 0.5;
+// Maximum physical formation-cloud density (Sol D = 1 ≈ 1e6 H2 cm^-3).
+// Ceiling is the protostellar OPACITY LIMIT n(H2) ~ 1e10 cm^-3 (D ~ 1e4),
+// where a collapsing core turns optically thick / forms the first
+// hydrostatic core — denser than this is inside the protostar, not a
+// disc-forming nebula. Dense (clustered, collapsing) cores legitimately
+// reach here; combined with a feeble M-dwarf wind this puts the Davis Dam
+// very close in (TRAPPIST). Still rejects the old jaw-lock artifacts
+// (D ~ 1e6–1e7). Fits above this are flagged unphysical.
+const MAX_NEBULA_DENSITY = 10000.0;
+// breakup_spin(M) in disc.ts is the third guardrail (true stellar rotation).

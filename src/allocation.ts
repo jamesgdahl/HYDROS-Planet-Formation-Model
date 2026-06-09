@@ -23,12 +23,12 @@ function outer_feed_truncation(r: number, r_disc: number): number {
 function rock_allocation(r: number, M_star: number, spin: number,
                          f_disc: number, omega?: number): number {
   const om = (omega === undefined) ? spin : omega;
-  const C = compression(M_star, spin);
+  const C = compression(M_star, spin, om, f_disc);
   const r_a = alfven_radius(M_star, om);
   const r_snow = snow_line(M_star, f_disc);
   const sl = slope(M_star, f_disc);
   const a = intercept(M_star, om);
-  const r_disc = disc_radius(M_star, spin);
+  const r_disc = disc_radius(M_star, spin, om, f_disc);
   // No hard cutoff at R_disc: outer_feed_truncation fades smoothly from
   // 5/6 at r=R_disc to 0 at r=1.125*R_disc. A hard guard caused FP issues
   // for planets sitting on the edge (Neptune at 30.05 ↔ R_disc=30.04999..).
@@ -61,28 +61,66 @@ function rock_allocation(r: number, M_star: number, spin: number,
     }
     return base * f_trunc + outer_pileup + snow_bump;
   }
-  // Inverted regime
-  if (r >= r_snow) return 0;
-  const inner_fraction = Math.max(0, 1 - r / r_snow);
-  const inner_contribution = natural_mass_scale * C * inner_fraction;
-  return Math.max(0, inner_contribution * f_trunc + outer_pileup);
+  // INVERTED regime (v5.2): the FACTORY assembly line, PHASE 1 = ROCK. The
+  // dense pile-up is viscously hot, so water is gaseous and only ROCK
+  // condenses out to the viscous snow line r_visc — the rock-only phase,
+  // exhausted by ~vintage 3. Mass descends OUTWARD from the dam (biggest at
+  // the dam = the innermost "big rock"), the disc-solid budget tying the
+  // scale so the f-bisection matches the total. Beyond r_visc the disc cools
+  // and ice takes over (ice_allocation), so rock returns 0 there.
+  // (Memory: inverted-regime-model.)
+  const r_visc = viscous_snow_line(M_star, f_disc);
+  if (r > r_visc) return 0;   // past the viscous snow line: cool ⇒ ice, not rock
+  const disc_solid = f_disc * m_star_earth(M_star) * Z_METALLICITY * F_ROCK * ETA_ROCK;
+  // STEEP descent: rock is ferromagnetic, so the magnetic slots (slot 0 + the
+  // marching factory) concentrate it strongly ⇒ fast, front-loaded consumption.
+  const descent = Math.pow(r_disc / Math.max(r, r_disc), INV_ROCK_DESCENT);
+  return Math.max(0, disc_solid * descent);
 }
 
-function ice_retention(r: number, M_star: number, spin: number, f_disc: number): number {
+function ice_retention(r: number, M_star: number, spin: number, f_disc: number, omega?: number): number {
   const r_snow = snow_line(M_star, f_disc);
-  const r_disc = disc_radius(M_star, spin);
+  const r_disc = disc_radius(M_star, spin, omega, f_disc);
   if (r <= r_snow) return 0;
   const scale = ETA_ICE_DECAY_FRACTION * r_disc;
   return Math.exp(-(r - r_snow) / scale);
 }
 
-function ice_allocation(r: number, M_star: number, spin: number, f_disc: number): number {
+function ice_allocation(r: number, M_star: number, spin: number, f_disc: number, omega?: number): number {
+  // INVERTED regime (v5.2): the FACTORY assembly line, PHASE 2 = ICE. The
+  // disc-temperature snow line is moot here; the rock-only phase ends at the
+  // VISCOUS snow line r_visc (where the viscously-heated pile finally cools to
+  // 170 K). Inside r_visc water is gaseous → no ice (rock only). Beyond it ice
+  // condenses; the ice budget Z·(1−F_ROCK) descends from r_visc — the descent
+  // RESETS at the phase boundary, so the first icy vintage just past r_visc is
+  // a "big ice" product (the big-small-big pattern). (Phase 3 = nebula KBOs
+  // beyond R_A, handled in the exterior block.)
+  if (compression(M_star, spin, omega, f_disc) >= 1.0) {
+    const r_visc = viscous_snow_line(M_star, f_disc);
+    if (r <= r_visc) return 0;   // PHASE 1 (rock): viscously hot, water gaseous
+    const om = (omega === undefined) ? spin : omega;
+    const r_A = alfven_radius(M_star, om);
+    const disc_ice = f_disc * m_star_earth(M_star) * Z_METALLICITY * F_ROCK * ETA_ROCK;
+    // The assembly DESCENT resets at each phase boundary, giving the
+    // big-small-big pattern (comparable peaks, same coefficient):
+    //   PHASE 2 (ice):    r_visc..R_A — descent from the viscous line.
+    //   PHASE 3 (nebula): beyond R_A  — descent from R_A; the dam has marched
+    //     past the magnetosphere into the Alfvén-repelled nebula (the
+    //     "big nebula" product sits at R_A). These are the exterior KBO-class
+    //     bodies, minted with a real ICE composition like every other body.
+    const origin = (r > r_A && r_A > r_visc) ? r_A : r_visc;
+    // SHALLOW descent: ice is NOT ferromagnetic, so the magnetic slots can't
+    // concentrate it — it accretes by gravity/drift alone, slower and more
+    // spread ⇒ ice consumed more slowly than rock down the assembly line.
+    const descent = Math.pow(origin / Math.max(r, origin), INV_ICE_DESCENT);
+    return Math.max(0, disc_ice * descent);
+  }
   const sl = slope(M_star, f_disc);
   const r_snow = snow_line(M_star, f_disc);
-  const r_disc = disc_radius(M_star, spin);
+  const r_disc = disc_radius(M_star, spin, omega, f_disc);
   // No hard cutoff at R_disc; outer_feed_truncation handles the soft edge.
   if (r <= r_snow) return 0;
-  const base_ice = sl * (r - r_snow) * F_LODDERS_ICE * ice_retention(r, M_star, spin, f_disc);
+  const base_ice = sl * (r - r_snow) * F_LODDERS_ICE * ice_retention(r, M_star, spin, f_disc, omega);
   const snow_bump = snow_line_pileup(r, M_star, f_disc);
   // Outer-feeding-zone truncation: same asymmetric pebble-drift mechanism
   // as in rock_allocation. Applied to ice feeding-zone integral.

@@ -91,6 +91,12 @@ function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
             return "ice giant";
         if (core_v > THRESHOLD_GAS)
             return "rock giant";
+        // Sub-gas-threshold bodies: distinguish ICE-rich (e.g. inverted-regime
+        // phase-2 products past the viscous snow line, or normal outer cascade
+        // bodies) from rocky ones — previously every small body fell through to
+        // "rocky" regardless of ice content.
+        if (core_v > 0 && ice_v / core_v >= ICE_GIANT_ICE_FRAC)
+            return "icy";
         return "rocky";
     }
     const primordial_comp = _classify(primordial.core || 0, primordial.ice || 0, primordial.h_he || 0, primordial.total || 0);

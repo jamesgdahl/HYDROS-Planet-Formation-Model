@@ -52,7 +52,9 @@ const writeAll = args.includes('--all');
 // the dam) natively.
 const WRITE_EXCLUDE = new Set([]);
 const doBrute = !args.includes('--iterated'); // brute (joint scan) is the default
-const doVice = args.includes('--vice'); // decouple the vice jaws (omega grid)
+// v5: VICE (decoupled rotation ω, breakup-bounded) is the DEFAULT. The old
+// jaw-lock (Ω = D^(2/3)) is available with --no-vice for comparison only.
+const doVice = !args.includes('--no-vice');
 const bruteFit = ctx.bruteFit;
 
 function fitSystem(sys) {
@@ -144,6 +146,10 @@ function fitSystem(sys) {
     flags.push('KBO:' + on + '/' + ext_rows.length);
   }
   if (doVice && r.omega_rot != null) flags.push('OMEGA:' + r.omega_rot.toFixed(2));
+  // INVERTED-regime predictor from observables (compact + multi-big mass
+  // pattern): independent of the geometric fit — corroboration check.
+  const isig = ctx.inverted_signature(sys.planets, sys.inputs.M_star);
+  if (isig.likely) flags.push('INV_PRED:' + isig.maxima + 'max');
   if (stripping && r.stripping_q != null) {
     flags.push('STRIPPED:q=' + r.stripping_q.toFixed(1)
       + ',rt=' + r.stripping_rt.toFixed(2));
@@ -241,7 +247,14 @@ if (doWrite) {
             ? Math.round(o.r.stripping_q * 100) / 100
             : (o.sys.inputs.stripping.q ?? null)}}`
       : '';
-    const inputs = `{"M_star": ${o.sys.inputs.M_star}, "spin": ${o.r.spin}, "f_disc": ${o.r.f_disc}${stripPart}}`;
+    // v5 DECOUPLED schema: nebula_density (D) sets the Davis Dam; spin is
+    // now the stellar rotation ω (sets the Alfvén Dam), breakup-clamped.
+    // The old jaw-locked single `spin` is gone.
+    const D_write = (o.r.nebula_density != null)
+      ? o.r.nebula_density : Math.pow(o.r.spin, 1.5);
+    const omega_raw = (o.r.omega_rot != null) ? o.r.omega_rot : o.r.spin;
+    const omega_write = Math.min(omega_raw, ctx.breakup_spin(o.sys.inputs.M_star));
+    const inputs = `{"M_star": ${o.sys.inputs.M_star}, "nebula_density": ${+D_write.toPrecision(6)}, "spin": ${+omega_write.toPrecision(6)}, "f_disc": ${o.r.f_disc}${stripPart}}`;
     if (!re.test(src)) { console.error(`write: pattern not found for ${o.sys.id}`); continue; }
     src = src.replace(re, `$1${inputs}`);
     written++;

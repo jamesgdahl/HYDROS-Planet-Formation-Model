@@ -45,7 +45,7 @@ Every derived disc property is computed from these inputs plus solar composition
 | M_thresh | 3.0 M⊕ | Core mass for gas accretion onset |
 | ε_pebble | 0.40 | Pebble capture efficiency |
 | η_rock | 0.78 | Rock retention (pebble drift loss) |
-| **A_0** | **4.45** | H/He amplification coefficient (1/M⊕). Formula: M_gas = A_0 · M_core² · exp(-k·t_form) · wind_supp. Tanigawa-Ikoma 2007 scaling; calibrated against Sol's Jupiter and Neptune |
+| **A_0** | **4.39** | H/He amplification coefficient (1/M⊕). Formula: M_gas = A_0 · M_core² · exp(-k·t_form) · wind_supp. Tanigawa-Ikoma 2007 scaling; calibrated against Sol's Jupiter and Neptune at their **slot** radii (on-slot doctrine) |
 | **k_H/He** | **0.691** | H/He decay rate (per Myr); corresponds to gas-disc e-folding dispersal time ~1.45 Myr |
 | T_STRIP | 2000 K | Silicate vaporization temperature (mantle stripping threshold) |
 | IRON_FRAC | 0.30 | Iron-core retained mass fraction post-stripping |
@@ -136,7 +136,7 @@ $$k = 0.691 \cdot \max\!\left(1, (M_{\text{disc,Sol}}/M_{\text{disc,sys}})^2\rig
 
 $$w_{\text{wind}}(r) = \frac{1}{1 + (\Omega/30)(0.5/r)^2}$$
 
-**A_0 = 4.45 (units 1/M⊕) and k = 0.691 are calibrated against Sol's Jupiter (slot 3) and Neptune (slot 0, ISU)** — both fit observed mass exactly at the cascade-default `t_form = 0.10·r/σ_AAF`. With this calibration, Saturn's −28% deficit and Uranus's −49% deficit emerge as visible diagnostics of dynamical envelope-stripping events.
+**A_0 = 4.39 (units 1/M⊕) and k = 0.691 are calibrated against Sol's Jupiter (slot 3) and Neptune (slot 0, ISU)** at their formation-slot radii — both fit observed mass exactly at the cascade-default `t_form = 0.10·r/σ_AAF`. (The older A_0 = 4.45 used Jupiter's displaced 5.203 AU rather than its 5.981 AU slot; the on-slot calibration corrects this.) With this calibration, Saturn's −35% deficit and Uranus's −59% deficit emerge as visible diagnostics of dynamical envelope-stripping events.
 
 ## T_eq stripping (silicate vaporization)
 
@@ -158,11 +158,11 @@ $$\Delta v = |v_{\text{orbit}}(r_{\text{inner}}) - v_{\text{orbit}}(r_{\text{out
 
 $$v_{\text{esc}}(M) = 11.186 \cdot M^{1/3}\ \text{km/s (rocky)}$$
 
-$$\text{retention} = \max\!\left[0.3,\ 1 - 0.37 \cdot \Delta v / v_{\text{esc}}\right]$$
+$$\text{retention} = \max\!\left[0.05,\ 0.969 - 0.605 \cdot \Delta v / v_{\text{esc}}\right]$$
 
-Calibration anchors:
-- **Mercury–Vulcan merger (Sol slots 8/9)**: Δv=15.4 km/s, v_esc=6.2 km/s, Δv/v_esc=2.48 → retention=0.30 floor (iron-core-only remnant: 0.30 × 0.170 M⊕ combined = 0.051 vs observed 0.055). Explains Mercury's ~70% Fe composition from merger energetics rather than post-formation stripping
-- **Tau Ceti e (mild-end anchor)**: Δv/v_esc≈0.53 → retention≈0.81 (partial merger, ~20% ejecta)
+The intercept 0.969 < 1 means even the gentlest merger sheds percent-level ejecta; the 0.05 floor is the bound-core residual. (The older `max(0.3, 1 − 0.37·Δv/v_esc)` conflated observed and slot radii and underestimated the primordial masses.) Calibration anchors:
+- **Mercury–Vulcan merger (Sol slots 8/9)**: combined primordial mass 0.789 M⊕ (slot 8 + Vulcan); Δv=15.4 km/s, v_esc≈10.3 km/s, Δv/v_esc≈1.49 → retention≈0.070 (0.789 × 0.070 = 0.055 vs observed 0.055). Iron-dominant (~70% Fe) because the cores merge while the mantle is ejected — explains Mercury's composition from merger energetics rather than post-formation stripping
+- **Tau Ceti e (mild-end anchor)**: Δv/v_esc≈0.275 → retention≈0.80 (partial merger, ~20% ejecta)
 
 When the predicted retained mass matches observed within 20%, the merger is flagged: `merger (absorbed slot N)` with `, iron-enriched` suffix when retention < 0.5.
 
@@ -179,11 +179,11 @@ If `Sep / R_H,mutual < 3.5`, both slots are labeled `<class> (mutually evicted w
 Any cascade slot whose predicted mass is ≥10× below a perturber's mass within 10 R_H of that perturber has its pre-consolidation embryo swarm dispersed by asymmetric Jupiter-style scattering. The detector makes quantitative survivor predictions:
 
 - **Settled-survivor position**: r_survivor ≈ r_perturber − 11·R_H,perturber (inner stability edge of the chaotic zone). For Sol: Jupiter at 5.20 AU with R_H ≈ 0.34 AU predicts a survivor at ~1.46 AU — Mars observed at 1.524 AU (within 5%)
-- **Survivor mass**: 5–10% of the slot's primordial allocation (standard N-body scattering statistics; most swarm mass scatters outward or is lost). Mars: 0.107/1.32 = 8.1% of slot 5
+- **Survivor mass**: 5–10% of the slot's primordial allocation (standard N-body scattering statistics; most swarm mass scatters outward or is lost). Mars: 0.107/1.336 = 8.0% of slot 5
 - Within a perturber's scatter group, the **furthest-from-perturber** slot hosts the settled survivor; closer slots are fully dispersed (`swarm scattered by X`)
 - Slots reached by **2+ simultaneous perturbers** are totally obliterated — no stable settling region exists (`totally obliterated by simultaneous scattering: …`); e.g. HR 8799's inner slots under its four super-Jupiters
 
-For Sol this is the framework's **single dynamical event**: Jupiter at slot 3 disperses the slot 4–5 swarm at the snow-line pile-up zone (2–3.5 AU). The asymmetric ~5%/95% inner/outer split delivers Theia (Earth impact / Moon formation), the Mars survivor, and cumulative outer impacts on Saturn (−28% envelope, 26.7° tilt) and Uranus (−49% envelope, 98° tilt).
+For Sol this is the framework's **single dynamical event**: Jupiter at slot 3 disperses the slot 4–5 swarm at the snow-line pile-up zone (2–3.5 AU). The asymmetric ~5%/95% inner/outer split delivers Theia (Earth impact / Moon formation), the Mars survivor, and cumulative outer impacts on Saturn (−35% envelope, 26.7° tilt) and Uranus (−59% envelope, 98° tilt).
 
 ## Lissauer-instability detection
 
@@ -264,7 +264,7 @@ Each planet has an `immutable: true` flag (preset data) and corresponding UI che
 - **f_disc bisection target = sum over ISU planets only** — they pin disc mass
 - **ISU rocky** (e.g., Sol's Venus): predicted core = observed exactly (drives f_disc)
 - **ISU gas-eligible** (e.g., Sol's Neptune): t_form bisection still fits observed
-- **Non-ISU gas planets use cascade-default t_form** = 0.10·r/σ_AAF — predicted vs observed delta surfaces post-formation modifications (impact loss, late delivery, atmospheric stripping). Uranus's −49% mass deficit becomes visible diagnostic of its tilt-impactor event.
+- **Non-ISU gas planets use cascade-default t_form** = 0.10·r/σ_AAF — predicted vs observed delta surfaces post-formation modifications (impact loss, late delivery, atmospheric stripping). Uranus's −59% mass deficit becomes visible diagnostic of its tilt-impactor event.
 - **Non-ISU rocky planets** show cascade-natural mass; deltas indicate impacts/late-delivery
 
 **When no ISU planets exist:**
@@ -285,28 +285,28 @@ The asymmetric design encodes the philosophy: rare well-characterized planets an
 
 ## Solar System fit (calibration anchor)
 
-Inputs: M★=1.14 M☉, spin=0.9954 (auto-derived: R_disc anchored to Neptune), f_disc=0.01. **Venus and Neptune are ISU** (immutable, anchor disc parameters). The cascade spans 10 slots from R_disc = 30.07 AU down to R_A ≈ 0.20 AU.
+Inputs: M★=1.14 M☉, spin=0.995 (auto-derived: R_disc anchored to Neptune), f_disc=0.0104. **Venus and Neptune are ISU** (immutable, anchor disc parameters). The cascade spans 10 slots from R_disc = 30.07 AU down to R_A ≈ 0.20 AU.
 
 | Body | Slot | r_slot (AU) | r_obs (AU) | t_form (Myr) | Predicted (M⊕) | Observed (M⊕) | Δm% | Interpretation |
 |---|---|---|---|---|---|---|---|---|
-| (Vulcan) | 9 | 0.237 | — | 0.08 | 0.062 | — | — | impacted Mercury |
-| Mercury | 8 | 0.405 | 0.387 | 0.13 | 0.108 | 0.055 | −49% | merger (absorbed slot 9, iron-enriched) |
-| Venus | 7 | 0.694 | 0.723 | 0.24 | 0.815 | 0.815 | 0.0% | **ISU** rocky (in situ) |
-| Earth | 6 | 1.190 | 1.000 | 0.33 | 0.900 | 1.000 | +11% | rocky (late delivery — Theia) |
-| Mars | 5 | 2.038 | 1.524 | 0.67 | 1.323 | 0.107 | −92% | inner-scattered survivor (~8% of slot, scattered by Jupiter; predicted at ~1.46 AU) |
-| (slot 4) | 4 | 3.491 | — | 1.15 | 2.53 | — | — | rocky (swarm scattered by Jupiter — the Theia swarm) |
-| Jupiter | 3 | 5.981 | 5.203 | 1.71 | 318.9 | 317.83 | −0.3% | gas giant (in situ, anchor) |
-| Saturn | 2 | 10.246 | 9.537 | 3.13 | 133.7 | 95.16 | −29% | gas giant (impact loss — outer-scattered swarm) |
-| Uranus | 1 | 17.552 | 19.189 | 6.31 | 28.7 | 14.54 | −49% | ice giant (impact loss — swarm impactor, 98° tilt) |
-| Neptune | 0 | 30.070 | 30.070 | 9.94 | 17.15 | 17.15 | 0.0% | **ISU** ice giant (in situ) |
+| (Vulcan) | 9 | 0.237 | — | 0.08 | 0.064 | — | — | impacted Mercury |
+| Mercury | 8 | 0.405 | 0.387 | 0.13 | 0.724 | 0.055 | −92% | merger remnant (absorbed slot 9 Vulcan, iron-enriched; combined 0.789 × η=0.070) |
+| Venus | 7 | 0.694 | 0.723 | 0.22 | 0.815 | 0.815 | 0.0% | **ISU** rocky (in situ) |
+| Earth | 6 | 1.190 | 1.000 | 0.38 | 0.971 | 1.000 | +3% | rocky (late delivery — Theia) |
+| Mars | 5 | 2.038 | 1.524 | 0.65 | 1.336 | 0.107 | −92% | inner-scattered survivor (~8% of slot, scattered by Jupiter; predicted at ~1.46 AU) |
+| (slot 4) | 4 | 3.491 | — | 1.11 | 2.57 | — | — | rocky (swarm scattered by Jupiter — the Theia swarm) |
+| Jupiter | 3 | 5.981 | 5.203 | 1.90 | 317.83 | 317.83 | −0.0% | gas giant (in situ, anchor) |
+| Saturn | 2 | 10.246 | 9.537 | 3.25 | 145.9 | 95.16 | −35% | gas giant (impact loss — outer-scattered swarm) |
+| Uranus | 1 | 17.552 | 19.189 | 5.57 | 35.8 | 14.54 | −59% | ice giant (impact loss — swarm impactor, 98° tilt) |
+| Neptune | 0 | 30.070 | 30.070 | 10.90 | 17.15 | 17.15 | 0.0% | **ISU** ice giant (in situ) |
 
 The fit requires only **one dynamical event** beyond cascade formation, plus the Mercury–Vulcan adjacent-slot merger:
 
 1. **In-situ cascade forms**: Jupiter (slot 3) and Saturn (slot 2) sit within ~0.8 AU of their geometric slot centres — no Grand Tack, no Nice Model, no migration sequence
 2. **Jupiter disperses the slot 4–5 embryo swarm** at the snow-line pile-up zone (2–3.5 AU). Standard N-body scattering gives an asymmetric ~5%/95% inner/outer split
 3. **Inner ~5%**: one embryo impacts Earth (Theia — Moon formation, the +11% late delivery); 1–2 embryos settle as Mars at the chaotic-zone boundary (predicted ~1.46 AU and 5–10% of slot mass; observed 1.524 AU and 8.1%)
-4. **Outer ~95%**: cumulative multi-pass impacts strip Saturn's envelope (−28%, 26.7° axial tilt) and deliver Uranus's single high-energy impact (−49% envelope, 98° axial tilt)
-5. **Mercury–Vulcan merger**: slots 8/9 packed at ~4 mutual Hill radii are guaranteed to encounter; Δv/v_esc = 2.48 puts the encounter in the catastrophic-stripping regime → iron-core-only retention (0.30), explaining Mercury's ~70% Fe composition from merger energetics
+4. **Outer ~95%**: cumulative multi-pass impacts truncate Saturn's gas accretion (−35%, 26.7° axial tilt) and deliver Uranus's single high-energy impact (−59% envelope, 98° axial tilt)
+5. **Mercury–Vulcan merger**: slots 8/9 packed at ~4 mutual Hill radii are guaranteed to encounter; Δv/v_esc ≈ 1.49 puts the encounter in the erosive-stripping regime → retention ≈ 0.070, explaining Mercury's ~70% Fe composition from merger energetics
 6. **Venus and Neptune survive untouched** — the ISU anchors that pin the primordial disc mass and plane
 
 ## Calibrated systems (24 in the preset catalog)
@@ -341,14 +341,14 @@ The fit requires only **one dynamical event** beyond cascade formation, plus the
 These emerged from the framework and aren't (to our knowledge) in published literature:
 
 1. **In-situ is the default; migration is rare.** Once the geometric cascade is anchored to the outermost observed planet's r, most systems fit without invoking migration. In the Sol preset *nothing* migrates: Jupiter and Saturn sit within ~0.8 AU of their slot centres. The framework inverts the classical assumption that migration is the standard explanation for planetary architectures.
-2. **One dynamical event suffices for the Solar System.** Jupiter's scattering of the slot 4–5 embryo swarm (the Theia swarm) at the snow-line pile-up explains the Mars deficit and position, the Moon-forming impactor, Saturn's −28% envelope deficit and 26.7° tilt, and Uranus's −49% deficit and 98° tilt — eliminating Grand Tack, the Nice Model, and Type-I/II migration as required Sol mechanisms.
-3. **Mercury is a merger remnant, not a stripped chondrite.** The slot-9 body (Vulcan) and slot-8 Mercury were packed below the Hill stability threshold; their high-Δv merger retains only the combined iron cores (retention floor 0.30), producing Mercury's ~70% Fe composition from encounter energetics alone.
+2. **One dynamical event suffices for the Solar System.** Jupiter's scattering of the slot 4–5 embryo swarm (the Theia swarm) at the snow-line pile-up explains the Mars deficit and position, the Moon-forming impactor, Saturn's −35% envelope deficit and 26.7° tilt, and Uranus's −59% deficit and 98° tilt — eliminating Grand Tack, the Nice Model, and Type-I/II migration as required Sol mechanisms.
+3. **Mercury is a merger remnant, not a stripped chondrite.** The slot-9 body (Vulcan) and slot-8 Mercury were packed below the Hill stability threshold; their high-Δv merger (Δv/v_esc ≈ 1.49) retains only ~7% of the combined primordial mass, dominated by the merged iron cores, producing Mercury's ~70% Fe composition from encounter energetics alone.
 4. **The cascade ratio is a pure geometric constant.** ρ = 1 − √(ln 2)/2 ≈ 0.5837 — the half-amplitude-at-45° projection (1/(2√2)) of the Gaussian accretion-zone HWHM — with no empirical fit parameter. Not Hill spacing, not resonance.
 5. **Quantitative scattering-survivor prediction.** The settled survivor of a dispersed swarm lands at r_perturber − 11·R_H with 5–10% of the slot's allocation: for Sol that predicts 1.46 AU and 0.07–0.13 M⊕ — Mars observed at 1.524 AU, 0.107 M⊕.
 6. **HD 219134's outward-migrant story.** Its outermost 108 M⊕ giant at 3.06 AU formed at slot 0 of a compressed cascade (R_disc ≈ 1.10 AU), then migrated outward via giant-pair destabilization. The 5 inner rock giants are the surviving cascade.
 7. **Wind suppression dominates inner-slot gas accretion.** Hot Jupiters in compressed inverted-regime systems can't form at the innermost slot because primordial stellar wind blows gas away before runaway accretion. This forces outward-migrant interpretations for them.
 8. **Stellar multiplicity from slot-0 allocation.** When slot 0's allocation crosses the hydrogen-burning threshold the cascade fragments into a multi-star system (Alpha Centauri at f_disc = 0.25: Cen B at slot 1, Proxima at slot 0). Brown-dwarf and stellar companions also gravity-purge their inner slots.
-9. **Two-flavor merger continuum.** Iron-enriched (Mercury–Vulcan style, 0.30 retention at high Δv/v_esc) and clean merger (~0.8+ retention at low Δv/v_esc) are the same physical process at different impact-energy ratios; the framework's retention formula = max(0.3, 1 − 0.37·Δv/v_esc) captures both.
+9. **Two-flavor merger continuum.** Iron-enriched (Mercury–Vulcan style, ~0.07 retention at high Δv/v_esc) and clean merger (~0.8 retention at low Δv/v_esc) are the same physical process at different impact-energy ratios; the framework's retention formula = max(0.05, 0.969 − 0.605·Δv/v_esc) captures both.
 10. **Habitability is a hard filter.** Stacking the constraints — outer giant shield + slow-rotator host + outer reservoir intact + Goldilocks-architecture cascade survivor + late-delivery event + Theia-like impactor + oxygen-producing photosynthesis emerging + Boring-Billion breakthrough — gives ~600-1,200 complex-life worlds in the entire Milky Way GHZ. Nearest Earth-twin: ~1,500-2,500 ly. Within 100 ly: probably only Earth.
 
 ## Algorithm pipeline
