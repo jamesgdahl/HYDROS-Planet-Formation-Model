@@ -69,14 +69,15 @@ const bruteFit = ctx.bruteFit;
 // target; deriving R_disc and f_disc from physics is the next pass. The
 // composition context is set here and ALWAYS reset, so the legacy catalog
 // is untouched.
-function budgetFit(planets, budget, lambda) {
+function budgetFit(planets, budget, lambda, parent) {
   // Thin wrapper over the COMPILED budgetFit (js/fit.js) so the CLI and the web
   // UI share one implementation. Re-expose the budget diagnostics as _budget
   // for the table/summary renderers.
-  const r = ctx.budgetFit(planets, budget, lambda);
+  const r = ctx.budgetFit(planets, budget, lambda, parent);
   r._budget = {
     M: r.budget_M, Z: r.budget_Z, f_rock: r.budget_f_rock,
     inverted: r.budget_inverted, R_A: r.budget_R_A, lambda: r.budget_lambda,
+    Mdot: r.budget_Mdot, snow: r.budget_snow, C: r.budget_C,
   };
   return r;
 }
@@ -89,7 +90,7 @@ function fitSystem(sys) {
         q: (sys.inputs.stripping.q === undefined) ? null : sys.inputs.stripping.q }
     : null;
   const r = sys.budget
-    ? budgetFit(planets, sys.budget, sys.spin)
+    ? budgetFit(planets, sys.budget, sys.spin, sys.parent)
     : doBrute
     ? bruteFit(planets, M_star, stripping, doVice)
     : bestFit(planets, M_star, sys.inputs.f_disc);

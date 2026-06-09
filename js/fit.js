@@ -2034,7 +2034,7 @@ function bruteFit(planets, M_star, stripping, vice) {
             : null,
     };
 }
-function budgetFit(planets, budget, lambda) {
+function budgetFit(planets, budget, lambda, parent) {
     const M = mass_from_budget(budget);
     const Z = metallicity_from_budget(budget);
     const f_rock = f_rock_from_budget(budget);
@@ -2049,10 +2049,19 @@ function budgetFit(planets, budget, lambda) {
             ? spin_for_disc_radius(M, outermost, omega)
             : spin_for_disc_radius(M, outermost);
         set_r_disc_norm(outermost);
+        // UNIFIED RATE → snow line. B = relative mass budget; C = capture fraction
+        // (1 self-fed, R_disc/R_Hill for a parent-fed sub-disc). The snow line is
+        // set from Ṁ(f_disc) BEFORE each fit so it co-converges with the f_disc
+        // bisection (the rock/ice split feeds back into the mass match).
+        const B = M / SOL_M_PRIMORDIAL;
+        const C = parent ? capture_fraction(outermost, parent.a, M, parent.M) : 1.0;
+        const Mdot_of = (fd) => accretion_rate(M, Z, f_rock, fd, outermost, B, C);
+        const set_snow_for = (fd) => set_snow_line(mulders_snow_line(M, Mdot_of(fd)));
         const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
         const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior
             && (immut.size ? immut.has(s.name) : true));
         let lo = 0.0005, hi = 0.5, f = 0.01;
+        set_snow_for(f);
         let fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
         const tgt0 = sel(fit);
         const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
@@ -2061,6 +2070,7 @@ function budgetFit(planets, budget, lambda) {
             const tol = Math.max(1e-6, 0.001 * smallest);
             for (let i = 0; i < 60; i++) {
                 const fm = Math.sqrt(lo * hi);
+                set_snow_for(fm);
                 const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega });
                 const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
                 f = fm;
@@ -2078,6 +2088,7 @@ function budgetFit(planets, budget, lambda) {
         const resid = tot > 0
             ? Math.abs(tgt.reduce((a, s) => a + (s.predicted - s.observed), 0)) / tot : 0;
         const om_eff = (omega !== undefined) ? omega : spin;
+        const Mdot = Mdot_of(f);
         return {
             spin, nebula_density: nebula_density_from_spin(spin),
             omega_rot: (omega !== undefined) ? omega : null,
@@ -2086,6 +2097,7 @@ function budgetFit(planets, budget, lambda) {
             score: 0, stripping_q: null, stripping_rt: null,
             budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
             budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
+            budget_Mdot: Mdot, budget_snow: mulders_snow_line(M, Mdot), budget_C: C,
         };
     }
     finally {

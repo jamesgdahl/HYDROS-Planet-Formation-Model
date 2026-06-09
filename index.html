@@ -375,11 +375,15 @@ function loadPreset(name) {
   // slot_aware_fit reproduces the budget fit exactly.
   if (preset.budget) {
     const bp = preset.planets.map(p => ({ ...p }));
-    const r = budgetFit(bp, preset.budget, preset.spin);
+    const r = budgetFit(bp, preset.budget, preset.spin, preset.parent);
     set_composition(r.budget_Z, r.budget_f_rock);
     const obs = bp.filter(p => !p.kbo && (p.observed || 0) > 0);
     const outermost = obs.reduce((m, p) => Math.max(m, p.r), 0);
     set_r_disc_norm(outermost);
+    // budgetFit resets the snow-line context on exit; re-park the DERIVED
+    // (Mulders, from the unified accretion rate) value so calculate()'s
+    // slot_aware_fit reproduces the budget composition (Io dry, etc.).
+    set_snow_line(r.budget_snow);
     window.CURRENT_BUDGET = { budget: preset.budget, ...r };
     setInputs({
       M_star: r.budget_M,
@@ -479,7 +483,10 @@ function calculate() {
     <span class="label">Z:</span> <span class="value">${fmt(bg.budget_Z, 4)}</span> &nbsp;
     <span class="label">f_rock:</span> <span class="value">${fmt(bg.budget_f_rock, 3)}</span> &nbsp;
     <span class="label">archaic spin λ:</span> <span class="value">${fmt(bg.budget_lambda, 2)}</span> &nbsp;
-    <span class="label">f_disc (real):</span> <span class="value">${fmt(bg.f_disc, 5)}</span><br>` : "";
+    <span class="label">f_disc (real):</span> <span class="value">${fmt(bg.f_disc, 5)}</span><br>
+    <span class="label">Accretion rate Ṁ:</span> <span class="value">${bg.budget_Mdot.toExponential(2)} M☉/yr</span> &nbsp;
+    <span class="label">Capture fraction C:</span> <span class="value">${fmt(bg.budget_C, 4)}</span> &nbsp;
+    <span class="label">Viscous snow line (Mulders):</span> <span class="value">${bg.budget_snow < 0.01 ? (bg.budget_snow*1000).toPrecision(3)+'m' : fmt(bg.budget_snow,3)} AU</span><br>` : "";
   document.getElementById("derived").innerHTML = budgetLine + `
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
     <span class="label">Disc outer edge (Davis Dam):</span> <span class="value">${fmt(R_disc, 3)} AU</span> &nbsp;

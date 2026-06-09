@@ -92,16 +92,47 @@ const IGNITION_MASS = 0.08; // M⊙, hydrogen-burning limit
 function is_inverted_budget(M) {
     return M >= IGNITION_MASS && compression_budget(M) >= 1.0;
 }
-// SNOW LINE of the circum-primary (protolunar / protoplanetary) disc — VISCOUS
-// (accretional) heating, the SAME physics at every scale (user, 2026-06-09).
-// The disc midplane temperature is set by viscous dissipation behind the disc's
-// own OPACITY: T_mid⁴ ∝ κ·Σ·Ṁ·Ω², so the snow line is DERIVED from the disc's
-// rock(dust)-density-set opacity, calibrated on Sol with Jupiter a PREDICTION —
-// NOT tuned to land at Io. BLOCKED in pass 1: κ, Σ and Ṁ all need the disc's
-// real solid surface density, which needs the REAL f_disc — and pass-1 f_disc is
-// the bisection artifact (slope normalized to disc_radius(M, spin=1), not the
-// anchored dam). So this snow line is built in the f_disc-normalization pass,
-// once the real disc density exists. (COMP_R_SNOW is the hook it will park into.)
+// ============================================================
+//  UNIFIED ACCRETION RATE — one primitive drives BOTH the snow line (viscous
+//  heating) and the formation clock (M_core / Z·Ṁ). Replaces the hardcoded
+//  0.10·r/AAF formation-time fudge and the GRAIN_OPACITY snow-line fudge with a
+//  single derived rate (user, 2026-06-09):
+//      Ṁ = K · AAF · B · C
+//   AAF = derived solid accretion POTENTIAL (m_star·Z·f_rock·f_disc·η / R_disc)
+//   B   = relative mass budget (M / M⊙) — the supply throttle; small allocation
+//         ⇒ slow feed (gas-starvation by budget). Sol = 1 is just the anchor
+//         (Sol is itself a slot product of a bigger reservoir — no special case).
+//   C   = capture fraction: a self-fed primary disc = 1; a parent-fed SUB-disc
+//         captures only R_disc/R_Hill of the equivalent flux (the extra gas-
+//         starvation that makes a circumplanetary disc cold/close-in), R_Hill
+//         from the object's slot in its parent.
+//   K   = Sol-calibrated normalization (so Sol's snow line lands ~2.7 AU).
+//  VERIFIED (2026-06-09): Sol calibrates (snow 2.7 AU, Jupiter-slot clock 1.7
+//  Myr); Jupiter is then a PREDICTION — snow line 0.0038 AU (only Io dry,
+//  Europa/Ganymede/Callisto icy) and moon clock ~4.6 Myr.
+const ACCRETION_K = 5.708e-8; // Sol snow-line anchor (M⊙/yr per AAF unit)
+function accretion_rate(M, Z, f_rock, f_disc, R_disc, B, C) {
+    const aaf = m_star_earth(M) * Z * f_rock * f_disc * ETA_ROCK / R_disc;
+    return ACCRETION_K * aaf * B * C;
+}
+// Capture fraction C — a self-fed primary (no parent) is 1; a parent-fed sub-disc
+// captures R_disc/R_Hill, R_Hill = a_parent·(M / 3 M_grand)^(1/3).
+function capture_fraction(R_disc, a_parent, M, M_grand) {
+    if (!(a_parent > 0) || !(M_grand > 0))
+        return 1.0;
+    const R_Hill = a_parent * Math.pow(M / (3 * M_grand), 1.0 / 3.0);
+    return R_disc / R_Hill;
+}
+// Mulders et al. 2015 (Eq. 2, from Min et al. 2011) VISCOUS snow line from the
+// gas accretion rate: R_SL = 2.1 AU·(M/M⊙)^⅓·(Ṁ/1e-8)^(4/9)·(κ/770)^(2/9),
+// at f_gd=100, α=0.01, T_ice=160 K. Ṁ dominates (4/9 over orders of magnitude);
+// opacity κ is a weak (2/9, factor-2) lever (ISM 770 vs grown 20 cm²/g).
+const SNOW_KAPPA_R = 770.0; // Rosseland opacity, ISM small grains (cm²/g)
+function mulders_snow_line(M_star, Mdot_msun_yr) {
+    return 2.1 * Math.pow(M_star / SOL_M_PRIMORDIAL, 1.0 / 3.0)
+        * Math.pow(Math.max(Mdot_msun_yr, 1e-40) / 1e-8, 4.0 / 9.0)
+        * Math.pow(SNOW_KAPPA_R / 770.0, 2.0 / 9.0);
+}
 // Convenience: the full derived parameter set from a budget + spin.
 function params_from_budget(b, spin) {
     const M = mass_from_budget(b);
