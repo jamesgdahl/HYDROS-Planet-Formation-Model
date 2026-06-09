@@ -335,7 +335,13 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     const r = fit_r(s);
     let rock = rock_allocation(r, M_star, spin, f_disc, omega);
     let ice = ice_allocation(r, M_star, spin, f_disc, omega);
-    let peb = pebble[n];
+    // Pebbles are a drift flux of the SAME bulk composition — fold them into
+    // their constituent rock/ice (f_rock : 1−f_rock = 22%:78% for Sol) rather
+    // than carrying a separate component. peb stays 0 (the field is retained for
+    // the type, but pebbles no longer appear in results).
+    rock += COMP_F_ROCK * pebble[n];
+    ice  += (1 - COMP_F_ROCK) * pebble[n];
+    let peb = 0;
     let core = rock + ice + peb;
     const in_void = false;
     const observed = s.filled ? s.observed : 0;

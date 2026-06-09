@@ -108,7 +108,6 @@
         <th>t<sub>form</sub> (Myr)</th>
         <th>Rock</th>
         <th>Ice</th>
-        <th>Peb</th>
         <th>H/He</th>
         <th>Predicted</th>
         <th>Observed</th>
@@ -643,7 +642,6 @@ function calculate() {
       <td>${fmt(s.t_form, 2)}</td>
       <td>${fmtM(s.rock)}</td>
       <td>${fmtM(s.ice)}</td>
-      <td>${fmtM(s.pebble)}</td>
       <td>${fmtM(s.h_he, 2)}</td>
       <td>${fmtM(predicted)}</td>
       <td>${isFinite(observed) ? fmtM(observed) : '—'}</td>
@@ -656,7 +654,7 @@ function calculate() {
   const tfoot = document.getElementById("result-total");
   tfoot.innerHTML = `
     <tr>
-      <th>TOTAL</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+      <th>TOTAL</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
       <th>${fmtM(total_pred, 2)}</th>
       <th>${fmtM(total_obs, 2)}</th>
       <th></th><th></th>
