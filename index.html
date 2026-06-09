@@ -386,7 +386,8 @@ function loadPreset(name) {
     set_snow_line(r.budget_snow);
     // Non-igniter sub-disc: supply-limited formation clock (moons form in ~Myr).
     if (r.budget_M < 0.08) set_mdot(r.budget_Mdot);
-    window.CURRENT_BUDGET = { budget: preset.budget, ...r };
+    window.CURRENT_BUDGET = { budget: preset.budget, parent: preset.parent,
+                             spin: preset.spin, ...r };
     setInputs({
       M_star: r.budget_M,
       spin: (r.omega_rot != null) ? r.omega_rot : r.spin,
@@ -1258,6 +1259,55 @@ function findBestFit() {
   const inp = getInputs();
   const { M_star, f_disc } = inp;
   const planets_initial = getPlanets().concat(getKBOs());
+
+  // v6 BUDGET preset: the inputs are the conserved budget, not (M,D,spin,f_disc),
+  // so bruteFit doesn't apply. The one free parameter is the ARCHAIC spin λ (sets
+  // R_A → the sign-modulation depth). For a non-igniter sub-disc, scan λ to
+  // minimize the satellite mass residual (the archaic-spin determination); for an
+  // igniter (jaw-locked) there's no free λ, so just re-derive. Then set the
+  // composition/snow-line/clock contexts and render.
+  const bgNow = window.CURRENT_BUDGET;
+  if (bgNow) {
+    const budget = bgNow.budget, parent = bgNow.parent;
+    const pl = getPlanets().concat(getKBOs());
+    const obs = pl.filter(p => !p.kbo && (p.observed || 0) > 0);
+    const evalLam = (lam) => {
+      const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent);
+      let sse = 0, n = 0;
+      for (const p of obs) {
+        const s = rr.fit.slots.find(x => x.filled && x.name === p.name);
+        if (s && p.observed > 0) { const e = (s.predicted - p.observed) / p.observed; sse += e * e; n++; }
+      }
+      return { rms: n ? Math.sqrt(sse / n) : Infinity, r: rr };
+    };
+    let best;
+    if (bgNow.budget_M < 0.08 && obs.length >= 2) {        // non-igniter: scan λ
+      best = null;
+      for (let lam = 20; lam <= 120; lam += 4) {
+        const x = evalLam(lam); if (!best || x.rms < best.rms) best = { lam, ...x };
+      }
+      for (let lam = best.lam - 4; lam <= best.lam + 4; lam += 0.5) {
+        const x = evalLam(lam); if (x.rms < best.rms) best = { lam, ...x };
+      }
+      console.log(`findBestFit (budget): archaic spin λ=${best.lam.toFixed(1)}, satellite RMS ${(best.rms * 100).toFixed(2)}%`);
+    } else {                                                // igniter: jaw-lock, no free λ
+      best = { lam: bgNow.spin, ...evalLam(bgNow.spin) };
+    }
+    const r = best.r;
+    set_composition(r.budget_Z, r.budget_f_rock);
+    const outermost = obs.reduce((m, p) => Math.max(m, p.r), 0);
+    set_r_disc_norm(outermost);
+    set_snow_line(r.budget_snow);
+    if (r.budget_M < 0.08) set_mdot(r.budget_Mdot); else reset_mdot();
+    window.CURRENT_BUDGET = { budget, parent, spin: best.lam, ...r };
+    setInputs({
+      M_star: r.budget_M,
+      spin: (r.omega_rot != null) ? r.omega_rot : r.spin,
+      nebula_density: r.nebula_density, f_disc: r.f_disc,
+    });
+    calculate();
+    return;
+  }
 
   // Shared calibration entry point (js/fit.js): exhaustive joint scan
   // over the anchor family with the exact f_disc bisection solved per
