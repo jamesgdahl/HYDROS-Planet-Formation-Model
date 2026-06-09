@@ -187,12 +187,14 @@ function buildPresetDropdown() {
     { label: "Gas giant",          min:    0, max: 0.012 },
   ];
 
-  // Mass (Sol-primordial units) from the conserved budget.
-  const sysMassPrim = (s) => mass_from_budget(s.budget);
+  // Spectral-class binning uses the OBSERVED central-star mass, not the budget
+  // total — for a multi-star system the reservoir (A+B+C) would mis-class the
+  // primary (e.g. Alpha Cen A is G-class at 1.08 M☉, not the 1.98 M☉ A+B+Prox sum).
+  const sysMassPrim = (s) => (s.star != null ? s.star : mass_from_budget(s.budget));
   const groups = bins.map(b => ({ ...b, systems: [] }));
   for (const sys of (window.EXOPLANETS || [])) {
     if (!sys.budget) continue;   // v6: only conserved-budget systems are fittable
-    const m = sysMassPrim(sys) * 1.14;  // bins are in current M_sun
+    const m = sysMassPrim(sys) * 1.14;  // observed central-star mass → current M☉
     const bin = groups.find(g => m >= g.min && m < g.max);
     if (bin) bin.systems.push(sys);
   }
