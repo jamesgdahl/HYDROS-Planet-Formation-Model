@@ -184,7 +184,9 @@ function snow_line(M_star: number, f_disc: number): number {
 
 /** Annulus Allocation Factor sigma_AAF [M_earth/AU]. */
 function slope(M_star: number, f_disc: number): number {
-  const r_disc = disc_radius(M_star, 1.0); // slope uses spin=1 R_disc by convention
+  // Normalize to the ANCHORED dam when the budget path supplies it (so f_disc is
+  // the real disc fraction); else the spin=1 reference length (legacy convention).
+  const r_disc = COMP_R_DISC > 0 ? COMP_R_DISC : disc_radius(M_star, 1.0);
   return m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * f_disc * ETA_ROCK / r_disc;
 }
 

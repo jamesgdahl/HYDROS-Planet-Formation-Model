@@ -137,6 +137,7 @@
 <script src="js/allocation.js"></script>
 <script src="js/classify.js"></script>
 <script src="js/cascade.js"></script>
+<script src="js/budget.js"></script>
 <script src="js/fit.js"></script>
 <script src="js/impactors.js"></script>
 <script src="js/tides.js"></script>
@@ -361,6 +362,36 @@ function addKBORow(k = {}) {
 
 function loadPreset(name) {
   const preset = PRESETS[name];
+  // Clear any budget contexts from a previously-loaded budget preset, so a
+  // legacy {M,D,spin,f_disc} preset renders with the universal composition.
+  reset_composition(); reset_r_disc_norm(); reset_snow_line();
+  window.CURRENT_BUDGET = null;
+
+  // v6 BUDGET PRESET: inputs are a conserved budget {rock,ice,hydrogen} (+ an
+  // archaic spin λ), not (M,D,spin,f_disc). Derive everything via the shared
+  // budgetFit, then translate to the UI's decoupled-jaw inputs (spin-field = ω
+  // = λ; nebula_density → the density dial that anchors the dam) and SET the
+  // composition / anchored-dam contexts persistently so calculate()'s
+  // slot_aware_fit reproduces the budget fit exactly.
+  if (preset.budget) {
+    const bp = preset.planets.map(p => ({ ...p }));
+    const r = budgetFit(bp, preset.budget, preset.spin);
+    set_composition(r.budget_Z, r.budget_f_rock);
+    const obs = bp.filter(p => !p.kbo && (p.observed || 0) > 0);
+    const outermost = obs.reduce((m, p) => Math.max(m, p.r), 0);
+    set_r_disc_norm(outermost);
+    window.CURRENT_BUDGET = { budget: preset.budget, ...r };
+    setInputs({
+      M_star: r.budget_M,
+      spin: (r.omega_rot != null) ? r.omega_rot : r.spin,
+      nebula_density: r.nebula_density,
+      f_disc: r.f_disc,
+      L: preset.inputs ? preset.inputs.L : undefined,
+    });
+    setPlanets(preset.planets);
+    calculate();
+    return;
+  }
   setInputs(preset.inputs);
   setPlanets(preset.planets);
   calculate();
@@ -438,7 +469,18 @@ function calculate() {
     : "";
 
   const D_neb = D;
-  document.getElementById("derived").innerHTML = `
+  // v6 budget diagnostics: when a conserved-budget preset is loaded, show the
+  // derived composition + the archaic-spin Alfvén Dam that the satellite
+  // configuration implied (its present rotation is not primordial).
+  const bg = window.CURRENT_BUDGET;
+  const budgetLine = bg ? `
+    <span class="label">Budget (Sol=1):</span> <span class="value">rock ${fmt(bg.budget.rock, 4)}, ice ${fmt(bg.budget.ice, 4)}, H ${fmt(bg.budget.hydrogen, 5)}</span> &nbsp;
+    <span class="label">→ M:</span> <span class="value">${fmt(bg.budget_M, 5)} M☉</span> &nbsp;
+    <span class="label">Z:</span> <span class="value">${fmt(bg.budget_Z, 4)}</span> &nbsp;
+    <span class="label">f_rock:</span> <span class="value">${fmt(bg.budget_f_rock, 3)}</span> &nbsp;
+    <span class="label">archaic spin λ:</span> <span class="value">${fmt(bg.budget_lambda, 2)}</span> &nbsp;
+    <span class="label">f_disc (real):</span> <span class="value">${fmt(bg.f_disc, 5)}</span><br>` : "";
+  document.getElementById("derived").innerHTML = budgetLine + `
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
     <span class="label">Disc outer edge (Davis Dam):</span> <span class="value">${fmt(R_disc, 3)} AU</span> &nbsp;
     <span class="label">Magnetospheric void radius:</span> <span class="value">${fmt(R_A, 4)} AU</span> &nbsp;

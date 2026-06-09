@@ -27,6 +27,19 @@ function reset_composition() {
     COMP_Z = Z_METALLICITY;
     COMP_F_ROCK = F_ROCK;
 }
+// SLOPE NORMALIZATION OVERRIDE (v6 budget wiring). slope() in disc.ts measures
+// the disc's solid surface density as disc_budget / disc_radius(M, spin=1) — a
+// fixed spin=1 reference length. For a sub-cascade primary the cascade is
+// ANCHORED far from that reference (Jupiter's dam sits at 0.0126 AU, but
+// disc_radius(M,1) ≈ 1e-4 AU), so f_disc has to absorb the ~100× length
+// mismatch and comes out as a meaningless scale artifact. Setting this to the
+// ANCHORED dam makes slope consistent with where the cascade actually lives, so
+// the bisected f_disc becomes the REAL disc fraction (and the disc mass / Ṁ
+// that the snow line needs). Negative sentinel = use the spin=1 reference (the
+// legacy catalog never sets it ⇒ untouched). Always reset after the fit.
+let COMP_R_DISC = -1.0;
+function set_r_disc_norm(r) { COMP_R_DISC = r; }
+function reset_r_disc_norm() { COMP_R_DISC = -1.0; }
 // SNOW-LINE OVERRIDE (v6 budget wiring). The disc-temperature snow line in
 // disc.ts scales with the primary's MAIN-SEQUENCE luminosity (L∝M⁴ → the M²
 // term), which vanishes for a substellar primary — so a gas giant's sub-disc

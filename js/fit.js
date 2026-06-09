@@ -2034,3 +2034,63 @@ function bruteFit(planets, M_star, stripping, vice) {
             : null,
     };
 }
+function budgetFit(planets, budget, lambda) {
+    const M = mass_from_budget(budget);
+    const Z = metallicity_from_budget(budget);
+    const f_rock = f_rock_from_budget(budget);
+    const inverted = is_inverted_budget(M);
+    set_composition(Z, f_rock);
+    try {
+        const obs = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
+        const ordered = obs.slice().sort((a, b) => b.r - a.r);
+        const outermost = ordered.length ? ordered[0].r : 1.0;
+        const omega = (lambda !== undefined && lambda !== null) ? lambda : undefined;
+        const spin = (omega !== undefined)
+            ? spin_for_disc_radius(M, outermost, omega)
+            : spin_for_disc_radius(M, outermost);
+        set_r_disc_norm(outermost);
+        const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
+        const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior
+            && (immut.size ? immut.has(s.name) : true));
+        let lo = 0.0005, hi = 0.5, f = 0.01;
+        let fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
+        const tgt0 = sel(fit);
+        const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
+        if (totalTarget > 0) {
+            const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
+            const tol = Math.max(1e-6, 0.001 * smallest);
+            for (let i = 0; i < 60; i++) {
+                const fm = Math.sqrt(lo * hi);
+                const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega });
+                const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
+                f = fm;
+                fit = f2;
+                if (Math.abs(e) < tol)
+                    break;
+                if (e > 0)
+                    hi = fm;
+                else
+                    lo = fm;
+            }
+        }
+        const tgt = sel(fit);
+        const tot = tgt.reduce((a, s) => a + s.observed, 0);
+        const resid = tot > 0
+            ? Math.abs(tgt.reduce((a, s) => a + (s.predicted - s.observed), 0)) / tot : 0;
+        const om_eff = (omega !== undefined) ? omega : spin;
+        return {
+            spin, nebula_density: nebula_density_from_spin(spin),
+            omega_rot: (omega !== undefined) ? omega : null,
+            f_disc: f, anchor_slot: 0, iterations: 1, converged: true,
+            target_residual: resid, target_names: tgt.map(s => s.name), fit,
+            score: 0, stripping_q: null, stripping_rt: null,
+            budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
+            budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
+        };
+    }
+    finally {
+        reset_composition();
+        reset_r_disc_norm();
+        reset_snow_line();
+    }
+}

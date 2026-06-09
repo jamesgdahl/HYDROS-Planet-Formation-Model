@@ -69,63 +69,17 @@ const bruteFit = ctx.bruteFit;
 // target; deriving R_disc and f_disc from physics is the next pass. The
 // composition context is set here and ALWAYS reset, so the legacy catalog
 // is untouched.
-function budgetFit(planets, budget) {
-  const M = ctx.mass_from_budget(budget);
-  const Z = ctx.metallicity_from_budget(budget);
-  const f_rock = ctx.f_rock_from_budget(budget);
-  const inverted = ctx.is_inverted_budget(M);
-  ctx.set_composition(Z, f_rock);
-  // NOTE: the protolunar snow line (viscous heating behind the disc's own
-  // opacity, derived from rock/dust density) is NOT set here — it needs the
-  // real disc surface density (real f_disc), which arrives in the f_disc-
-  // normalization pass. Until then the base snow line reads ~0 for a substellar
-  // primary, so the moons classify icy (Io's dry/rocky identity is pending).
-  try {
-    const obs = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
-    const ordered = [...obs].sort((a, b) => b.r - a.r);
-    const outermost = ordered.length ? ordered[0].r : 1.0;
-    // Davis Dam anchored to the outermost interior body's orbit (slot 0).
-    // The sub-cascade spin is far below the stellar-cloud floor — a
-    // circumplanetary disc is compact, not a diffuse cloud — so no floor.
-    const spin = ctx.spin_for_disc_radius(M, outermost);
-    const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
-    const sel = (fit) => fit.slots.filter(s => s.filled && !s.external
-      && !s.remnant && !s.exterior && (immut.size ? immut.has(s.name) : true));
-    // Low rail dropped vs the legacy fit: slope() normalizes mass density to
-    // disc_radius(M, spin=1), which for a sub-cascade primary (tiny M) is far
-    // inside the anchored Hill-based dam, so f_disc must absorb that geometry
-    // factor and runs small. (A consistent slope normalization is the next
-    // pass; here f_disc is still just the bisected scale knob.)
-    let lo = 1e-7, hi = 0.5, f = 0.01;
-    let fit = ctx.slot_aware_fit(planets, M, spin, f, { auto_compress: false });
-    const tgt0 = sel(fit);
-    const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
-    if (totalTarget > 0) {
-      const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
-      const tol = Math.max(1e-6, 0.001 * smallest);
-      for (let i = 0; i < 60; i++) {
-        const fm = Math.sqrt(lo * hi);
-        const f2 = ctx.slot_aware_fit(planets, M, spin, fm, { auto_compress: false });
-        const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
-        f = fm; fit = f2;
-        if (Math.abs(e) < tol) break;
-        if (e > 0) hi = fm; else lo = fm;
-      }
-    }
-    const tgt = sel(fit);
-    const tot = tgt.reduce((a, s) => a + s.observed, 0);
-    const resid = tot > 0
-      ? Math.abs(tgt.reduce((a, s) => a + (s.predicted - s.observed), 0)) / tot : 0;
-    return {
-      spin, nebula_density: ctx.nebula_density_from_spin(spin), omega_rot: null,
-      f_disc: f, anchor_slot: 0, iterations: 1, converged: true,
-      target_residual: resid, target_names: tgt.map(s => s.name), fit,
-      score: 0, stripping_q: null, stripping_rt: null,
-      _budget: { M, Z, f_rock, inverted },
-    };
-  } finally { ctx.reset_composition(); ctx.reset_snow_line(); }
+function budgetFit(planets, budget, lambda) {
+  // Thin wrapper over the COMPILED budgetFit (js/fit.js) so the CLI and the web
+  // UI share one implementation. Re-expose the budget diagnostics as _budget
+  // for the table/summary renderers.
+  const r = ctx.budgetFit(planets, budget, lambda);
+  r._budget = {
+    M: r.budget_M, Z: r.budget_Z, f_rock: r.budget_f_rock,
+    inverted: r.budget_inverted, R_A: r.budget_R_A, lambda: r.budget_lambda,
+  };
+  return r;
 }
-
 function fitSystem(sys) {
   const planets = sys.planets.map(p => ({ ...p }));
   const M_star = sys.budget ? ctx.mass_from_budget(sys.budget) : sys.inputs.M_star;
@@ -135,7 +89,7 @@ function fitSystem(sys) {
         q: (sys.inputs.stripping.q === undefined) ? null : sys.inputs.stripping.q }
     : null;
   const r = sys.budget
-    ? budgetFit(planets, sys.budget)
+    ? budgetFit(planets, sys.budget, sys.spin)
     : doBrute
     ? bruteFit(planets, M_star, stripping, doVice)
     : bestFit(planets, M_star, sys.inputs.f_disc);
@@ -243,6 +197,7 @@ function printSlotTable(sys, r) {
   if (r._budget) {
     const b = sys.budget;
     console.log(`  budget=[rock ${b.rock}, ice ${b.ice}, H ${b.hydrogen}]  Z=${r._budget.Z.toFixed(4)}  f_rock=${r._budget.f_rock.toFixed(3)}  regime=${r._budget.inverted ? 'INVERTED' : 'NORMAL'}`);
+    console.log(`  archaic spin λ=${r._budget.lambda.toExponential(3)}  R_A=${r._budget.R_A.toExponential(3)} AU  C=R_A/R_disc=${(r._budget.R_A / r.fit.R_disc).toFixed(4)}`);
   }
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
