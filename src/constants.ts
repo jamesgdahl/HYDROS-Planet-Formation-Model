@@ -8,6 +8,21 @@
 const Z_METALLICITY = 0.014;
 const F_ROCK = 0.22;
 
+// ABUNDANCE → BUDGET reconstruction (budget_from_abundances in budget.ts).
+// A star's conserved budget {rock, ice, hydrogen} is reconstructable from two
+// spectroscopic indicators + its mass:
+//   METAL content  ← [Fe/H]:  Z = Z☉ · 10^[Fe/H]   (total metal mass fraction).
+//   WATER content  ← C/O:     the rock:ice split. Oxygen makes water from what's
+//     left after Si/Mg/Fe take theirs; carbon competes for it. Above C/O≈0.8
+//     (CO_RICH_THRESH) almost no free O remains ⇒ no water ⇒ all-rock; the Sun
+//     sits at C/O≈0.55 (CO_SUN) ⇒ f_rock = F_ROCK = 0.22. K_CO is fixed by those
+//     two anchors so f_rock(0.55)=0.22 and f_rock(0.8)=1.
+// (Bond+2010 / Thiabaud+2015 / HARPS C-O-Mg-Si; Mg/Si is a mineralogy refinement
+// not wired yet.) Helium is lumped with hydrogen (the H/He budget = 1−Z).
+const CO_SUN = 0.55;            // solar C/O (Asplund 2009 ≈ 0.54)
+const CO_RICH_THRESH = 0.80;    // C/O above which free oxygen ⇒ water vanishes
+const K_CO = (1.0 / F_ROCK - 1.0) / (CO_RICH_THRESH - CO_SUN);  // ≈ 14.18
+
 // PER-OBJECT COMPOSITION CONTEXT (v6 budget wiring). The allocation
 // AMPLITUDE constants Z·F_ROCK are no longer universal — a budget-input
 // object overrides them with its own metallicity / rock fraction (Jupiter

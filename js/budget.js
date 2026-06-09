@@ -35,6 +35,25 @@ function metallicity_from_budget(b) {
 function f_rock_from_budget(b) {
     return (b.rock + b.ice) > 0 ? b.rock / (b.rock + b.ice) : 0;
 }
+// RECONSTRUCT the conserved budget {rock, ice, hydrogen} (Earth masses) from a
+// star's MASS + two spectroscopic indicators:
+//   M_star  — Sol-primordial M☉ (Sol = 1 ≡ M_SUN_TO_EARTH earth masses),
+//   FeH     — [Fe/H] metallicity → Z = Z☉·10^[Fe/H] (the metal budget),
+//   CtoO    — C/O ratio → the rock:ice split (water indicator); ≤0 ⇒ assume solar.
+// f_rock rises as C/O climbs (less free oxygen ⇒ less water): f_rock(0.55)=0.22,
+// f_rock(≥0.8)=1 (dry). Validates against Sol: (1, 0, 0.55) → the catalog budget
+// (1169.04, 4144.78, 374244.62). Helium folds into the hydrogen (H/He) budget.
+function budget_from_abundances(M_star, FeH, CtoO) {
+    const Z = Z_METALLICITY * Math.pow(10, FeH);
+    const co = (CtoO > 0) ? CtoO : CO_SUN;
+    const f_rock = Math.min(1.0, 1.0 / (1.0 + K_CO * Math.max(0, CO_RICH_THRESH - co)));
+    const total = M_star * M_SUN_TO_EARTH; // total budget mass in Earth masses
+    return {
+        rock: total * Z * f_rock,
+        ice: total * Z * (1 - f_rock),
+        hydrogen: total * (1 - Z),
+    };
+}
 // DERIVED disc fraction from spin: the disc is the high-angular-momentum share
 // that missed the core. Anchored f_disc(Sol: λ=1, M=1) = 0.0103.
 // !! UNVALIDATED CANDIDATE — scaling ∝ λ²/M (centrifugal) is a placeholder; the
