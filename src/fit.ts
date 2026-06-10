@@ -1133,13 +1133,26 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         rock_left -= take;
       }
       outside.forEach(p => { ice_share[p.name] = ice_budget * ice_wgt(p.r) / iwsum; });          // ice beyond R_snow, piling outward
+      // VINTAGE: the Davis Dam marches OUTWARD through the pile over the disc
+      // lifetime, minting each product in turn — so each body's formation epoch is
+      // the disc dispersal time × the fraction of the solid budget already swept up
+      // inward of it. Inner bodies are the early vintage, outer the late vintage.
+      const disp_t = gas_dispersal_time(M_star, f_disc);
+      const sorted_in = [...kbo_bodies].sort((a, b) => a.r - b.r);
+      const total_solid = sorted_in.reduce((s, p) => s + (rock_share[p.name] || 0) + (ice_share[p.name] || 0), 0) || 1;
+      const vintage: Record<string, number> = {};
+      let cum_solid = 0;
+      for (const p of sorted_in) {
+        cum_solid += (rock_share[p.name] || 0) + (ice_share[p.name] || 0);
+        vintage[p.name] = disp_t * cum_solid / total_solid;
+      }
       for (const p of kbo_bodies) {
         const rr = p.r, observed = p.observed || 0;
         let rock = rock_share[p.name] || 0;   // rock condenses at every radius
         let ice = ice_share[p.name] || 0;     // ice only beyond R_snow
         let peb = 0;
         let core = rock + ice + peb;
-        const t_form = 0.10 * rr / Math.max(sl, 1e-12);
+        const t_form = vintage[p.name];   // marching-dam formation epoch
         let h_he = (core > gas_threshold_mass(rr, M_star, f_disc))
           ? hydrogen_capture(core, t_form, spin, rr, M_star, f_disc, omega) : 0;
         let total = core + h_he;

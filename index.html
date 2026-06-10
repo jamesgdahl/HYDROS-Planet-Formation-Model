@@ -656,10 +656,11 @@ function calculate() {
       r_now = obs_r;
       dr_au = obs_r - r_form;       // 0 for in-situ; migration distance for migrants
       dm = observed - predicted;
-      // External stellar companions don't count toward disc total —
-      // they're bound but not formed in the disc. KBO-class bodies are
-      // a distinct population with independent inputs — own ledger.
-      if (!s.external && !s.exterior) {
+      // External stellar companions don't count toward the disc total — they're
+      // bound but not formed in the disc. KBO-class / factory products DO count:
+      // they're disc-formed bodies (the inverted regime mints all of them), so
+      // they belong in the observed/predicted mass totals.
+      if (!s.external) {
         total_pred += predicted;
         total_obs += observed;
       }
@@ -704,7 +705,7 @@ function calculate() {
     }
     tr.innerHTML = `
       <td>${name}</td>
-      <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? 'ext' : s.slot_n}</td>
+      <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? (fmt(s.t_form, s.t_form < 1 ? 2 : 0) + 'Myr') : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
       <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
       <td>${fmt(s.t_form, 2)}</td>
