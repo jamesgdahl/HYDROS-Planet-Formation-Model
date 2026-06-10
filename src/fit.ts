@@ -2220,6 +2220,7 @@ interface BudgetFitResult extends BruteFitResult {
   budget_h_dispersed: number; budget_h_exhausted: boolean;
   budget_barycentre: number;
   budget_hw_inner: number; budget_hw_outer: number;
+  budget_R_disc: number; budget_dam_align: number;
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2276,10 +2277,44 @@ function budgetFit(planets: Planet[], budget: Budget,
     const outermost = ordered.length ? ordered[0].r
       : (anyBody.length ? anyBody[0].r : 1.0);
     const omega = (lambda !== undefined && lambda !== null) ? lambda : undefined;
-    const spin = (omega !== undefined)
-      ? spin_for_disc_radius(M, outermost, omega)
-      : spin_for_disc_radius(M, outermost);
-    set_r_disc_norm(outermost);
+    // DAVIS DAM from physics — NOT anchored to the outermost body. THREE mass buckets:
+    //  • CORE (inside R_A)            = M_core (star + co-primaries)
+    //  • DISC (R_A → R_disc)          = f_disc·M (the captured planet-forming material)
+    //  • OUTER nebula D (beyond R_disc)= budget − core − disc
+    // The outer nebula D resists the COMBINED stellar wind from every core element
+    // (Σ (M_i/M☉)^3.54 · Ω^0.77 — wind is super-linear in mass, so two stars emit far
+    // less than one of their summed mass) → R_disc = SOL_R_DISC·√(W·Ω^0.77)·D^(−0.5).
+    // D depends on f_disc THROUGH the disc bucket (not circular — D needs f, not
+    // R_disc), so R_disc (and the back-solved geometry spin) is recomputed per f in the
+    // bisection. Fallback (no primary mass / no Ω — sub-cascades): the legacy anchor.
+    const usePhysicsDam = primaryMass != null && isFinite(primaryMass) && primaryMass > 0 && omega !== undefined;
+    let R_disc_phys: number | null = null;
+    let spin: number;
+    if (usePhysicsDam) {
+      const co = planets.filter(p => p.core && (p.observed || 0) > 0);
+      const M_core_earth = (primaryMass as number) * M_SUN_EARTH
+        + co.reduce((a, p) => a + (p.observed || 0), 0);
+      // DERIVED nebula density (no calibration constant). The disc mass is the nebula
+      // M_d = budget − core (budget minus the stars). It spreads over the centrifugal
+      // disc (Terebey-Shu-Cassen R_c = j²/GM ∝ spin² — "extended by spin"), giving the
+      // self-similar surface density D ∝ M_d / R_c². D is Sol-normalized by Sol's OWN
+      // budget − core (a derived value). The spin is capped at the fragmentation
+      // (breakup) limit: a core can't rotate faster — the excess angular momentum goes
+      // into the co-primary, so a binary's disc isn't spun out to absurd radii.
+      const M_d = Math.max(M * M_SUN_TO_EARTH - M_core_earth, 1e-3);
+      const M_d_sol = M_SUN_TO_EARTH - M_SUN_EARTH;                   // Sol's nebula (derived)
+      const spin_eff = Math.min(omega as number, breakup_spin(M));   // disc rotation ≤ breakup
+      const D = (M_d / M_d_sol) / Math.pow(Math.max(spin_eff, 1e-6), 4);   // ∝ M_d / R_c², R_c ∝ spin²
+      let W = Math.pow(primaryMass as number, 3.54);                 // combined wind, Σ core elements
+      for (const p of co) W += Math.pow((p.observed || 0) / M_SUN_EARTH, 3.54);
+      R_disc_phys = SOL_R_DISC * Math.sqrt(W * Math.pow(omega as number, 0.77)) * Math.pow(D, -0.5);
+      spin = spin_for_disc_radius(M, R_disc_phys, omega);
+    } else {
+      spin = (omega !== undefined)
+        ? spin_for_disc_radius(M, outermost, omega)
+        : spin_for_disc_radius(M, outermost);
+    }
+    set_r_disc_norm(R_disc_phys != null ? R_disc_phys : outermost);
     // UNIFIED RATE → snow line. B = relative mass budget; C = capture fraction
     // (1 self-fed, R_disc/R_Hill for a parent-fed sub-disc).
     const B = M / SOL_M_PRIMORDIAL;
@@ -2352,9 +2387,15 @@ function budgetFit(planets: Planet[], budget: Budget,
     const passB = bisectF();
     let f = passB.f;
     const fit = passB.fit;
+    // The Davis dam is fixed by the budget − core − captured-planets (f_disc-
+    // independent). The outermost body's distance from it is the fit-quality metric —
+    // no longer forced to zero by an anchor.
+    const R_disc_final = R_disc_phys != null ? R_disc_phys : outermost;
+    const dam_align = (R_disc_phys != null && R_disc_final > 0)
+      ? (outermost - R_disc_final) / R_disc_final : 0;
     // Sign-modulated solid transfer (post-process; conserves total, ISU-exempt):
     // + dips drain inward to − bumps, cascade scaled by C = R_A/R_disc.
-    apply_sign_modulation(fit.slots, R_A_used / outermost, outermost, R_A_used, M, f, immut);
+    apply_sign_modulation(fit.slots, R_A_used / R_disc_final, R_disc_final, R_A_used, M, f, immut);
     // Conserved hydrogen draw-down: the gas envelopes draw from the finite disc
     // hydrogen reservoir (f_disc·M_star = the disc's share of b_hydrogen). The
     // un-captured remainder is dispersed (onto the star / flung out). `exhausted`
@@ -2417,6 +2458,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
       budget_barycentre: r_bary,
       budget_hw_inner: hw_in, budget_hw_outer: hw_out,
+      budget_R_disc: R_disc_final, budget_dam_align: dam_align,
     };
   } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); }
 }

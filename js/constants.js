@@ -110,6 +110,12 @@ const INV_ROCK_ENRICH = 2.3;
 // efficiently). The budget is consumed inner-first, so the inner slots fill flat and
 // the budget runs dry mid-chain — the flat b,c then the d-cliff exhaustion gap.
 const ROCK_SLOT_CAP = 0.44;
+// Davis-dam nebula density: D = (budget − core) / NEBULA_SOL, the leftover disc mass
+// that piles up outside the dam, resisting the combined stellar wind. f_disc-INDEPENDENT
+// (it's the budget minus the stars, not the captured fraction). M_SUN_EARTH is the
+// CURRENT solar mass in M⊕ (the core/star mass unit); NEBULA_SOL = Sol's primordial
+// budget (M_SUN_TO_EARTH) minus the Sun (M_SUN_EARTH) ⇒ D(Sol)=1 → R_disc=30 AU.
+const M_SUN_EARTH = 332946.0; // current solar mass in M⊕ (the core/star mass unit)
 // Binary-core instability annulus (Holman-Wiegert 1999): around a binary core of
 // separation a_bin, the circumprimary stable region ends near 0.3·a_bin and the
 // circumbinary stable region begins near 2.4·a_bin (for near-equal masses, low
