@@ -125,6 +125,13 @@ const NEB_CONC_HALF = 133.0;
 const NEB_CONC_STEEP = 0.174;
 
 // Universal physics
+// GAS_DIVIDE_FRAC: the rocky→gassy divide as a fraction of the Davis Dam — the
+// radius where the wind-competition gas threshold equals THRESHOLD_GAS. The
+// stellar wind competes for the H/He (ram pressure ∝1/r²), so the gravity
+// needed to win gas is M_crit(r) = THRESHOLD_GAS·(GAS_DIVIDE_FRAC·R_disc/r)²:
+// fierce close in (rocky planets), feeble far out (gas giants). Sol's divide
+// ≈ 3 AU = 0.10·30 AU (between Mars/asteroids and Jupiter).
+const GAS_DIVIDE_FRAC = 0.10;
 // THRESHOLD_GAS: the giant-class MASS boundary used by the classifier
 // (rock/ice/gas giant). The runaway gas-accretion GATE is no longer this fixed
 // value — it is derived per system as runaway_core_mass() (Ikoma τ_KH = τ_disc),
@@ -142,7 +149,7 @@ const THRESHOLD_GAS = 3.0;
 // ε = 0.2864 is Sol-anchored ONCE on Jupiter's in-situ envelope (physical
 // gas-capture-fraction range 0.1–0.3); k carries its gas-poor steepening.
 // TAU_KH0_MYR = Ikoma, Nakazawa & Emori (2000) KH-contraction prefactor 10^8 yr.
-const GAS_CAPTURE_EFF = 0.2864;
+const GAS_CAPTURE_EFF = 0.2217;
 const GAS_WINDOW_K = 0.691;
 const TAU_KH0_MYR = 100.0;
 const PEBBLE_CAPTURE_EFFICIENCY = 0.40;

@@ -224,7 +224,14 @@ function snow_line_pileup(r: number, M_star: number, f_disc: number): number {
 function gas_dispersal_time(M_star: number, f_disc: number): number {
   const disc_mass = f_disc * m_star_earth(M_star);
   const sol_disc_mass = 0.01 * m_star_earth(SOL_M_PRIMORDIAL);
-  return T_DISC_DISPERSAL_MYR * Math.pow(disc_mass / sol_disc_mass, 0.5);
+  // Lifetime ∝ (disc mass)^1.5 — the disc persists until its outermost body has
+  // assembled, and the formation clock (t_form ∝ 1/Ṁ) runs slow in a massive,
+  // dilute, extended disc. A √-law (exp 0.5) was far too shallow: it gave Alpha
+  // Centauri's 37×-Sol disc only ~32 Myr while its dam-slot needs ~1.2 Gyr. Exp
+  // 1.5 makes the two consistent (Alpha Cen ≈ 1.35 Gyr) and also sharpens Sol's
+  // gas window enough to recover Jupiter's correct ~1.6 Myr formation time; the
+  // gas-capture efficiency (GAS_CAPTURE_EFF) is re-anchored to that window.
+  return T_DISC_DISPERSAL_MYR * Math.pow(disc_mass / sol_disc_mass, 1.5);
 }
 
 // Runaway gas-accretion GATE: the core mass at which the Kelvin-Helmholtz
@@ -239,4 +246,20 @@ function gas_dispersal_time(M_star: number, f_disc: number): number {
 function runaway_core_mass(M_star: number, f_disc: number): number {
   const tau_disc = Math.max(gas_dispersal_time(M_star, f_disc), 0.01);
   return Math.pow(TAU_KH0_MYR * GRAIN_OPACITY / tau_disc, 1.0 / 2.5);
+}
+
+// Wind-competition gas threshold: the core mass whose gravity wins H/He against
+// the stellar wind that is competing for the same gas at radius r. The wind is
+// the SAME wind that sets the Davis Dam (R_disc); its ram pressure dilutes as
+// ∝1/r², equalling the disc pressure at the dam, so M_crit(r) =
+// THRESHOLD_GAS·(GAS_DIVIDE_FRAC·R_disc/r)² — fierce close in (rocky planets),
+// feeble far out (gas giants), the rocky→gassy divide at GAS_DIVIDE_FRAC·R_disc
+// (Sol ≈3 AU). Combined with the τ_KH cooling floor via max(): a core must BOTH
+// out-pull the local wind AND contract fast enough to run away. One wind, two
+// jobs — it positions the dam and sets the gas threshold at every radius.
+function gas_threshold_mass(r: number, M_star: number, f_disc: number): number {
+  const R_disc = COMP_R_DISC > 0 ? COMP_R_DISC : disc_radius(M_star, 1.0);
+  const ratio = GAS_DIVIDE_FRAC * R_disc / Math.max(r, 1e-12);
+  const wind_gate = THRESHOLD_GAS * ratio * ratio;
+  return Math.max(wind_gate, runaway_core_mass(M_star, f_disc));
 }

@@ -207,7 +207,7 @@ function buildPresetDropdown() {
   const groups = bins.map(b => ({ ...b, systems: [] }));
   for (const sys of (window.EXOPLANETS || [])) {
     if (!sys.budget) continue;   // v6: only conserved-budget systems are fittable
-    const m = sysMassPrim(sys) * 1.14;  // observed central-star mass → current M☉
+    const m = sysMassPrim(sys);  // observed central-star mass → current M☉
     const bin = groups.find(g => m >= g.min && m < g.max);
     if (bin) bin.systems.push(sys);
   }
@@ -498,8 +498,14 @@ function calculate() {
   const sl = slope(M_star, f_disc);
   const a = intercept(M_star, spin_geom);
   const t_disc = gas_dispersal_time(M_star, f_disc);
-  const regime = C >= 1.0 ? "INVERTED" : "normal";
-  const regimeClass = C >= 1.0 ? "regime-inverted" : "regime-normal";
+  // Inverted regime is MASS-based (is_inverted_budget — feeble M-dwarf wind +
+  // dense disc), exposed by budgetFit as budget_inverted. It is NOT the geometric
+  // C≥1 test: TRAPPIST-1 inverts (M-dwarf) at C≈0.46, while a high-spin solar star
+  // can have C≫1 yet stay normal. Use the same flag the CLI labels with so the
+  // browser recognises the inverted regime identically.
+  const inverted = !!rB.budget_inverted;
+  const regime = inverted ? "INVERTED" : "normal";
+  const regimeClass = inverted ? "regime-inverted" : "regime-normal";
 
   // Slot count is now dynamic: cascade_slot_positions generates as
   // many slots as fit between R_disc and R_A (normal regime) or
@@ -618,7 +624,7 @@ function calculate() {
   // Inverted regime: bodies are assembly-line FACTORY PRODUCTS (vintages),
   // not lattice slots — display in ascending AU (mint order), not slot order
   // (the slot index is non-monotonic with AU once the factory interleaves).
-  const inverted_disp = C >= 1.0;
+  const inverted_disp = inverted;
   // Core components (co-primary fragments) render FIRST — they're the central
   // body alongside the main star, not slot products — then the cascade slots.
   const rows = fit.slots.slice().sort((x, y) => {
@@ -1067,7 +1073,7 @@ function predictAll(planets, M_star, spin, f_disc) {
   const cb = planets.map(p => rock_allocation(p.r, M_star, spin, f_disc) +
                               ice_allocation(p.r, M_star, spin, f_disc));
   const W = planets.map(p => pebble_allocation_weight(p.r, M_star, f_disc));
-  const el = planets.map((p, i) => (cb[i] > THRESHOLD_GAS && p.t_form < T_DISC_DISPERSAL_MYR) ? i : -1).filter(i => i >= 0);
+  const el = planets.map((p, i) => (cb[i] > gas_threshold_mass(p.r, M_star, f_disc) && p.t_form < gas_dispersal_time(M_star, f_disc)) ? i : -1).filter(i => i >= 0);
   const wsum = el.reduce((s, i) => s + W[i], 0) || 1;
   const PT = total_pebble_bonus_budget(M_star, f_disc);
   return planets.map((p, i) => {
@@ -1303,9 +1309,10 @@ function bisectionPass(planets, targets, M_star, spin, f_disc, r_snow, R_disc, c
       // — no cascade floor. The physics-derived INIT seeds the natural
       // monotonic ordering; bisection then refines without being clamped, so
       // compact systems with heterogeneous masses can satisfy each fit.
-      const slope_now = slope(M_star, f_disc);
       if (target < THRESHOLD_GAS) {
-        planets[i].t_form = 0.10 * planets[i].r / slope_now;
+        planets[i].t_form = formation_time(planets[i].r,
+          rock_allocation(planets[i].r, M_star, spin, f_disc)
+          + ice_allocation(planets[i].r, M_star, spin, f_disc), M_star, f_disc);
       } else {
         lo = 0.001; hi = 50.0;
         for (let k = 0; k < 50; k++) {

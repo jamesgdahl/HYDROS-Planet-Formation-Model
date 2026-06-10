@@ -315,7 +315,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   for (const s of slot_data) {
     const r = fit_r(s);
     const tf_casc = formation_time(r, cores[s.slot_n], M_star, f_disc);
-    const eligible = (cores[s.slot_n] > runaway_core_mass(M_star, f_disc)) && (tf_casc < T_DISC_DISPERSAL_MYR);
+    const eligible = (cores[s.slot_n] > gas_threshold_mass(r, M_star, f_disc)) && (tf_casc < gas_dispersal_time(M_star, f_disc));
     weights[s.slot_n] = eligible ? pebble_allocation_weight(r, M_star, f_disc) : 0.0;
   }
   const total_w = Object.values(weights).reduce((a, b) => a + b, 0);
@@ -352,7 +352,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     // Inverted bodies CAN become gas giants too — if the aggregate core
     // reaches the gas threshold and an envelope is available (an inverted hot
     // Jupiter). So no special suppression: gas-eligible on core mass alone.
-    const gas_eligible = (core > runaway_core_mass(M_star, f_disc));
+    const gas_eligible = (core > gas_threshold_mass(r, M_star, f_disc));
     // Strip detection: filled slots use observed mass as escape gate;
     // lost slots use primordial core mass (what would have been there).
     // Lost-slot predictions then reflect post-strip survival mass.
@@ -1056,7 +1056,15 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   if (kbo_bodies.length > 0) {
     const R_dam = R_disc_local > 0 ? R_disc_local
       : disc_radius(M_star, spin as number, omega, f_disc);
-    if (inverted) {
+    // KBO/exterior products are minted from the OUTER zone. The branch is keyed
+    // to the MASS-based inversion (is_inverted_budget — feeble M-dwarf wind), not
+    // the geometric R_A≥R_disc: an inverted system's outer zone is a depleted
+    // phase-3 nebula (B_neb, concentration-limited), so its products are bounded
+    // by that small reservoir. Without this, a compact inverted dam (TRAPPIST-1,
+    // R_dam≈0.04 AU) falls into the Sol-anchored size-clock m_at_dam ∝ (Σ/Σ☉)²,
+    // which explodes to ~10⁷ M⊕ — far past the entire budget. Sol/normal systems
+    // (is_inverted_budget false) keep the Sol-calibrated size-clock.
+    if (inverted || is_inverted_budget(M_star)) {
       // INVERTED PHASE-3 NEBULA products (exterior, KBO-class). UNIFIED
       // minting: every body — interior planet, factory product, exterior KBO —
       // is allocated rock/ice/pebble, runs gas capture + mantle stripping, and
@@ -1094,7 +1102,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         let peb = 0;
         let core = rock + ice + peb;
         const t_form = 0.10 * rr / Math.max(sl, 1e-12);
-        let h_he = (core > runaway_core_mass(M_star, f_disc))
+        let h_he = (core > gas_threshold_mass(rr, M_star, f_disc))
           ? hydrogen_capture(core, t_form, spin, rr, M_star, f_disc, omega) : 0;
         let total = core + h_he;
         const primordial: Composition = { rock, ice, pebble: peb, h_he, core, total };

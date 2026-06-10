@@ -40,7 +40,7 @@ window.EXOPLANETS = [
     "spin": 5000,
     "planets": [
       {"name":"Alpha Centauri B","r":23.52,"observed":302770,"core":true},
-      {"name":"Proxima Centauri","r":12950,"observed":40625}
+      {"name":"Proxima Centauri","r":12950,"observed":40625,"kbo":true}
     ]
   },
   {
@@ -273,15 +273,6 @@ window.EXOPLANETS = [
     ]
   },
   {
-    "id": "upsand_b",
-    "name": "Upsilon Andromedae B (predicted)",
-    "ly": 43.9,
-    "inputs": {"M_star":0.1754,"nebula_density":1,"spin":1,"f_disc":0.01,"stripping":{"M_pert":1.4478,"q":17.7}},
-    "planets": [
-
-    ]
-  },
-  {
     "id": "upsand",
     "name": "Upsilon Andromedae",
     "ly": 43.9,
@@ -289,11 +280,9 @@ window.EXOPLANETS = [
     "star": 1.27,
     "feh": 0.12,
     "cto": 0.55,
-    "spin": 1,
-    "stripping": {"M_pert":0.2,"q":17.7},
+    "spin": 0.001,
     "planets": [
-      {"name":"ups And B","r":750,"observed":66589},
-      {"name":"ups And b","r":0.0594,"observed":218,"kbo":true},
+      {"name":"ups And b","r":0.0594,"observed":218},
       {"name":"ups And c","r":0.829,"observed":629},
       {"name":"ups And d","r":2.51,"observed":1313},
       {"name":"ups And e","r":5.245,"observed":337}

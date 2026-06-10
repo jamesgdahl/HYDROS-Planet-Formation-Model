@@ -144,9 +144,10 @@ function hydrogen_capture(core_mass: number, t_form_myr: number, spin: number,
                           r: number, M_star: number, f_disc: number,
                           omega?: number): number {
   spin = (omega === undefined) ? spin : omega;  // wind term is inner-jaw
-  // Runaway gate: the core must beat the Kelvin-Helmholtz clock (Ikoma 2000)
-  // before the gas disperses, i.e. exceed the derived critical core mass.
-  if (core_mass < runaway_core_mass(M_star, f_disc)) return 0;
+  // Runaway gate: the core must (a) out-pull the stellar wind competing for the
+  // H/He at this radius AND (b) beat the Kelvin-Helmholtz clock (Ikoma 2000)
+  // before the gas disperses — the combined wind-competition threshold.
+  if (core_mass < gas_threshold_mass(r, M_star, f_disc)) return 0;
   // DERIVED supply-limited capture (core-accretion paradigm). Once a core runs
   // away, the local Tanigawa-Watanabe disc-limited rate (∝ M^4/3·Σ_gas·...)
   // vastly outstrips the disc gas supply, so the captured envelope is set by
@@ -161,10 +162,12 @@ function hydrogen_capture(core_mass: number, t_form_myr: number, spin: number,
   // ε·M_gas_disc and the whole Jupiter→Neptune envelope ladder is TIMING (the
   // exp term), which this preserves.
   const M_gas_disc = f_disc * m_star_earth(M_star);
-  const sol_disc = 0.01 * m_star_earth(SOL_M_PRIMORDIAL);
-  // k = capture-window e-fold; steepens in gas-poor discs (less reservoir, the
-  // window shuts faster relative to the reservoir already being thin).
-  const k = GAS_WINDOW_K * Math.max(1.0, Math.pow(sol_disc / M_gas_disc, 2.0));
+  // k = capture-window e-fold, tied to the SYSTEM gas-disc lifetime: k ∝
+  // 1/τ_disc. A massive disc (τ_disc ≫ 5 Myr — Alpha Cen ~32 Myr) keeps capturing
+  // gas far longer, so outer slots stay gas-bearing instead of being cut off at
+  // the universal 5 Myr; a thin disc shuts the window fast. Sol (τ_disc≈5) is
+  // unchanged (k≈GAS_WINDOW_K).
+  const k = GAS_WINDOW_K * T_DISC_DISPERSAL_MYR / gas_dispersal_time(M_star, f_disc);
   const window = Math.exp(-k * t_form_myr);
   const spin_ref = 30.0;
   const r_ref = 0.5;
