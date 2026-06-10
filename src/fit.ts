@@ -2236,7 +2236,10 @@ function budgetFit(planets: Planet[], budget: Budget,
     // baseline's accretion rate, then bisect once more.
     reset_snow_line();
     const fA = bisectF().f;
-    set_snow_line(mulders_snow_line(M, Mdot_of(fA)));
+    // Dilute (inverted M-dwarf) discs self-heat negligibly → the snow line is the
+    // bolometric IRRADIATION floor (close in); dense/normal discs are viscous-set.
+    const snowA = inverted ? irradiation_snow_line(M) : mulders_snow_line(M, Mdot_of(fA));
+    set_snow_line(snowA);
     // Supply-limited formation clock for EVERY system (igniters + sub-cascades):
     // t = M_core·(r/R_disc)/(Z·Ṁ·K). Set Ṁ on every fit (the gate to non-igniters
     // is gone — igniters use the same clock, the r/R_disc + gas-starvation in Ṁ
@@ -2271,7 +2274,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       score: 0, stripping_q: null, stripping_rt: null,
       budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
       budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
-      budget_Mdot: Mdot, budget_snow: mulders_snow_line(M, Mdot), budget_C: C,
+      budget_Mdot: Mdot, budget_snow: inverted ? irradiation_snow_line(M) : mulders_snow_line(M, Mdot), budget_C: C,
       budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
       budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
     };

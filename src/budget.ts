@@ -228,6 +228,20 @@ function mulders_snow_line(M_star: number, Mdot_msun_yr: number): number {
     * Math.pow(Math.max(Mdot_msun_yr, 1e-40) / 1e-8, 4.0 / 9.0)
     * Math.pow(SNOW_KAPPA_R / 770.0, 2.0 / 9.0);
 }
+// IRRADIATION (bolometric) snow line — the floor set by stellar light alone, which
+// governs a DILUTE disc where viscous heating is negligible (the inverted-regime
+// M-dwarfs). The blackbody equilibrium ice line is r = 2.674·√(L/L☉); the disc
+// MIDPLANE is colder than that surface temperature (grazing incidence into an
+// optically-thick disc: T_mid ≈ 0.6·T_eq), pulling it inward by ~0.36×. With the
+// low-mass M–L relation L ∝ M^3.12 (anchored on TRAPPIST L≈5.2e-4 at M=0.089) the
+// net is r_irr ≈ 1.09·M^1.56: Sol→1.1 AU (but Sol is viscous-set, so this floor
+// loses), TRAPPIST→0.022 AU (right at d/e). Bolometric heating is MUCH weaker than
+// viscous, so this only sets the snow line once the disc is too thin to self-heat.
+const ML_EXP = 3.12;                 // L ∝ M^3.12 (low-mass main sequence)
+const SNOW_IRR_COEFF = 1.09;         // 2.674 · (midplane f≈0.6)² ; lands TRAPPIST at d/e
+function irradiation_snow_line(M_star: number): number {
+  return SNOW_IRR_COEFF * Math.pow(M_star / SOL_M_PRIMORDIAL, 0.5 * ML_EXP);
+}
 
 // Convenience: the full derived parameter set from a budget + spin.
 function params_from_budget(b: Budget, spin: number): {
