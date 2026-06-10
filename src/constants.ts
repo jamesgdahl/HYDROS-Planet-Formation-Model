@@ -116,6 +116,12 @@ const INV_ROCK_ENRICH = 2.3;
 // efficiently). The budget is consumed inner-first, so the inner slots fill flat and
 // the budget runs dry mid-chain — the flat b,c then the d-cliff exhaustion gap.
 const ROCK_SLOT_CAP = 0.44;
+// Binary-core instability annulus (Holman-Wiegert 1999): around a binary core of
+// separation a_bin, the circumprimary stable region ends near 0.3·a_bin and the
+// circumbinary stable region begins near 2.4·a_bin (for near-equal masses, low
+// eccentricity); products forming between are dynamically cleared.
+const BINARY_HW_INNER = 0.3;
+const BINARY_HW_OUTER = 2.4;
 // Stellar-wind reference for the envelope/vapor wind-balance: wind_term ∝
 // (spin/WIND_SPIN_REF)·(WIND_R_REF/r)². Shared by the H/He envelope (hydrogen_capture)
 // and the ice cold-trap so the SAME wind drives both.

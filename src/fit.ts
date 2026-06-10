@@ -2238,6 +2238,9 @@ function budgetFit(planets: Planet[], budget: Budget,
   // Re-reference every body to the core barycentre: the dams are emitted from it and
   // products orbit it, so positions are measured from the barycentre, not the primary.
   const r_bary = core_barycentre(primaryMass, planets);
+  // Binary separation a_bin (widest co-primary, primary-relative) — captured BEFORE
+  // the barycentre shift; sets the Holman-Wiegert instability annulus below.
+  const a_bin = planets.reduce((m, p) => (p.core && (p.observed || 0) > 0) ? Math.max(m, p.r) : m, 0);
   if (r_bary !== 0) planets = planets.map(p => ({ ...p, r: Math.max(p.r - r_bary, 1e-9) }));
   const M = mass_from_budget(budget);
   const Z = metallicity_from_budget(budget);
@@ -2351,6 +2354,39 @@ function budgetFit(planets: Planet[], budget: Budget,
     // Report the accretion rate / snow line ACTUALLY USED (from the all-icy
     // baseline fA that froze the snow line), not the final mass-matching f_disc.
     const Mdot = Mdot_of(fA);
+    // BINARY-CORE DESTABILIZATION (Holman-Wiegert 1999): a co-primary orbiting the
+    // barycentre clears an annulus — outside the circumprimary stable region
+    // (~BINARY_HW_INNER·a_bin) and inside the circumbinary stable region
+    // (~BINARY_HW_OUTER·a_bin) is dynamically unstable, so any product there is
+    // destroyed. Radii are barycentre-relative (the binary's centre). Core elements
+    // are exempt (they ARE the binary).
+    if (a_bin > 0) {
+      const r_in = BINARY_HW_INNER * a_bin, r_out = BINARY_HW_OUTER * a_bin;
+      for (const s of fit.slots) {
+        if (s.core_component || s.external) continue;
+        if (s.slot_r > r_in && s.slot_r < r_out) {
+          s.predicted = 0; s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
+          s.err_pct = 0; s.implied_dM = s.observed ? -s.observed : 0;
+          s.interpretation = `destroyed by binary instability — the ${r_in.toFixed(1)}–${r_out.toFixed(1)} AU annulus around the ${a_bin.toFixed(1)} AU binary core is dynamically unstable (Holman-Wiegert)`;
+        }
+      }
+    }
+    // PRIMARY STAR as a core body: shown with its formation composition (the well-
+    // mixed reservoir — H/He-dominated with the system's Z metals), orbiting the
+    // barycentre at r_bary (0 for a single star). Like the co-primaries it's external
+    // (not a disc product), so it doesn't enter the disc-mass total.
+    if (primaryMass != null && isFinite(primaryMass) && primaryMass > 0) {
+      const Mp = primaryMass * 332946;
+      const p_rock = Mp * Z * f_rock, p_ice = Mp * Z * (1 - f_rock), p_h = Mp * (1 - Z);
+      fit.slots.push({
+        slot_n: -1, slot_r: r_bary, r_used: r_bary, filled: true, name: "primary star",
+        rock: p_rock, ice: p_ice, pebble: 0, core: p_rock + p_ice, t_form: 0, h_he: p_h,
+        predicted: Mp, observed: Mp, err_pct: 0, implied_dM: 0,
+        stripped: false, in_void: true, external: true, core_component: true,
+        primordial: { rock: p_rock, ice: p_ice, pebble: 0, h_he: p_h, core: p_rock + p_ice, total: Mp },
+        interpretation: `primary star: ${primaryMass.toFixed(3)} M☉ — formation composition ${(100 * (1 - Z)).toFixed(1)}% H/He + ${(100 * Z).toFixed(2)}% metals (Z), at the core barycentre`,
+      });
+    }
     return {
       spin, nebula_density: nebula_density_from_spin(spin),
       omega_rot: (omega !== undefined) ? omega : null,
