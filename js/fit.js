@@ -2268,11 +2268,14 @@ function budgetFit(planets, budget, lambda, parent) {
         // baseline's accretion rate, then bisect once more.
         reset_snow_line();
         const fA = bisectF().f;
-        // The snow line sits where the disc midplane reaches the ice point, heated by
-        // whichever is stronger — VISCOUS accretion or BOLOMETRIC irradiation — so take
-        // the larger ice-line radius. A dense disc is viscous-set (Sol); a dilute disc
-        // self-heats negligibly and the bolometric floor wins (inverted M-dwarfs).
-        const snowA = Math.max(mulders_snow_line(M, Mdot_of(fA)), irradiation_snow_line(M));
+        // TWO snow lines exist. NORMAL regime: the usual one, in the uniform accretion
+        // disc between the Alfvén and Davis dams (VISCOUS, Mulders). INVERTED regime:
+        // there is no uniform inner accretion disc — only the FACTORY snow line at the
+        // marching dam, which starts at the inner pile-up, consumes it, passes R_A, then
+        // works the outer material, carried outward with the front. For a faint M-dwarf
+        // that advancing front cools to the BOLOMETRIC floor (TRAPPIST → d/e). So the
+        // inner-accretion-disc viscous line never applies to an inverted system.
+        const snowA = inverted ? irradiation_snow_line(M) : mulders_snow_line(M, Mdot_of(fA));
         set_snow_line(snowA);
         // Supply-limited formation clock for EVERY system (igniters + sub-cascades):
         // t = M_core·(r/R_disc)/(Z·Ṁ·K). Set Ṁ on every fit (the gate to non-igniters
@@ -2308,7 +2311,7 @@ function budgetFit(planets, budget, lambda, parent) {
             score: 0, stripping_q: null, stripping_rt: null,
             budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
             budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
-            budget_Mdot: Mdot, budget_snow: Math.max(mulders_snow_line(M, Mdot), irradiation_snow_line(M)), budget_C: C,
+            budget_Mdot: Mdot, budget_snow: inverted ? irradiation_snow_line(M) : mulders_snow_line(M, Mdot), budget_C: C,
             budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
             budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
         };
