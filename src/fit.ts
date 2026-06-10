@@ -1196,13 +1196,12 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       const onset = m_obs_k >= m_at_dam * 0.999;
       const R_birth = onset ? R_dam
         : R_dam * Math.pow(m_at_dam / m_obs_k, 0.25);
-      let vintage: string;
-      if (onset) vintage = `<${t_disc_myr.toFixed(1)} Myr (firehose onset)`;
-      else if (R_birth <= R_cliff) {
-        vintage = `~${(t_disc_myr + 3 * (R_birth - R_dam) / (0.6 * R_dam)).toFixed(1)} Myr (firehose)`;
-      } else {
-        vintage = `~${((t_disc_myr + 3) * Math.pow(R_birth / R_cliff, 1 / BETA)).toFixed(0)} Myr (retreat era)`;
-      }
+      // NUMERIC vintage (Myr) → carried in t_form so the slot column shows it (like
+      // the inverted factory products); the era qualifier stays in the description.
+      let t_vintage: number, era: string;
+      if (onset) { t_vintage = t_disc_myr; era = 'firehose onset'; }
+      else if (R_birth <= R_cliff) { t_vintage = t_disc_myr + 3 * (R_birth - R_dam) / (0.6 * R_dam); era = 'firehose'; }
+      else { t_vintage = (t_disc_myr + 3) * Math.pow(R_birth / R_cliff, 1 / BETA); era = 'retreat era'; }
       const disp = (p.r - R_birth) / R_birth;
       let where: string;
       if (p.captured !== undefined) {
@@ -1226,14 +1225,14 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         slot_r: R_birth, r_used: p.r,
         filled: true, name: p.name,
         rock: 0, ice: 0, pebble: 0, core: 0,
-        t_form: 0, h_he: 0,
+        t_form: t_vintage, h_he: 0,
         predicted: m_obs_k, observed: m_obs_k,
         err_pct: 0,
         implied_dM: 0,
         stripped: false, in_void: false, exterior: true,
         primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
                       total: m_obs_k },
-        interpretation: `factory product, vintage ${vintage} — minted at the dam's outer face when it stood at ${R_birth.toFixed(1)} AU (size-clock); ${where}`,
+        interpretation: `factory product (${era}) — minted at the dam's outer face when it stood at ${R_birth.toFixed(1)} AU (size-clock); ${where}`,
       });
     }
     // PER-VINTAGE COUNT AUDIT: the census law (stance stock / product
@@ -2249,7 +2248,15 @@ function budgetFit(planets: Planet[], budget: Budget,
   const a_max = co_seps.length ? Math.max(...co_seps) : 0;
   const hw_in = a_max > 0 ? BINARY_HW_INNER * a_min : 0;
   const hw_out = a_max > 0 ? BINARY_HW_OUTER * a_max : 0;
-  if (r_bary !== 0) planets = planets.map(p => ({ ...p, r: Math.max(p.r - r_bary, 1e-9) }));
+  if (r_bary !== 0) planets = planets.map(p => {
+    const shifted = p.r - r_bary;
+    // Core/co-primary bodies keep their SIGNED barycentre-relative position (they're
+    // not fit to log-spaced slots, so a negative — on the primary's side — is fine and
+    // should display as negative). Disc products clamp to a tiny positive: a negative
+    // would break the log-spaced slot assignment, and an inside-barycentre product is
+    // in the destabilization annulus anyway.
+    return { ...p, r: p.core ? shifted : Math.max(shifted, 1e-9) };
+  });
   const M = mass_from_budget(budget);
   const Z = metallicity_from_budget(budget);
   const f_rock = f_rock_from_budget(budget);
@@ -2386,13 +2393,15 @@ function budgetFit(planets: Planet[], budget: Budget,
     if (primaryMass != null && isFinite(primaryMass) && primaryMass > 0) {
       const Mp = primaryMass * 332946;
       const p_rock = Mp * Z * f_rock, p_ice = Mp * Z * (1 - f_rock), p_h = Mp * (1 - Z);
+      // The primary orbits the barycentre OPPOSITE the co-primaries, so its
+      // barycentre-relative position is −r_bary (0 for a single star).
       fit.slots.push({
-        slot_n: -1, slot_r: r_bary, r_used: r_bary, filled: true, name: "primary star",
+        slot_n: -1, slot_r: -r_bary, r_used: -r_bary, filled: true, name: "primary star",
         rock: p_rock, ice: p_ice, pebble: 0, core: p_rock + p_ice, t_form: 0, h_he: p_h,
         predicted: Mp, observed: Mp, err_pct: 0, implied_dM: 0,
         stripped: false, in_void: true, external: true, core_component: true,
         primordial: { rock: p_rock, ice: p_ice, pebble: 0, h_he: p_h, core: p_rock + p_ice, total: Mp },
-        interpretation: `primary star: ${primaryMass.toFixed(3)} M☉ — formation composition ${(100 * (1 - Z)).toFixed(1)}% H/He + ${(100 * Z).toFixed(2)}% metals (Z), at the core barycentre`,
+        interpretation: `primary star: ${primaryMass.toFixed(3)} M☉ — formation composition ${(100 * (1 - Z)).toFixed(1)}% H/He + ${(100 * Z).toFixed(2)}% metals (Z)${r_bary > 0 ? `, orbiting the barycentre at ${r_bary.toFixed(2)} AU (opposite the co-primaries)` : ', at the system centre'}`,
       });
     }
     return {

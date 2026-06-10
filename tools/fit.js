@@ -69,11 +69,11 @@ const bruteFit = ctx.bruteFit;
 // target; deriving R_disc and f_disc from physics is the next pass. The
 // composition context is set here and ALWAYS reset, so the legacy catalog
 // is untouched.
-function budgetFit(planets, budget, lambda, parent) {
+function budgetFit(planets, budget, lambda, parent, primaryMass) {
   // Thin wrapper over the COMPILED budgetFit (js/fit.js) so the CLI and the web
   // UI share one implementation. Re-expose the budget diagnostics as _budget
   // for the table/summary renderers.
-  const r = ctx.budgetFit(planets, budget, lambda, parent);
+  const r = ctx.budgetFit(planets, budget, lambda, parent, primaryMass);
   r._budget = {
     M: r.budget_M, Z: r.budget_Z, f_rock: r.budget_f_rock,
     inverted: r.budget_inverted, R_A: r.budget_R_A, lambda: r.budget_lambda,
@@ -94,7 +94,7 @@ function fitSystem(sys) {
         q: (strip_in.q === undefined) ? null : strip_in.q }
     : null;
   const r = sys.budget
-    ? budgetFit(planets, sys.budget, sys.spin, sys.parent)
+    ? budgetFit(planets, sys.budget, sys.spin, sys.parent, sys.star)
     : doBrute
     ? bruteFit(planets, M_star, stripping, doVice)
     : bestFit(planets, M_star, sys.inputs.f_disc);
@@ -209,7 +209,8 @@ function printSlotTable(sys, r) {
   console.log(`  spin=${r.spin.toFixed(6)}  f_disc=${r.f_disc.toFixed(6)}  anchor_k=${r.anchor_slot}  iters=${r.iterations}${r.converged ? '' : ' NOT-CONVERGED'}`);
   console.log(`  target=[${r.target_names.join(', ')}]  residual=${(r.target_residual * 100).toFixed(4)}%`);
   for (const s of [...r.fit.slots].sort((a, b) =>
-    (!!a.core_component !== !!b.core_component) ? (a.core_component ? -1 : 1) : (b.slot_n - a.slot_n))) {
+    ((a.name === 'primary star') !== (b.name === 'primary star')) ? (a.name === 'primary star' ? -1 : 1)
+    : (!!a.core_component !== !!b.core_component) ? (a.core_component ? -1 : 1) : (b.slot_n - a.slot_n))) {
     const name = (s.filled || s.exterior) ? s.name : `(slot ${s.slot_n})`;
     const lbl = s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? 'ext' : String(s.slot_n);
     const obs = s.observed > 0 ? fmtMass(s.observed) : '—';

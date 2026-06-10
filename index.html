@@ -125,7 +125,7 @@
         <th>Slot</th>
         <th>r<sub>form</sub></th>
         <th>Δr (AU)</th>
-        <th>t<sub>form</sub> (Myr)</th>
+        <th>t<sub>form</sub> / vintage</th>
         <th>Rock</th>
         <th>Ice</th>
         <th>H/He</th>
@@ -450,6 +450,17 @@ function fmt(x, dec = 3) {
   return x.toFixed(dec);
 }
 
+// Adaptive vintage/time formatting. Input is in Myr (the model's clock unit).
+// < 1000 yr → yr, < 1 Myr → Kyr, < 1 Gyr → Myr, else Gyr.
+function fmtTime(myr) {
+  if (!isFinite(myr)) return "—";
+  const yr = myr * 1e6;
+  if (yr < 1e3) return Math.round(yr) + "yr";
+  if (yr < 1e6) return fmt(yr / 1e3, yr / 1e3 < 10 ? 1 : 0) + "Kyr";
+  if (yr < 1e9) return fmt(yr / 1e6, yr / 1e6 < 10 ? 1 : 0) + "Myr";
+  return fmt(yr / 1e9, 2) + "Gyr";
+}
+
 // Mass display: sub-cascade moons and KBOs live at micro/milli-Earth
 // masses where .toFixed(3) collapses to 0.000 — switch to milliEarths
 // (suffix m) below 0.1 M⊕. Internal math stays in M⊕ throughout.
@@ -539,7 +550,9 @@ function calculate() {
   // stellar mass entered in the SAME primordial units.
   const budgetTotalMe = inp.budget.rock + inp.budget.ice + inp.budget.hydrogen;
   let bodyMe = 0;
-  for (const s of rB.fit.slots) if (s.filled && s.predicted > 0) bodyMe += s.predicted;
+  // Sum only the SHED bodies (planets/KBOs/factory) — exclude core components
+  // (the primary star + co-primaries), which ARE the central mass, not shed from it.
+  for (const s of rB.fit.slots) if (s.filled && s.predicted > 0 && !s.core_component) bodyMe += s.predicted;
   const predStarMsun = (budgetTotalMe - bodyMe) / M_SUN_TO_EARTH;   // primordial (Sol=1)
   const obsStarMsun = inp.star;                                     // primordial (Sol=1)
   const starErr = (obsStarMsun > 0) ? (predStarMsun - obsStarMsun) / obsStarMsun * 100 : NaN;
@@ -566,38 +579,23 @@ function calculate() {
     <span class="label">Cascade slots:</span> <span class="value">${n_possible}</span>${stripLine}
   `;
 
-  // Slot-aware fit gives us the whole table including lost slots,
-  // composition, primordial, and interpretation. CURRENT_KINETIC is
-  // set by the loaded preset (impact-vapor natal discs, e.g. Earth).
-  const fitOpts = strip_active
-    ? { auto_compress: false, stripping: strip }
-    : { auto_compress: false };
-  if (window.CURRENT_KINETIC) fitOpts.kinetic = true;
-  fitOpts.omega = omega;   // decoupled rotation → Alfvén Dam
-  let fit = slot_aware_fit(planets, M_star, spin_geom, f_disc, fitOpts);
-  // Devour-aware second pass: wrecking migrants refit to formation
-  // mass (observed - meals); the gain is post-prediction output.
-  const credits = {};
-  let anyCredit = false;
-  for (const s of fit.slots) {
-    if (s.filled && s.devoured > 0.1) { credits[s.name] = s.devoured; anyCredit = true; }
-  }
-  if (anyCredit) {
-    fit = slot_aware_fit(planets, M_star, spin_geom, f_disc,
-                         Object.assign({}, fitOpts, { devour_credit: credits }));
-  }
-  // v6 budget path: apply the sign-modulated solid transfer (negative antinodes
-  // win, cascade scaled by C²) — the same post-process budgetFit runs, so the
-  // browser shows the moons landed (Io massive+dry, etc.), not the raw cascade.
-  // ISU bodies are exempt (passed as immune), matching budgetFit — so checking
-  // "in situ unchanged" on the dam anchor doesn't drain it and skew the fit.
-  if (window.CURRENT_BUDGET) {
+  // Render budgetFit's OWN fully-processed fit — it already ran the whole pipeline
+  // (f_disc bisection → factory/cascade → sign-modulated transfer → hydrogen
+  // conservation → barycentre → primary star → N-body destabilization), so this is
+  // byte-for-byte what the CLI / non-html best-fit produces. Re-running slot_aware_fit
+  // here (the old path) diverged from it. The ONLY exception is kinetic impact-vapor
+  // discs (Luna/Phobos), which need slot_aware_fit's kinetic flag that budgetFit lacks.
+  let fit;
+  if (window.CURRENT_KINETIC) {
+    const fitOpts = { auto_compress: false, omega, kinetic: true };
+    if (strip_active) fitOpts.stripping = strip;
+    fit = slot_aware_fit(planets, M_star, spin_geom, f_disc, fitOpts);
     const immuneNames = new Set(planets.filter(p => p.immutable).map(p => p.name));
     apply_sign_modulation(fit.slots, C, R_disc, R_A, M_star, f_disc, immuneNames);
-    // Conserved hydrogen draw-down: the gas envelopes deplete the finite disc
-    // hydrogen reservoir (f_disc·M_star); same as budgetFit, so the browser
-    // shows budget-obeying masses and the dispersed/destruction remainder.
     window.CURRENT_H = apply_hydrogen_conservation(fit.slots, f_disc * m_star_earth(M_star));
+  } else {
+    fit = rB.fit;
+    window.CURRENT_H = { captured: rB.budget_h_captured, dispersed: rB.budget_h_dispersed, exhausted: rB.budget_h_exhausted };
   }
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
@@ -628,6 +626,8 @@ function calculate() {
   // Core components (co-primary fragments) render FIRST — they're the central
   // body alongside the main star, not slot products — then the cascade slots.
   const rows = fit.slots.slice().sort((x, y) => {
+    // Primary star ALWAYS first, then the rest of the core components, then slots.
+    if ((x.name === 'primary star') !== (y.name === 'primary star')) return x.name === 'primary star' ? -1 : 1;
     if (!!x.core_component !== !!y.core_component) return x.core_component ? -1 : 1;
     return inverted_disp ? (x.slot_r - y.slot_r) : (y.slot_n - x.slot_n);
   });
@@ -673,7 +673,7 @@ function calculate() {
     interp = s.interpretation;
     // Inverted regime: tag each body as an assembly-line factory product
     // with its mint vintage (0 = first/innermost/biggest, ascending outward).
-    if (inverted_disp && s.filled && !s.exterior)
+    if (inverted_disp && s.filled && !s.exterior && !s.core_component && !s.external)
       interp = `factory product (vintage ${vintage_n++}) — ${interp}`;
     const dm_pct = (s.filled && observed > 0 && !s.exterior)
       ? 100 * dm / predicted : NaN;
@@ -705,10 +705,10 @@ function calculate() {
     }
     tr.innerHTML = `
       <td>${name}</td>
-      <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? (fmt(s.t_form, s.t_form < 1 ? 2 : 0) + 'Myr') : s.slot_n}</td>
+      <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? '—' : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
       <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
-      <td>${fmt(s.t_form, 2)}</td>
+      <td>${s.t_form > 0 ? fmtTime(s.t_form) : '—'}</td>
       <td>${fmtM(s.rock)}</td>
       <td>${fmtM(s.ice)}</td>
       <td>${fmtM(s.h_he, 2)}</td>
@@ -769,7 +769,10 @@ function planetStyle(s, inHZ, delivered) {
 function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
   window._wf = { fit, R_disc, R_A, r_snow };
   const el = document.getElementById("waveform");
-  const slots = fit.slots.filter(s => isFinite(s.slot_r) && s.slot_r > 0 && !s.exterior);
+  // Core fragments (co-primaries + the primary star) are NOT disc-wave products —
+  // they drive the dams, they don't sit on the Alfvén–Maas standing wave — so exclude
+  // them (external) along with the factory/KBO products (exterior).
+  const slots = fit.slots.filter(s => isFinite(s.slot_r) && s.slot_r > 0 && !s.exterior && !s.external);
   if (!slots.length || !isFinite(R_disc) || !isFinite(R_A) || R_A <= 0) { el.innerHTML = ""; return; }
 
   const rho = 1 - Math.sqrt(Math.log(2)) / 2;          // 0.5837
@@ -1343,36 +1346,55 @@ function findBestFit() {
   // For a non-igniter sub-disc with ≥2 satellites, scan λ to minimise the
   // satellite mass residual (the archaic-spin determination); otherwise hold λ.
   // Then write λ to the spin field and let calculate() re-derive everything.
+  // The budget locks every other input, so the ONE free parameter is the archaic
+  // spin λ. Two cases (per the formation physics):
+  //  • A core fragment (binary/trinary) pins λ exactly: the fragment sits on the
+  //    Alfvén dam, so λ is reverse-engineered by inverting R_A(λ)=a_bin (the
+  //    outermost co-primary's AU). R_A is monotonic in λ ⇒ a clean bisection.
+  //  • No companion ⇒ λ never exceeded the fragmentation threshold breakup_spin(M),
+  //    so the search space is [0, breakup_spin]; log-scan it then refine to the λ
+  //    that minimises the planet-mass RMS.
   const inp = getInputs();
-  const budget = inp.budget, parent = inp.parent;
+  const budget = inp.budget, parent = inp.parent, star = inp.star;
   const pl = getPlanets().concat(getKBOs()).concat(getCoreComponents());
-  const obs = pl.filter(p => !p.kbo && (p.observed || 0) > 0);
+  const obs = pl.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
   const M = mass_from_budget(budget);
+  // Objective: per-body RMS over the FIT TARGETS only (rr.target_names) — diagnostic
+  // anomalies (Mercury/Mars late-delivery, scattered remnants) are model OUTPUT, not
+  // fit error, so they must not steer the spin search.
   const evalLam = (lam) => {
-    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent);
+    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent, star);
+    const tgt = new Set(rr.target_names);
     let sse = 0, n = 0;
-    for (const p of obs) {
-      const s = rr.fit.slots.find(x => x.filled && x.name === p.name);
-      if (s && p.observed > 0) { const e = (s.predicted - p.observed) / p.observed; sse += e * e; n++; }
+    for (const s of rr.fit.slots) {
+      if (tgt.has(s.name) && !s.external && (s.observed || 0) > 0) {
+        const e = (s.predicted - s.observed) / s.observed; sse += e * e; n++;
+      }
     }
     return { rms: n ? Math.sqrt(sse / n) : Infinity, r: rr };
   };
+  const coprimaries = pl.filter(p => p.core && (p.observed || 0) > 0);
+  const cap = breakup_spin(M);
   let best;
-  if (M < 0.08 && obs.length >= 2) {            // non-igniter: scan archaic λ
-    best = null;
-    for (let lam = 20; lam <= 120; lam += 4) {
-      const x = evalLam(lam); if (!best || x.rms < best.rms) best = { lam, ...x };
-    }
-    for (let lam = best.lam - 4; lam <= best.lam + 4; lam += 0.5) {
-      const x = evalLam(lam); if (x.rms < best.rms) best = { lam, ...x };
-    }
-    console.log(`findBestFit: archaic spin λ=${best.lam.toFixed(1)}, satellite RMS ${(best.rms * 100).toFixed(2)}%`);
-  } else {                                       // igniter / single body: hold λ
-    const lam = isFinite(inp.spin) ? inp.spin : 1.0;
+  if (coprimaries.length > 0) {                  // binary/trinary: λ pinned by R_A(λ)=a_bin
+    const a_bin = coprimaries.reduce((m, p) => Math.max(m, p.r), 0);
+    let lo = 1e-3, hi = 1e7;
+    for (let i = 0; i < 80; i++) { const mid = Math.sqrt(lo * hi); if (alfven_radius(M, mid) < a_bin) lo = mid; else hi = mid; }
+    const lam = Math.sqrt(lo * hi);
     best = { lam, ...evalLam(lam) };
-    console.log(`findBestFit: λ held at ${best.lam}, residual ${(best.r.target_residual * 100).toFixed(3)}%`);
+    console.log(`findBestFit: core fragment at ${a_bin.toFixed(2)} AU → archaic spin λ=${lam.toFixed(1)} (R_A inversion)`);
+  } else {                                       // no companion: λ ∈ [0, breakup_spin]
+    // Anchor at the current spin so spin-INSENSITIVE systems (flat objective) keep
+    // their value instead of wandering; only move λ on a real improvement.
+    const lam0 = isFinite(inp.spin) && inp.spin > 0 ? inp.spin : 1.0;
+    best = { lam: lam0, ...evalLam(lam0) };
+    const N = 40;
+    for (let i = 0; i <= N; i++) { const lam = 0.1 * Math.pow(cap / 0.1, i / N); const x = evalLam(lam); if (x.rms < best.rms - 1e-9) best = { lam, ...x }; }
+    const lo = Math.max(0.02, best.lam * 0.7), hi = Math.min(cap, best.lam * 1.4);
+    for (let lam = lo; lam <= hi; lam += (hi - lo) / 20) { const x = evalLam(lam); if (x.rms < best.rms - 1e-9) best = { lam, ...x }; }
+    console.log(`findBestFit: no companion, scanned λ∈[0.1, ${cap.toFixed(2)}] → λ=${best.lam.toFixed(2)}, RMS ${(best.rms * 100).toFixed(1)}%`);
   }
-  document.getElementById("spin").value = best.lam;   // archaic λ → calculate() re-derives
+  document.getElementById("spin").value = +best.lam.toFixed(4);   // archaic λ → calculate() re-derives
   calculate();
 }
 
