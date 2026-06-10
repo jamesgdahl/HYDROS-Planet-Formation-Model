@@ -2220,6 +2220,7 @@ interface BudgetFitResult extends BruteFitResult {
   budget_h_reservoir: number; budget_h_captured: number;
   budget_h_dispersed: number; budget_h_exhausted: boolean;
   budget_barycentre: number;
+  budget_hw_inner: number; budget_hw_outer: number;
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2238,9 +2239,16 @@ function budgetFit(planets: Planet[], budget: Budget,
   // Re-reference every body to the core barycentre: the dams are emitted from it and
   // products orbit it, so positions are measured from the barycentre, not the primary.
   const r_bary = core_barycentre(primaryMass, planets);
-  // Binary separation a_bin (widest co-primary, primary-relative) — captured BEFORE
-  // the barycentre shift; sets the Holman-Wiegert instability annulus below.
-  const a_bin = planets.reduce((m, p) => (p.core && (p.observed || 0) > 0) ? Math.max(m, p.r) : m, 0);
+  // Core-element separations (primary-relative, captured BEFORE the barycentre shift).
+  // For N core elements the Holman-Wiegert clearing generalizes to [0.3·a_min,
+  // 2.4·a_max]: stable inside the TIGHTEST pair's circum-element region and outside
+  // the WIDEST pair's circum-system region; everything between is swept. N=2 reduces
+  // to the binary [0.3·a_bin, 2.4·a_bin].
+  const co_seps = planets.filter(p => p.core && (p.observed || 0) > 0).map(p => p.r);
+  const a_min = co_seps.length ? Math.min(...co_seps) : 0;
+  const a_max = co_seps.length ? Math.max(...co_seps) : 0;
+  const hw_in = a_max > 0 ? BINARY_HW_INNER * a_min : 0;
+  const hw_out = a_max > 0 ? BINARY_HW_OUTER * a_max : 0;
   if (r_bary !== 0) planets = planets.map(p => ({ ...p, r: Math.max(p.r - r_bary, 1e-9) }));
   const M = mass_from_budget(budget);
   const Z = metallicity_from_budget(budget);
@@ -2354,20 +2362,20 @@ function budgetFit(planets: Planet[], budget: Budget,
     // Report the accretion rate / snow line ACTUALLY USED (from the all-icy
     // baseline fA that froze the snow line), not the final mass-matching f_disc.
     const Mdot = Mdot_of(fA);
-    // BINARY-CORE DESTABILIZATION (Holman-Wiegert 1999): a co-primary orbiting the
-    // barycentre clears an annulus — outside the circumprimary stable region
-    // (~BINARY_HW_INNER·a_bin) and inside the circumbinary stable region
-    // (~BINARY_HW_OUTER·a_bin) is dynamically unstable, so any product there is
-    // destroyed. Radii are barycentre-relative (the binary's centre). Core elements
-    // are exempt (they ARE the binary).
-    if (a_bin > 0) {
-      const r_in = BINARY_HW_INNER * a_bin, r_out = BINARY_HW_OUTER * a_bin;
+    // MULTI-CORE DESTABILIZATION (Holman-Wiegert 1999, generalized to N elements):
+    // core elements orbiting the barycentre clear the annulus [hw_in, hw_out] =
+    // [0.3·a_min, 2.4·a_max] — outside the tightest pair's circum-element stable
+    // region and inside the widest pair's circum-system region. Any product there is
+    // destroyed. Radii are barycentre-relative; core elements are exempt (they ARE
+    // the perturbers).
+    if (hw_out > 0) {
+      const nco = co_seps.length + 1;   // co-primaries + primary
       for (const s of fit.slots) {
         if (s.core_component || s.external) continue;
-        if (s.slot_r > r_in && s.slot_r < r_out) {
+        if (s.slot_r > hw_in && s.slot_r < hw_out) {
           s.predicted = 0; s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
           s.err_pct = 0; s.implied_dM = s.observed ? -s.observed : 0;
-          s.interpretation = `destroyed by binary instability — the ${r_in.toFixed(1)}–${r_out.toFixed(1)} AU annulus around the ${a_bin.toFixed(1)} AU binary core is dynamically unstable (Holman-Wiegert)`;
+          s.interpretation = `destroyed by ${nco}-body core instability — the ${hw_in.toFixed(1)}–${hw_out.toFixed(1)} AU annulus is dynamically unstable (Holman-Wiegert; separations ${a_min.toFixed(1)}–${a_max.toFixed(1)} AU)`;
         }
       }
     }
@@ -2399,6 +2407,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
       budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
       budget_barycentre: r_bary,
+      budget_hw_inner: hw_in, budget_hw_outer: hw_out,
     };
   } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); }
 }

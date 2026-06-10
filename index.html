@@ -558,7 +558,7 @@ function calculate() {
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
     <span class="label">Disc outer edge (Davis Dam):</span> <span class="value">${fmt(R_disc, 3)} AU</span> &nbsp;
     <span class="label">Magnetospheric void radius:</span> <span class="value">${fmt(R_A, 4)} AU</span> &nbsp;
-    <span class="label">Disc compression (void/disc):</span> <span class="value ${regimeClass}">${fmt(C, 3)} (${regime})</span>${rB.budget_barycentre ? ` &nbsp; <span class="label">Core barycentre (from primary):</span> <span class="value">${fmt(rB.budget_barycentre, 3)} AU</span>` : ''}<br>
+    <span class="label">Disc compression (void/disc):</span> <span class="value ${regimeClass}">${fmt(C, 3)} (${regime})</span>${rB.budget_barycentre ? ` &nbsp; <span class="label">Core barycentre (from primary):</span> <span class="value">${fmt(rB.budget_barycentre, 3)} AU</span>` : ''}${rB.budget_hw_outer ? ` &nbsp; <span class="label">Core instability zone (Holman-Wiegert):</span> <span class="value">${fmt(rB.budget_hw_inner, 2)}–${fmt(rB.budget_hw_outer, 2)} AU</span>` : ''}<br>
     <span class="label">Snow line (ice condensation):</span> <span class="value">${fmt(r_snow, 3)} AU</span> &nbsp;
     <span class="label">Mass slope:</span> <span class="value">${fmt(sl, 4)} M⊕/AU</span> &nbsp;
     <span class="label">Backstop base mass:</span> <span class="value">${fmt(a, 3)} M⊕</span> &nbsp;
