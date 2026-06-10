@@ -236,8 +236,8 @@ window.EXOPLANETS = [
       {"name":"T-1d","r":0.0223,"observed":0.388},
       {"name":"T-1e","r":0.0293,"observed":0.692},
       {"name":"T-1f","r":0.0385,"observed":1.039},
-      {"name":"T-1g","r":0.0468,"observed":1.321,"kbo":true},
-      {"name":"T-1h","r":0.0619,"observed":0.326,"kbo":true}
+      {"name":"T-1g","r":0.0468,"observed":1.321},
+      {"name":"T-1h","r":0.0619,"observed":0.326}
     ]
   },
   {

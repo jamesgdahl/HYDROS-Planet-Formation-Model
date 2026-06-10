@@ -55,6 +55,10 @@ function assign_planets_to_slots(planets: Planet[], M_star: number,
                                  spin: number, f_disc: number,
                                  omega?: number): AssignedSlot[] {
   const observed = planets.filter(p => (p.observed || 0) > 0);
+  // No cascade planets (e.g. an inverted system where every body is a pile-up
+  // factory product) ⇒ no cascade slots. Otherwise cascade_sites' ≥1-slot floor
+  // would mint a phantom unfilled "slot_0_lost" body alongside the factory chain.
+  if (observed.length === 0) return [];
   const sites = cascade_sites(M_star, spin, observed.length, omega, f_disc);
   const site_pred = sites.map(s => slot_predicted_mass(s.r, M_star, spin, f_disc, undefined, omega));
 
