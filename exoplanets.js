@@ -37,7 +37,7 @@ window.EXOPLANETS = [
     "star": 1.0788,
     "feh": 0.24,
     "cto": 0.47,
-    "spin": 5000,
+    "spin": 1266.7703,
     "planets": [
       {"name":"Alpha Centauri B","r":23.52,"observed":302770,"core":true},
       {"name":"Proxima Centauri","r":12950,"observed":40625,"kbo":true}
@@ -51,7 +51,7 @@ window.EXOPLANETS = [
     "star": 0.122,
     "feh": 0.08,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 10.1895,
     "stripping": {"M_pert":0.9092,"q":21},
     "planets": [
       {"name":"Prox-d","r":0.029,"observed":0.26},
@@ -65,7 +65,7 @@ window.EXOPLANETS = [
     "ly": 0.0000819,
     "budget": {"rock":4.73364,"ice":11.28209,"hydrogen":301.2335},
     "star": 0.0008374,
-    "spin": 57.9,
+    "spin": 1.6621,
     "parent": {"a":5.98,"M":1},
     "planets": [
       {"name":"Io","r":0.00282,"observed":0.01496},
@@ -134,7 +134,7 @@ window.EXOPLANETS = [
     "star": 0.73,
     "feh": -0.57,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 59.9146,
     "planets": [
       {"name":"GJ 667 B","r":12.6,"observed":229748},
       {"name":"GJ 667 C","r":230,"observed":108881}
@@ -148,7 +148,7 @@ window.EXOPLANETS = [
     "star": 0.78,
     "feh": -0.49,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.3092,
     "planets": [
       {"name":"TauCet-g","r":0.133,"observed":1.75},
       {"name":"TauCet-h","r":0.243,"observed":1.83},
@@ -164,7 +164,7 @@ window.EXOPLANETS = [
     "star": 0.37,
     "feh": 0.17,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.2574,
     "planets": [
       {"name":"GJ876-d","r":0.0208,"observed":6.83},
       {"name":"GJ876-c","r":0.1296,"observed":226},
@@ -180,7 +180,7 @@ window.EXOPLANETS = [
     "star": 0.81,
     "feh": -0.42,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.5012,
     "stripping": {"M_pert":0.499999,"q":15.8},
     "planets": [
       {"name":"HD 20794 b","r":0.1207,"observed":2.7},
@@ -197,7 +197,7 @@ window.EXOPLANETS = [
     "star": 0.81,
     "feh": 0.11,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.4292,
     "planets": [
       {"name":"HD134-b","r":0.0387,"observed":4.74},
       {"name":"HD134-c","r":0.0653,"observed":4.36},
@@ -215,7 +215,7 @@ window.EXOPLANETS = [
     "star": 0.85,
     "feh": -0.04,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.2805,
     "planets": [
       {"name":"HD 192310 b","r":0.32,"observed":16.9},
       {"name":"HD 192310 c","r":1.18,"observed":24}
@@ -248,7 +248,7 @@ window.EXOPLANETS = [
     "star": 0.86,
     "feh": -0.04,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.2143,
     "planets": [
       {"name":"HD69830-b","r":0.078,"observed":10.2},
       {"name":"HD69830-c","r":0.186,"observed":11.8},
@@ -263,7 +263,7 @@ window.EXOPLANETS = [
     "star": 0.95,
     "feh": 0.34,
     "cto": 0.78,
-    "spin": 1,
+    "spin": 0.5213,
     "planets": [
       {"name":"55Cnc-e","r":0.0154,"observed":7.99},
       {"name":"55Cnc-c","r":0.24,"observed":51.2},
@@ -280,7 +280,7 @@ window.EXOPLANETS = [
     "star": 1.27,
     "feh": 0.12,
     "cto": 0.55,
-    "spin": 0.001,
+    "spin": 0.4234,
     "planets": [
       {"name":"ups And b","r":0.0594,"observed":218},
       {"name":"ups And c","r":0.829,"observed":629},
@@ -296,7 +296,7 @@ window.EXOPLANETS = [
     "star": 1.03,
     "feh": 0.03,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.6603,
     "planets": [
       {"name":"47UMa-b","r":2.1,"observed":804},
       {"name":"47UMa-c","r":3.6,"observed":172},
@@ -311,7 +311,7 @@ window.EXOPLANETS = [
     "star": 1.1,
     "feh": 0.32,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.4569,
     "planets": [
       {"name":"muAra-d","r":0.091,"observed":10.5},
       {"name":"muAra-e","r":0.92,"observed":166},
@@ -327,7 +327,7 @@ window.EXOPLANETS = [
     "star": 0.79,
     "feh": -0.15,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.1246,
     "planets": [
       {"name":"HD 7924 b","r":0.0566,"observed":8.7},
       {"name":"HD 7924 c","r":0.1135,"observed":7.9},
@@ -342,7 +342,7 @@ window.EXOPLANETS = [
     "star": 1.53509,
     "feh": 0.05,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.4944,
     "planets": [
       {"name":"Beta Pic c","r":2.7,"observed":2606},
       {"name":"Beta Pic b","r":9.66,"observed":3496}
@@ -356,7 +356,7 @@ window.EXOPLANETS = [
     "star": 1.44,
     "feh": -0.26,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.2394,
     "planets": [
       {"name":"HD60532-b","r":0.76,"observed":327},
       {"name":"HD60532-c","r":1.58,"observed":781}
@@ -370,7 +370,7 @@ window.EXOPLANETS = [
     "star": 1.07,
     "feh": 0.25,
     "cto": 0.86,
-    "spin": 1,
+    "spin": 0.4838,
     "planets": [
       {"name":"HD134987-b","r":0.81,"observed":505},
       {"name":"HD134987-c","r":5.8,"observed":261}
@@ -384,7 +384,7 @@ window.EXOPLANETS = [
     "star": 1.27,
     "feh": 0.09,
     "cto": 0.78,
-    "spin": 1,
+    "spin": 0.4721,
     "planets": [
       {"name":"HD142-b","r":1.04,"observed":397},
       {"name":"HD142-c","r":6.8,"observed":1684}
@@ -398,7 +398,7 @@ window.EXOPLANETS = [
     "star": 1.32456,
     "feh": -0.47,
     "cto": 0.54,
-    "spin": 1,
+    "spin": 1.2122,
     "planets": [
       {"name":"HR8799-e","r":14,"observed":2225},
       {"name":"HR8799-d","r":24,"observed":2225},
@@ -414,7 +414,7 @@ window.EXOPLANETS = [
     "star": 1.13,
     "feh": -0.12,
     "cto": 0.55,
-    "spin": 1,
+    "spin": 0.2258,
     "planets": [
       {"name":"Kep90-c","r":0.0478,"observed":5},
       {"name":"Kep90-b","r":0.0739,"observed":7},
