@@ -243,6 +243,43 @@ function irradiation_snow_line(M_star: number): number {
   return SNOW_IRR_COEFF * Math.pow(M_star / SOL_M_PRIMORDIAL, 0.5 * ML_EXP);
 }
 
+// ================= PILE-UP ACCRETION REGIME (≠ uniform disc) ==================
+// A pile-up (pressure bump: the normal regime's outer Davis-dam edge, or the whole
+// inverted regime) is a DIFFERENT accretion structure from the smooth disc. Two
+// pieces (user, 2026-06-10; literature-grounded):
+//
+//  (1) GAS-DISC EXTENT — where the disc's GAS reaches, the centrifugal radius from
+//  PRIMORDIAL ROTATION (R_c=j²/GM). Observed protoplanetary discs are ~tens of AU
+//  and only WEAKLY mass-dependent — NOT the compact M^3.27 wind/Davis dam. The disc
+//  extends well beyond the planets; spreading the disc mass over this extent makes
+//  the pile DILUTE (the fix for the 800× over-read). Anchored Sol→30 AU.
+const R_GAS_SOL = 30.0;
+const R_GAS_M_EXP = 0.3;   // weak mass dependence (observed disc sizes ~flat in M)
+function gas_disc_extent(M_star: number, lambda: number): number {
+  return R_GAS_SOL * Math.max(lambda, 1e-9) * Math.pow(M_star / SOL_M_PRIMORDIAL, R_GAS_M_EXP);
+}
+//  (2) DENSITY-GRADIENT SNOW LINE — the pile peak density (disc mass spread over the
+//  gas extent) falls off along the pressure-bump / LBP gradient from the dam; the
+//  snow line is where it drops to Σ_crit, the surface density at which the pile's
+//  (less-efficient) viscous heating reaches T_ice. Power-law gradient Σ∝(R/R_dam)^−n
+//  (n≈PILE_GAMMA): R_snow = R_dam·(Σ_peak/Σ_crit)^(1/n). A DILUTE pile (low Σ_peak)
+//  ⇒ snow line near the dam (close in); a dense pile ⇒ far out. Inner/dense side is
+//  rock (snow line held outside the feeding zone), outer/diffuse side is ice.
+const PILE_GAMMA = 3.0;        // density-gradient steepness (pressure-bump/LBP wing)
+// Σ_crit (the surface density at which the pile's viscous heating reaches T_ice) is
+// set by the pile's self-heating, which scales with GRAVITY — so it is normalized to
+// solar: Σ_crit = Σ_crit☉ · (M/M☉). A massive star's pile self-heats far more, so it
+// stays sub-critical at its dam (snow line AT the dam ⇒ KBOs all icy beyond ~30 AU),
+// while TRAPPIST's pile (dense relative to its feeble gravity) pushes it out to d/e.
+const PILE_SIGMA_CRIT_SOL = 6.7;   // M⊕/AU² at M=M☉ (gravity-normalized)
+function pile_snow_line(M_star: number, f_disc: number, R_dam: number, lambda: number): number {
+  const R_gas = gas_disc_extent(M_star, lambda);
+  const sigma_peak = f_disc * m_star_earth(M_star) / (R_gas * R_gas);
+  const sigma_crit = PILE_SIGMA_CRIT_SOL * (M_star / SOL_M_PRIMORDIAL);   // gravity-normalized
+  if (sigma_peak <= sigma_crit) return R_dam;   // sub-critical at the dam ⇒ snow line at the dam
+  return R_dam * Math.pow(sigma_peak / sigma_crit, 1.0 / PILE_GAMMA);
+}
+
 // Convenience: the full derived parameter set from a budget + spin.
 function params_from_budget(b: Budget, spin: number): {
   M: number; Z: number; f_rock: number; f_disc: number; R_disc: number; R_A: number;

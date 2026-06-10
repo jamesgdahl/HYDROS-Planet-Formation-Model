@@ -106,6 +106,31 @@ const M_SUN_TO_EARTH = 332946.0 * M_PRIM_TO_MSUN;  // 379,558 M_E per M_prim
 const VISC_COEFF = 0.67;
 const INV_ROCK_DESCENT = 0.75;
 const INV_ICE_DESCENT = 0.40;
+// Inverted pile-up rock enrichment: the magnetic slots gather FERROMAGNETIC rock
+// preferentially, so the pile's rock fraction exceeds the bulk f_rock by this
+// factor (capped at 0.95). Calibrated so TRAPPIST's inner rock chain (b,c,d) bulks
+// up to the observed ~1.3 M⊕ while the icy outer chain stays ice-dominated.
+const INV_ROCK_ENRICH = 2.3;
+// Pile-up rock SATURATION: each slot fills to at most this fraction of the rock
+// budget before isolating (the magnetic slot + pressure pile-up concentrate solids
+// efficiently). The budget is consumed inner-first, so the inner slots fill flat and
+// the budget runs dry mid-chain — the flat b,c then the d-cliff exhaustion gap.
+const ROCK_SLOT_CAP = 0.44;
+// Stellar-wind reference for the envelope/vapor wind-balance: wind_term ∝
+// (spin/WIND_SPIN_REF)·(WIND_R_REF/r)². Shared by the H/He envelope (hydrogen_capture)
+// and the ice cold-trap so the SAME wind drives both.
+const WIND_R_REF = 0.5;       // AU
+const WIND_SPIN_REF = 30.0;
+// Ice cold-trap crest: vapor sublimated at the snow line is pushed outward by the
+// SAME wind that strips the H/He envelope, but water (18 amu) is 18× heavier than the
+// wind's protons, so it is carried √(1/18) as far. The crest is the WATER wind-balance
+// radius R_water = WIND_R_REF·√(spin/WIND_SPIN_REF)·√(m_proton/m_H₂O); at the inherited-
+// disc spin 4–6 this lands on TRAPPIST g (~0.047 AU) with no free knob. Ice RISES to
+// R_water (∝ (r/R_water)^ICE_RISE) then FALLS beyond it (∝ (R_water/r)^ICE_FALL).
+const MOL_MASS_WIND = 1.0;    // stellar-wind protons (amu)
+const MOL_MASS_WATER = 18.0;  // H₂O (amu)
+const ICE_RISE = 1.2;
+const ICE_FALL = 5.0;
 // PHASE-3 nebula (beyond R_A, no slots): a single Alfvén-repelled pile the
 // marching dam sweeps up inner-first. INV_NEB_FRAC sets the swept nebula
 // budget (× f_disc·M·Z·ETA); NEB_DEPLETION is the fraction the first (inner)

@@ -186,12 +186,20 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // DISTINCT population with independent inputs: they never enter the
     // interior cascade fit. They are evaluated afterward against the
     // exterior ladder anchored on the fitted dam.
-    const kbo_bodies = planets.filter(p => p.kbo && (p.observed || 0) >= 0);
+    // INVERTED regime: there is no uniform inner accretion disc — the marching dam
+    // mints EVERY body as a factory product (the pile-up + the outer KBOs), so ALL
+    // non-core bodies go through the factory branch (with the receding snow line),
+    // not the cascade. Normal regime: only the catalog-flagged KBOs are factory.
+    const all_factory = is_inverted_budget(M_star);
+    const kbo_bodies = all_factory
+        ? planets.filter(p => !p.core && (p.observed || 0) >= 0)
+        : planets.filter(p => p.kbo && (p.observed || 0) >= 0);
     // CORE COMPONENTS: catalog-flagged central fragments (co-primaries). Excluded
     // from the cascade fit entirely (no slot, no anchor weight, no target) — they
     // belong to the core that DRIVES the dams, not the products it forms.
     const core_bodies = planets.filter(p => !!p.core && (p.observed || 0) > 0);
-    const observed_all = planets.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
+    const observed_all = all_factory ? []
+        : planets.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
     if (auto_compress && (spin === undefined || spin === null)) {
         // Anchor search sees only the interior population — KBOs and core
         // components carry no weight in the cascade geometry.
@@ -1044,33 +1052,59 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             // no zero composition). The Davis Dam has marched past R_A into the
             // Alfvén-repelled nebula; the ice allocation's PHASE-3 branch gives these
             // a real ICE composition and a PREDICTED mass. (Memory: inverted-regime-model.)
-            const r_snow_k = snow_line(M_star, f_disc);
+            const r_snow_k = snow_line(M_star, f_disc); // pile-up density-gradient snow line (parked)
             // PHASE-3 nebula is a CONSERVED pile (no slots beyond R_A): the marching
             // dam sweeps it up inner-first, so the closest KBO to R_A collects most
             // of the nebula and outer ones are thinning tails — "the nebula used most
             // of its matter to produce the first product."
-            const B_neb = f_disc * m_star_earth(M_star) * COMP_Z * INV_NEB_FRAC * ETA_ROCK;
-            // Depletion DERIVED from local CONCENTRATION Σ = D / R_factory² (density +
-            // geometry): a compact factory ⇒ high Σ ⇒ first product takes most (one
-            // big); a far-flung factory ⇒ low Σ ⇒ many similar. R_factory = R_A here.
-            // Use the PHYSICAL (inversion-threshold) density, not the degenerate
-            // pre-clamp search spin, so Σ matches the reported modest nebula density.
-            const R_factory = alfven_radius(M_star, omega);
-            const D_local = inversion_threshold_density(M_star, omega);
-            const conc = D_local / Math.max(R_factory * R_factory, 1e-12);
-            const neb_depl = 1 / (1 + Math.pow(NEB_CONC_HALF / Math.max(conc, 1e-12), NEB_CONC_STEEP));
-            const neb_sorted = [...kbo_bodies].sort((a, b) => a.r - b.r);
-            const neb_ice = {};
-            let neb_left = B_neb;
-            for (const bp of neb_sorted) {
-                const take = neb_left * neb_depl;
-                neb_ice[bp.name] = take;
-                neb_left -= take;
+            // PILE-UP ACCRETION (the second accretion regime). The snow line gates ICE
+            // ONLY — rock condenses EVERYWHERE, ice only BEYOND R_snow. So the ROCK budget
+            // is distributed across ALL bodies; the ICE budget only across those beyond the
+            // line. Inside the line = rock-only; beyond = rock + ice (not ice-only). Within
+            // each pile the mass follows the density gradient (Σ_pile ∝ R^−γ, feeding zone
+            // ∝ R² ⇒ weight ∝ R^(2−γ), descending outward). Conserves the disc solids;
+            // f_disc closes the total to the observed chain.
+            const disc_solid = f_disc * m_star_earth(M_star) * COMP_Z;
+            // Inverted slots gather FERROMAGNETIC rock preferentially → the pile is rock-
+            // ENRICHED vs the bulk f_rock (ties to the ferromagnetic-descent split).
+            const rock_frac = Math.min(0.95, COMP_F_ROCK * INV_ROCK_ENRICH);
+            const rock_budget = disc_solid * rock_frac;
+            const ice_budget = disc_solid * (1 - rock_frac);
+            // ROCK descends OUTWARD from the inner pile (Σ∝R^−γ, weight ∝ R^(2−γ)).
+            // ICE follows the COLD-TRAP cycle (Stevenson & Lunine 1988; A&A vapor-
+            // recondensation literature): vapor sublimated at the snow line is pushed
+            // outward by the SAME stellar wind that strips the H/He envelope, recondenses,
+            // and the ice CRESTS at the WATER wind-balance radius — inside the H balance
+            // because water (18 amu) is carried √(1/18) as far as the wind's protons. So
+            // the ice weight RISES to R_water then DROPS (the e<f<g rise, h drop). No free
+            // knob: R_water falls out of the wind strength × spin × the mass ratio.
+            const outside = kbo_bodies.filter(p => p.r > r_snow_k);
+            const R_water = WIND_R_REF * Math.sqrt(Math.max(omega, 0) / WIND_SPIN_REF)
+                * Math.sqrt(MOL_MASS_WIND / MOL_MASS_WATER); // water wind-balance crest
+            const ice_wgt = (rr) => rr <= R_water
+                ? Math.pow(rr / R_water, ICE_RISE) // rise to the water dam
+                : Math.pow(R_water / Math.max(rr, 1e-9), ICE_FALL); // fall off beyond it
+            const iwsum = outside.reduce((a, p) => a + ice_wgt(p.r), 0) || 1;
+            const rock_share = {};
+            const ice_share = {};
+            // ROCK fills the slots inner-first to a SATURATION CAPACITY. Pile-up rock
+            // accretion is more efficient than a uniform disc — slot zero's magnetic pull
+            // AND the pressure pile-up both concentrate solids — so the innermost slots
+            // each saturate at ROCK_SLOT_CAP × (rock budget) and the budget is consumed
+            // inward-out: the first slots fill flat (b≈c), then it runs dry mid-slot (the
+            // d cliff), and the remaining slots get nothing (rock exhausted).
+            const rock_cap = ROCK_SLOT_CAP * rock_budget;
+            let rock_left = rock_budget;
+            for (const p of [...kbo_bodies].sort((a, b) => a.r - b.r)) {
+                const take = Math.min(rock_cap, rock_left);
+                rock_share[p.name] = take;
+                rock_left -= take;
             }
+            outside.forEach(p => { ice_share[p.name] = ice_budget * ice_wgt(p.r) / iwsum; }); // ice beyond R_snow, piling outward
             for (const p of kbo_bodies) {
                 const rr = p.r, observed = p.observed || 0;
-                let rock = rock_allocation(rr, M_star, spin, f_disc, omega); // 0 beyond r_visc
-                let ice = neb_ice[p.name] || 0;
+                let rock = rock_share[p.name] || 0; // rock condenses at every radius
+                let ice = ice_share[p.name] || 0; // ice only beyond R_snow
                 let peb = 0;
                 let core = rock + ice + peb;
                 const t_form = 0.10 * rr / Math.max(sl, 1e-12);
@@ -2230,7 +2264,10 @@ function budgetFit(planets, budget, lambda, parent) {
         const om_for_RA = (omega !== undefined) ? omega : spin;
         const R_A_used = alfven_radius(M, om_for_RA);
         const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
-        const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior
+        // Bisection targets: the uniform-disc cascade slots. For an INVERTED system
+        // there is no cascade — its bodies are pile-up FACTORY products (exterior), so
+        // target those instead, closing f_disc to the observed pile chain.
+        const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && (inverted || !s.exterior)
             && (immut.size ? immut.has(s.name) : true));
         // f_disc bisection at a FIXED snow line (no per-iteration snow-line update —
         // co-converging the snow line with the rock/ice split runs away: rocky moons
@@ -2268,14 +2305,22 @@ function budgetFit(planets, budget, lambda, parent) {
         // baseline's accretion rate, then bisect once more.
         reset_snow_line();
         const fA = bisectF().f;
-        // TWO snow lines exist. NORMAL regime: the usual one, in the uniform accretion
-        // disc between the Alfvén and Davis dams (VISCOUS, Mulders). INVERTED regime:
-        // there is no uniform inner accretion disc — only the FACTORY snow line at the
-        // marching dam, which starts at the inner pile-up, consumes it, passes R_A, then
-        // works the outer material, carried outward with the front. For a faint M-dwarf
-        // that advancing front cools to the BOLOMETRIC floor (TRAPPIST → d/e). So the
-        // inner-accretion-disc viscous line never applies to an inverted system.
-        const snowA = inverted ? irradiation_snow_line(M) : mulders_snow_line(M, Mdot_of(fA));
+        // TWO accretion regimes, two snow-line laws — both VISCOUS, so both SPIN-
+        // INDEPENDENT (viscous heating dominates bolometric during accretion; spin would
+        // only matter in the rare edge case where its extra photons out-heat viscosity):
+        //  • UNIFORM-DISC (normal regime, inner planets): the smooth viscous disc →
+        //    Mulders line (R_SL ∝ Ṁ^4/9).
+        //  • PILE-UP (inverted regime, and the normal outer-dam edge): the same viscous
+        //    heating but in a DIFFUSE pile, so Mulders (which back-solves a uniform-disc
+        //    equivalent density) over-reads — the diffuse density falls along the gradient
+        //    and the snow line is where Σ_pile drops to Σ_crit (pile_snow_line). Evaluated
+        //    at the spin-independent accretion structure (ref spin 1); only the wind-driven
+        //    water dam tracks the actual spin. Maxed against the bolometric line in case
+        //    irradiation out-heats the (dilute) pile's viscosity.
+        const SNOW_REF_SPIN = 1.0;
+        const snowA = inverted
+            ? Math.max(pile_snow_line(M, fA, alfven_radius(M, SNOW_REF_SPIN), SNOW_REF_SPIN), irradiation_snow_line(M))
+            : mulders_snow_line(M, Mdot_of(fA));
         set_snow_line(snowA);
         // Supply-limited formation clock for EVERY system (igniters + sub-cascades):
         // t = M_core·(r/R_disc)/(Z·Ṁ·K). Set Ṁ on every fit (the gate to non-igniters
@@ -2311,7 +2356,7 @@ function budgetFit(planets, budget, lambda, parent) {
             score: 0, stripping_q: null, stripping_rt: null,
             budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
             budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
-            budget_Mdot: Mdot, budget_snow: inverted ? irradiation_snow_line(M) : mulders_snow_line(M, Mdot), budget_C: C,
+            budget_Mdot: Mdot, budget_snow: inverted ? Math.max(pile_snow_line(M, fA, alfven_radius(M, 1.0), 1.0), irradiation_snow_line(M)) : mulders_snow_line(M, Mdot), budget_C: C,
             budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
             budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
         };

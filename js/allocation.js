@@ -165,9 +165,7 @@ function hydrogen_capture(core_mass, t_form_myr, spin, r, M_star, f_disc, omega)
     // unchanged (k≈GAS_WINDOW_K).
     const k = GAS_WINDOW_K * T_DISC_DISPERSAL_MYR / gas_dispersal_time(M_star, f_disc);
     const window = Math.exp(-k * t_form_myr);
-    const spin_ref = 30.0;
-    const r_ref = 0.5;
-    const wind_term = (spin / spin_ref) * Math.pow(r_ref / Math.max(r, 0.01), 2);
+    const wind_term = (spin / WIND_SPIN_REF) * Math.pow(WIND_R_REF / Math.max(r, 0.01), 2);
     const wind_suppression = 1.0 / (1.0 + wind_term);
     return GAS_CAPTURE_EFF * M_gas_disc * window * wind_suppression;
 }

@@ -552,7 +552,7 @@ function calculate() {
     <span class="label">f_disc (real):</span> <span class="value">${fmt(bg.f_disc, 5)}</span><br>
     <span class="label">Accretion rate Ṁ:</span> <span class="value">${bg.budget_Mdot.toExponential(2)} M☉/yr</span> &nbsp;
     <span class="label">Capture fraction C:</span> <span class="value">${fmt(bg.budget_C, 4)}</span> &nbsp;
-    <span class="label">Viscous snow line (Mulders):</span> <span class="value">${bg.budget_snow < 0.01 ? (bg.budget_snow*1000).toPrecision(3)+'m' : fmt(bg.budget_snow,3)} AU</span><br>
+    <span class="label">${bg.budget_inverted ? 'Snow line (pile viscous / bolometric)' : 'Viscous snow line (Mulders)'}:</span> <span class="value">${bg.budget_snow < 0.01 ? (bg.budget_snow*1000).toPrecision(3)+'m' : fmt(bg.budget_snow,3)} AU</span><br>
     <span class="label">H budget [M⊕]:</span> <span class="value">reservoir ${fmt(bg.budget_h_reservoir,0)} → captured ${fmt(bg.budget_h_captured,1)} + dispersed ${fmt(bg.budget_h_dispersed,1)}${bg.budget_h_exhausted ? ' ⚠ EXHAUSTED (raise budget/spin)' : ''}</span><br>` : "";
   document.getElementById("derived").innerHTML = budgetLine + `
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
