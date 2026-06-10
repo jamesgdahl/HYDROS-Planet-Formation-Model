@@ -2219,9 +2219,26 @@ interface BudgetFitResult extends BruteFitResult {
   budget_Mdot: number; budget_snow: number; budget_C: number;
   budget_h_reservoir: number; budget_h_captured: number;
   budget_h_dispersed: number; budget_h_exhausted: boolean;
+  budget_barycentre: number;
+}
+// Core barycentre: the mass-weighted centre of all core elements (the primary at
+// r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
+// the core emits — wind, field, the dams — and every product orbit is referenced to
+// it. Single-star systems have no co-primary ⇒ barycentre = 0 (the primary itself).
+function core_barycentre(primaryMass: number | undefined | null, planets: Planet[]): number {
+  if (primaryMass == null || !isFinite(primaryMass)) return 0;
+  let m = primaryMass * 332946;   // primary mass in M⊕, at r=0
+  let mr = 0;
+  for (const p of planets) { const mo = p.observed || 0; if (p.core && mo > 0) { m += mo; mr += mo * p.r; } }
+  return m > 0 ? mr / m : 0;
 }
 function budgetFit(planets: Planet[], budget: Budget,
-                   lambda?: number | null, parent?: BudgetParent | null): BudgetFitResult {
+                   lambda?: number | null, parent?: BudgetParent | null,
+                   primaryMass?: number | null): BudgetFitResult {
+  // Re-reference every body to the core barycentre: the dams are emitted from it and
+  // products orbit it, so positions are measured from the barycentre, not the primary.
+  const r_bary = core_barycentre(primaryMass, planets);
+  if (r_bary !== 0) planets = planets.map(p => ({ ...p, r: Math.max(p.r - r_bary, 1e-9) }));
   const M = mass_from_budget(budget);
   const Z = metallicity_from_budget(budget);
   const f_rock = f_rock_from_budget(budget);
@@ -2345,6 +2362,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       budget_Mdot: Mdot, budget_snow: inverted ? Math.max(pile_snow_line(M, fA, alfven_radius(M, 1.0), 1.0), irradiation_snow_line(M)) : mulders_snow_line(M, Mdot), budget_C: C,
       budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
       budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
+      budget_barycentre: r_bary,
     };
   } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); }
 }

@@ -475,7 +475,7 @@ function calculate() {
   // slot_aware_fit below reproduces the budget fit exactly; expose CURRENT_BUDGET
   // for the diagnostics panel + the sign-modulation / hydrogen-conservation pass.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
-  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent);
+  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star);
   set_composition(rB.budget_Z, rB.budget_f_rock);
   const obsB = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
@@ -558,7 +558,7 @@ function calculate() {
     <span class="label">Nebula density (Sol=1, outer jaw):</span> <span class="value">${D_neb >= 100 ? fmt(D_neb, 0) : fmt(D_neb, 3)}</span> &nbsp;
     <span class="label">Disc outer edge (Davis Dam):</span> <span class="value">${fmt(R_disc, 3)} AU</span> &nbsp;
     <span class="label">Magnetospheric void radius:</span> <span class="value">${fmt(R_A, 4)} AU</span> &nbsp;
-    <span class="label">Disc compression (void/disc):</span> <span class="value ${regimeClass}">${fmt(C, 3)} (${regime})</span><br>
+    <span class="label">Disc compression (void/disc):</span> <span class="value ${regimeClass}">${fmt(C, 3)} (${regime})</span>${rB.budget_barycentre ? ` &nbsp; <span class="label">Core barycentre (from primary):</span> <span class="value">${fmt(rB.budget_barycentre, 3)} AU</span>` : ''}<br>
     <span class="label">Snow line (ice condensation):</span> <span class="value">${fmt(r_snow, 3)} AU</span> &nbsp;
     <span class="label">Mass slope:</span> <span class="value">${fmt(sl, 4)} M⊕/AU</span> &nbsp;
     <span class="label">Backstop base mass:</span> <span class="value">${fmt(a, 3)} M⊕</span> &nbsp;
@@ -1041,7 +1041,7 @@ function fillPredictedSlots() {
   // use the slot-aware assignment so migrated planets occupy their FORMATION
   // slot rather than the slot nearest their current AU.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
-  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent);
+  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star);
   set_composition(rB.budget_Z, rB.budget_f_rock);
   const obsB = existing.filter(p => (p.observed || 0) > 0);
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
