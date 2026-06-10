@@ -90,6 +90,60 @@ function alfven_radius_standoff(M) {
 function compression_budget(M) {
     return alfven_radius_standoff(M) / disc_radius_wind(M);
 }
+// === CENTRIFUGAL COLLAPSE PHYSICS (Terebey–Shu–Cassen) ==========================
+// Spin is the angular-momentum dial. Material with specific angular momentum j
+// lands at its CENTRIFUGAL RADIUS R_c = j²/GM (Ulrich 1976; the disc's outer
+// edge). With j ∝ Ω·R² and the SIS inside-out collapse (R_c ∝ M³), the disc
+// radius is R_disc = R_wind(M)·λ² — the same law that gives Sol 30 AU at λ=1 and
+// Alpha Cen ~14,000 AU at λ≈5.7. Higher spin disperses more mass to larger radii
+// (more disc) and leaves less for the core.
+//
+// The rotational parameter β = E_rot/|E_grav| ∝ Ω² ∝ λ². At β ≥ β_FRAG = 0.274
+// (Bate 2011 bar-mode/secular instability) the core cannot stay axisymmetric and
+// tears into a binary — the Alpha Cen A+B channel.
+//
+// CONSISTENCY ANCHOR: BETA_SOL is fixed so the λ that reproduces Alpha Cen's
+// 14,000 AU Davis Dam (λ² = 14000/R_wind(2.26) ≈ 32.4) is exactly its
+// fragmentation threshold (β=0.274) — ONE λ explains the dam AND the core split.
+// The resulting BETA_SOL ≈ 0.0085 also matches the solar-nebula rotational
+// parameter, so the model's λ becomes the physical normalized spin (Sol = 1).
+const BETA_SOL = 0.274 / 32.4; // ≈ 0.00846; ties the dam to fragmentation
+const BETA_FRAG = 0.274; // bar-mode instability → binary (Bate 2011)
+function rotational_beta(lambda) {
+    return BETA_SOL * lambda * lambda;
+}
+function core_fragments(lambda) {
+    return rotational_beta(lambda) >= BETA_FRAG;
+}
+// Centrifugal radius = the Davis Dam. R_wind(M) carries the SIS M³ mass-scaling;
+// λ² carries the rotational dispersion. Sol (λ=1)→30 AU, Alpha Cen (λ≈5.7)→14k AU.
+function centrifugal_radius(M, lambda) {
+    return disc_radius_wind(M) * lambda * lambda;
+}
+// Dispersed fraction (mass diverted to the disc rather than the core), rising with
+// β. Anchored on the two clean fixed points: Sol (β≈0.0085 → f_disc≈0.01, the
+// solar nebula) and Alpha Cen (β=0.274 → f_disc≈0.12, i.e. Proxima+giants against
+// the A+B core). A power law through both gives f_disc = 0.305·β^0.715. The core
+// keeps the rest (1−f_disc); above β_FRAG that core is itself split into a binary.
+function disc_fraction_centrifugal(lambda) {
+    const beta = rotational_beta(lambda);
+    return Math.min(F_DISC_MAX, 0.305 * Math.pow(beta, 0.715));
+}
+function three_budget_split(b, lambda) {
+    const M = mass_from_budget(b);
+    const f_disc = disc_fraction_centrifugal(lambda);
+    const f_outer_of_disc = Math.max(0, 1 - Math.pow(Math.max(lambda, 1e-9), -2 / 3));
+    const f_outer = f_disc * f_outer_of_disc;
+    const f_inner = f_disc - f_outer;
+    const f_core = 1 - f_disc;
+    const scale = (f) => ({ rock: b.rock * f, ice: b.ice * f, hydrogen: b.hydrogen * f });
+    return {
+        core: scale(f_core), inner: scale(f_inner), outer: scale(f_outer),
+        f_core, f_inner, f_outer,
+        R_disc: centrifugal_radius(M, lambda), R_dam: disc_radius_wind(M),
+        beta: rotational_beta(lambda), fragments: core_fragments(lambda),
+    };
+}
 // The DAVIS DAM is set by a WIND, and the wind is UNIVERSAL: fusion (stars) +
 // thermal/Kelvin-Helmholtz (gas giants) + MAGNETICALLY-DRIVEN particle wind
 // (ANY magnetic object — the magnetosphere flings charged particles outward,
