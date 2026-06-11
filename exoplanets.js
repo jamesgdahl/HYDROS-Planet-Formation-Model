@@ -92,10 +92,10 @@ window.EXOPLANETS = [
     "id": "earth",
     "name": "Earth (Theia impact)",
     "ly": 0,
-    "comment": "Budget = proto-Earth (0.9 M_E dry rock) + Theia (0.13 M_E, ~15% water). KINETIC impact-vapor disc: hot, so the Moon-forming ring is dry rock and Theia's water (0.0195 M_E) goes to Earth's mantle. Inverted regime; Moon coalesces above the Roche limit (~6 R_E) at the recorded post-impact spin. f_disc derived.",
+    "comment": "Budget = proto-Earth (0.9 M_E dry rock) + Theia (0.13 M_E, ~15% water) — a DENSE debris cloud (Mars-sized impactor). Spin = the real post-impact 5-h day: λ≈2 (the primordial — not current — Sun is ~10 h at λ=1, so a 5-h Earth is ~2× that). No fusion → no wind → the Davis Dam collapses tiny (the cloud stays concentrated = dense), inverted, Moon coalesces in the R_A cavity at ~3.7 R_E ≈ observed 3.83. KINETIC: hot disc, dry rock Moon, Theia's water to Earth's mantle. No special rules — universal dam laws. f_disc derived. (Moon MASS still cascade-split; coalescence pending.)",
     "budget": {"rock":1.0105,"ice":0.0195,"hydrogen":0.0001},
     "star": 0.0000026346,
-    "spin": 0.0803,
+    "spin": 2.0,
     "kinetic": true,
     "planets": [
       {"name":"Luna","r":0.0001632,"observed":0.0123}
