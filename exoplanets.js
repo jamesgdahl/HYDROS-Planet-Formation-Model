@@ -229,7 +229,7 @@ window.EXOPLANETS = [
     "star": 0.089,
     "feh": 0.04,
     "cto": 0.55,
-    "spin": 4.75,
+    "spin": 0.08,
     "planets": [
       {"name":"T-1b","r":0.0115,"observed":1.374},
       {"name":"T-1c","r":0.0158,"observed":1.308},

@@ -2286,6 +2286,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     const usePhysicsDam = primaryMass != null && isFinite(primaryMass) && primaryMass > 0 && omega !== undefined;
     let R_disc_phys: number | null = null;
     let R_A_mag: number | null = null;
+    let omega_fit: number | undefined = undefined;
     let f_disc_derived: number | null = null;
     let spin: number;
     if (usePhysicsDam) {
@@ -2317,7 +2318,6 @@ function budgetFit(planets: Planet[], budget: Budget,
       const mag_base = (M >= IGNITION_MASS) ? WIND_MAG_FRAC : 0.0;
       const W = (flux + mag_base) / (1.0 + WIND_MAG_FRAC);          // + coronal baseline (stars only), Sol-normed
       R_disc_phys = SOL_R_DISC * Math.sqrt(W * Math.pow(omega as number, WIND_OMEGA_EXP)) * Math.pow(D, -0.5);
-      spin = spin_for_disc_radius(M, R_disc_phys, omega);
       // MAGNETOPAUSE R_A = R_body·(field)^⅓, Sol-anchored to 0.2 AU. The dynamo field carries
       // the fully-convective α² boost for H-rich low-mass bodies (M-dwarfs/giants) — so their
       // strong field gives a LARGE R_A even as their wind (R_disc) stays feeble ⇒ inverted.
@@ -2330,10 +2330,20 @@ function budgetFit(planets: Planet[], budget: Budget,
       R_A_mag = SOL_R_A_FORMATION
         * (body_radius_earth(M_E_body) / body_radius_earth(M_SUN_TO_EARTH))
         * Math.pow(Math.max(B_RA, 1e-9), 1.0 / 3.0);
+      // Feed the OLD slot/cascade formulas an EFFECTIVE (spin, ω) that reproduce the NEW
+      // dams (R_A_mag, R_disc_phys), so slot_aware_fit/cascade mint at the magnetopause
+      // geometry without rewriting cascade/allocation. (Sol: ω_fit=1, spin=1 — identity.)
+      omega_fit = omega_for_alfven_radius(M, R_A_mag);
+      spin = spin_for_disc_radius(M, R_disc_phys, omega_fit);
       // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
       // dams over R_c=SOL_R_C·spin²/M. From spin + budget alone; bare ≡ populated disc.
       const R_c = SOL_R_C * spin_eff * spin_eff / M;
-      const reservoir = M_d * (Math.exp(-R_A_mag / R_c) - Math.exp(-R_disc_phys / R_c));
+      // The reservoir is the nebula mass BETWEEN the two dams — independent of which is
+      // inner. Normal: R_A inner, R_disc outer. INVERTED: R_disc (Davis) inner, R_A (Alfvén)
+      // outer. Order by radius so the difference stays positive in both regimes.
+      const dam_in = Math.min(R_A_mag, R_disc_phys);
+      const dam_out = Math.max(R_A_mag, R_disc_phys);
+      const reservoir = M_d * (Math.exp(-dam_in / R_c) - Math.exp(-dam_out / R_c));
       f_disc_derived = Math.max(reservoir / (M * M_SUN_TO_EARTH), 1e-6);
       // REGIME from the magnetopause: buried (R_A inside the body) treated as non-inverting
       // here; magnetized → inverted iff the magnetosphere reaches past the Davis Dam.
@@ -2383,7 +2393,28 @@ function budgetFit(planets: Planet[], budget: Budget,
       f = f_disc_derived;
       set_snow_line(snow_of(f));
       set_mdot(Mdot_of(f));
-      fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
+      const om_slot = omega_fit ?? omega;
+      fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot });
+      // INVERTED in-situ: the observed bodies are the dense pile-up's in-situ factory
+      // products. The self-similar reservoir under-counts that compressed pile, so close
+      // f_disc to the observed ISU total (snow line stays frozen from the derived reservoir).
+      // Normal/forward systems keep the pure derived f_disc — only the inverted dense pile
+      // is closed to its products. (No effect when there are no observed targets.)
+      if (inverted) {
+        const tot = sel(fit).reduce((a, s) => a + (s.observed || 0), 0);
+        if (tot > 0) {
+          const tol = Math.max(1e-6, 0.001 * tot);
+          let lo = 1e-5, hi = 1.0;
+          for (let i = 0; i < 60; i++) {
+            const fm = Math.sqrt(lo * hi);
+            const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega: om_slot });
+            const e = sel(f2).reduce((a, s) => a + (s.predicted - (s.observed || 0)), 0);
+            f = fm; fit = f2;
+            if (Math.abs(e) < tol) break;
+            if (e > 0) hi = fm; else lo = fm;
+          }
+        }
+      }
     } else {
       // SUB-CASCADE fallback (gas-giant satellite disc — parent-fed, no stellar dam):
       // f_disc still closed to the parent-fed products by bisection. Targets: the
