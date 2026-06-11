@@ -486,7 +486,7 @@ function calculate() {
   // slot_aware_fit below reproduces the budget fit exactly; expose CURRENT_BUDGET
   // for the diagnostics panel + the sign-modulation / hydrogen-conservation pass.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
-  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star);
+  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star, inp.kinetic);
   set_composition(rB.budget_Z, rB.budget_f_rock);
   const obsB = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
@@ -1044,7 +1044,7 @@ function fillPredictedSlots() {
   // use the slot-aware assignment so migrated planets occupy their FORMATION
   // slot rather than the slot nearest their current AU.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
-  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star);
+  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star, inp.kinetic);
   set_composition(rB.budget_Z, rB.budget_f_rock);
   const obsB = existing.filter(p => (p.observed || 0) > 0);
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
@@ -1355,7 +1355,7 @@ function findBestFit() {
   //    so the search space is [0, breakup_spin]; log-scan it then refine to the λ
   //    that minimises the planet-mass RMS.
   const inp = getInputs();
-  const budget = inp.budget, parent = inp.parent, star = inp.star;
+  const budget = inp.budget, parent = inp.parent, star = inp.star, kinetic = inp.kinetic;
   const pl = getPlanets().concat(getKBOs()).concat(getCoreComponents());
   const obs = pl.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
   const M = mass_from_budget(budget);
@@ -1363,7 +1363,7 @@ function findBestFit() {
   // anomalies (Mercury/Mars late-delivery, scattered remnants) are model OUTPUT, not
   // fit error, so they must not steer the spin search.
   const evalLam = (lam) => {
-    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent, star);
+    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent, star, kinetic);
     const tgt = new Set(rr.target_names);
     let sse = 0, n = 0;
     for (const s of rr.fit.slots) {

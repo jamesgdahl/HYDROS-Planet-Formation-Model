@@ -38,7 +38,7 @@ const bestFit = ctx.bestFit;
 const LATE_DELIVERY_PCT = 0.5 * (0.02 / 0.107) * 100; // 9.35%
 
 const SKIP = new Set(['sol_progenitor', 'crab_progenitor',
-  'earth', 'mars']); // thought experiments + kinetic regime (impact-physics inputs)
+  'mars']); // thought experiments + legacy kinetic-inputs entries (earth now a budget+kinetic entry)
 
 const args = process.argv.slice(2);
 const onlyId = args.includes('--system') ? args[args.indexOf('--system') + 1] : null;
@@ -69,11 +69,11 @@ const bruteFit = ctx.bruteFit;
 // target; deriving R_disc and f_disc from physics is the next pass. The
 // composition context is set here and ALWAYS reset, so the legacy catalog
 // is untouched.
-function budgetFit(planets, budget, lambda, parent, primaryMass) {
+function budgetFit(planets, budget, lambda, parent, primaryMass, kinetic) {
   // Thin wrapper over the COMPILED budgetFit (js/fit.js) so the CLI and the web
   // UI share one implementation. Re-expose the budget diagnostics as _budget
   // for the table/summary renderers.
-  const r = ctx.budgetFit(planets, budget, lambda, parent, primaryMass);
+  const r = ctx.budgetFit(planets, budget, lambda, parent, primaryMass, kinetic);
   r._budget = {
     M: r.budget_M, Z: r.budget_Z, f_rock: r.budget_f_rock,
     inverted: r.budget_inverted, R_A: r.budget_R_A, lambda: r.budget_lambda,
@@ -94,7 +94,7 @@ function fitSystem(sys) {
         q: (strip_in.q === undefined) ? null : strip_in.q }
     : null;
   const r = sys.budget
-    ? budgetFit(planets, sys.budget, sys.spin, sys.parent, sys.star)
+    ? budgetFit(planets, sys.budget, sys.spin, sys.parent, sys.star, sys.kinetic)
     : doBrute
     ? bruteFit(planets, M_star, stripping, doVice)
     : bestFit(planets, M_star, sys.inputs.f_disc);
