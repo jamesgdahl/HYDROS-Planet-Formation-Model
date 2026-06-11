@@ -78,13 +78,14 @@ window.EXOPLANETS = [
     "id": "saturn",
     "name": "Saturn (sub-cascade)",
     "ly": 0,
-    "comment": "Titan is the ONE surviving primordial factory moon (icy, 0.0225 M_E), minted in the cavity between the dams at λ≈1 (inverted CPD) — Saturn's disc concentrated into a single dominant body, like Earth's Moon, unlike Jupiter's 4 Galileans. The mid-sized inner moons + Iapetus are NOT primordial factory products: they are Roche-zone ring-recycling debris (Charnoz+2011), repeatedly destroyed and re-accreted, the rings being the fossil — Mimas 6.3e-6 @0.00124, Enceladus 1.8e-5 @0.00159, Tethys 1.0e-4 @0.00197, Dione 1.8e-4 @0.00252, Rhea 3.9e-4 @0.00352, Iapetus 3.0e-4 @0.0238 AU. Survival is set by the destruction zone, not the factory. Budget Z~0.21 (metal-rich); f_disc derived.",
+    "comment": "Titan + Iapetus are the surviving primordial factory moons — a NORMAL CPD cascade (like Jupiter's Galileans): Titan the big inner slot (0.0225 M_E), Iapetus the small outer slot (3.0e-4 M_E, the cascade dregs), both matched at λ≈8, regime=normal. The mid-sized INNER moons (Mimas→Rhea) are NOT primordial: they are Roche-zone ring-recycling debris (Charnoz+2011), repeatedly destroyed and re-accreted, the rings the fossil — Mimas 6.3e-6 @0.00124, Enceladus 1.8e-5 @0.00159, Tethys 1.0e-4 @0.00197, Dione 1.8e-4 @0.00252, Rhea 3.9e-4 @0.00352 AU. Survival is set by the destruction zone, not the factory. Budget Z~0.21 (metal-rich); f_disc derived.",
     "budget": {"rock":6.0,"ice":14.0,"hydrogen":75.2},
     "star": 0.000252,
-    "spin": 1.0,
+    "spin": 8.0,
     "parent": {"a":9.58,"M":1},
     "planets": [
-      {"name":"Titan","r":0.0081678,"observed":0.022519}
+      {"name":"Titan","r":0.0081678,"observed":0.022519},
+      {"name":"Iapetus","r":0.0238026,"observed":0.0003024}
     ]
   },
   {
