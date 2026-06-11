@@ -1098,21 +1098,13 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       const rock_frac = Math.min(0.95, COMP_F_ROCK * INV_ROCK_ENRICH);
       const rock_budget = disc_solid * rock_frac;
       const ice_budget = disc_solid * (1 - rock_frac);
-      // ROCK descends OUTWARD from the inner pile (Σ∝R^−γ, weight ∝ R^(2−γ)).
-      // ICE follows the COLD-TRAP cycle (Stevenson & Lunine 1988; A&A vapor-
-      // recondensation literature): vapor sublimated at the snow line is pushed
-      // outward by the SAME stellar wind that strips the H/He envelope, recondenses,
-      // and the ice CRESTS at the WATER wind-balance radius — inside the H balance
-      // because water (18 amu) is carried √(1/18) as far as the wind's protons. So
-      // the ice weight RISES to R_water then DROPS (the e<f<g rise, h drop). No free
-      // knob: R_water falls out of the wind strength × spin × the mass ratio.
+      // ROCK descends OUTWARD from the inner pile, consumed inner-first to a flat cap
+      // (the b≈c plateau, d cliff). ICE is consumed the SAME way but with a per-slot
+      // appetite that GROWS with the feeding zone (∝ r^ICE_FEED_EXP): the inner icy slots
+      // (e<f<g) eat the ice budget and the OUTERMOST gets only the dregs — the ice cliff
+      // (h). (Stevenson & Lunine cold-trap feeds the ice; the marching factory's depletion
+      // is what tapers it — the old crest weighting had no depletion so the outer slot hoarded.)
       const outside = kbo_bodies.filter(p => p.r > r_snow_k);
-      const R_water = WIND_R_REF * Math.sqrt(Math.max(omega, 0) / WIND_SPIN_REF)
-                    * Math.sqrt(MOL_MASS_WIND / MOL_MASS_WATER);   // water wind-balance crest
-      const ice_wgt = (rr: number) => rr <= R_water
-        ? Math.pow(rr / R_water, ICE_RISE)               // rise to the water dam
-        : Math.pow(R_water / Math.max(rr, 1e-9), ICE_FALL);  // fall off beyond it
-      const iwsum = outside.reduce((a, p) => a + ice_wgt(p.r), 0) || 1;
       const rock_share: Record<string, number> = {};
       const ice_share: Record<string, number> = {};
       // ROCK fills the slots inner-first to a SATURATION CAPACITY. Pile-up rock
@@ -1128,7 +1120,13 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         rock_share[p.name] = take;
         rock_left -= take;
       }
-      outside.forEach(p => { ice_share[p.name] = ice_budget * ice_wgt(p.r) / iwsum; });          // ice beyond R_snow, piling outward
+      let ice_left = ice_budget;                                       // ice consumed inner-icy-first
+      for (const p of [...outside].sort((a, b) => a.r - b.r)) {
+        const appetite = ICE_SLOT_CAP * ice_budget * Math.pow(p.r / Math.max(r_snow_k, 1e-9), ICE_FEED_EXP);
+        const take = Math.min(appetite, ice_left);
+        ice_share[p.name] = take;
+        ice_left -= take;
+      }
       // VINTAGE: the Davis Dam marches OUTWARD through the pile over the disc
       // lifetime, minting each product in turn — so each body's formation epoch is
       // the disc dispersal time × the fraction of the solid budget already swept up

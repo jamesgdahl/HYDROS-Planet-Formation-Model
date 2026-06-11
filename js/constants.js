@@ -110,6 +110,13 @@ const INV_ROCK_ENRICH = 2.3;
 // efficiently). The budget is consumed inner-first, so the inner slots fill flat and
 // the budget runs dry mid-chain — the flat b,c then the d-cliff exhaustion gap.
 const ROCK_SLOT_CAP = 0.44;
+// Inverted ICE consumption: ice is eaten by the marching factory inner-icy-first, with a
+// per-slot appetite GROWING as the feeding zone (∝ r^ICE_FEED_EXP). So the inner icy slots
+// consume the budget (e<f<g) and the OUTERMOST gets only the dregs — the ice cliff (h).
+// Calibrated against TRAPPIST's icy chain (e,f,g rise, h drop). Replaces the old cold-trap
+// crest weighting, which had no depletion so the outer slot hoarded the ice.
+const ICE_SLOT_CAP = 0.16;
+const ICE_FEED_EXP = 1.4;
 // Davis-dam nebula density: D = (budget − core) / NEBULA_SOL, the leftover disc mass
 // that piles up outside the dam, resisting the combined stellar wind. f_disc-INDEPENDENT
 // (it's the budget minus the stars, not the captured fraction). M_SUN_EARTH is the
