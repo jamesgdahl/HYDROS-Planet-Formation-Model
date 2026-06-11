@@ -102,6 +102,8 @@ function insolation_snow_line(M_star, L_obs) {
 // phase is exhausted by ~vintage 3 (b,c,d rock; e,f ice). Distinct from
 // `insolation_snow_line` (stellar irradiation) and `snow_line` (disc temp).
 function viscous_snow_line(M_star, f_disc) {
+    if (COMP_KINETIC)
+        return Infinity; // hot impact-vapor disc — no ice condenses (all rock)
     return VISC_COEFF * Math.pow(Math.max(f_disc, 0) * Math.pow(M_star / SOL_M_PRIMORDIAL, 2.0), 1.0 / 3.0);
 }
 // Nebula density D (Sol = 1): the physical free variable of the VICE's

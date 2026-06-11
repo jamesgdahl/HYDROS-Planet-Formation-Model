@@ -2267,7 +2267,7 @@ function core_barycentre(primaryMass, planets) {
     }
     return m > 0 ? mr / m : 0;
 }
-function budgetFit(planets, budget, lambda, parent, primaryMass) {
+function budgetFit(planets, budget, lambda, parent, primaryMass, kinetic) {
     // Re-reference every body to the core barycentre: the dams are emitted from it and
     // products orbit it, so positions are measured from the barycentre, not the primary.
     const r_bary = core_barycentre(primaryMass, planets);
@@ -2296,6 +2296,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
     const f_rock = f_rock_from_budget(budget);
     let inverted = is_inverted_budget(M); // refined to the magnetopause regime in the physics-dam path
     set_composition(Z, f_rock);
+    set_kinetic(!!kinetic); // impact-vapor disc: rock to the slots, water to the core (mantle)
     try {
         // Interior fit population: slot products only — core components (co-primary
         // fragments) and KBOs (factory products) don't anchor the cascade.
@@ -2428,7 +2429,11 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             // formation clock → allocate. A bare system and a populated one get the IDENTICAL
             // disc geometry, snow line and slot masses; the planets only fill what physics laid.
             f = f_disc_derived;
-            set_snow_line(snow_of(f));
+            // KINETIC (impact-vapor disc, e.g. Earth-Theia): the disc is heated by the IMPACT,
+            // not stellar light, so it is hot throughout — the snow line sits beyond the dams and
+            // NOTHING icy condenses (the Moon is dry rock; Theia's water vaporizes onto Earth). A
+            // huge snow line forces the all-rock allocation.
+            set_snow_line(kinetic ? 1e9 : snow_of(f));
             set_mdot(Mdot_of(f));
             const om_slot = omega_fit ?? omega;
             fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot });
@@ -2593,5 +2598,6 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         reset_r_disc_norm();
         reset_snow_line();
         reset_mdot();
+        reset_kinetic();
     }
 }

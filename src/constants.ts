@@ -69,6 +69,16 @@ let COMP_R_SNOW = -1.0;
 function set_snow_line(r: number): void { COMP_R_SNOW = r; }
 function reset_snow_line(): void { COMP_R_SNOW = -1.0; }
 
+// KINETIC disc override (Earth-Theia and the like). The debris is a hot MIXED rock+water
+// cloud heated by the IMPACT, not stellar light. The Moon-forming ring is volatile-stripped,
+// so the slots take ROCK and the Moon is dry; the WATER is not minted into a slot — it stays
+// with the central body (delivered to Earth's MANTLE, the leading mantle-water origin). When
+// set, viscous_snow_line → +∞ so the inverted rock allocation fills every slot and the ice
+// budget falls to the core instead of icing the Moon. Reset after the fit.
+let COMP_KINETIC = false;
+function set_kinetic(k: boolean): void { COMP_KINETIC = k; }
+function reset_kinetic(): void { COMP_KINETIC = false; }
+
 // FORMATION CLOCK (v6 budget wiring) — ONE supply-limited clock for igniters
 // AND non-igniters: t_form = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF). The local
 // accretion rate Ṁ_local = Ṁ·(R_disc/r) falls ∝1/r, so t scales UP with AU

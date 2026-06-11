@@ -107,6 +107,7 @@ function insolation_snow_line(M_star: number, L_obs?: number | null): number {
 // phase is exhausted by ~vintage 3 (b,c,d rock; e,f ice). Distinct from
 // `insolation_snow_line` (stellar irradiation) and `snow_line` (disc temp).
 function viscous_snow_line(M_star: number, f_disc: number): number {
+  if (COMP_KINETIC) return Infinity;   // hot impact-vapor disc — no ice condenses (all rock)
   return VISC_COEFF * Math.pow(Math.max(f_disc, 0) * Math.pow(M_star / SOL_M_PRIMORDIAL, 2.0), 1.0 / 3.0);
 }
 
