@@ -92,9 +92,9 @@ window.EXOPLANETS = [
     "id": "earth",
     "name": "Earth (Theia impact)",
     "ly": 0,
-    "comment": "Budget = proto-Earth (0.9 M_E dry rock) + Theia (0.13 M_E, ~15% water) — a DENSE debris cloud (Mars-sized impactor). Spin = the real post-impact 5-h day: λ≈2 (the PRIMORDIAL Sun is ~10 h at λ=1, NOT the current slow Sun). No fusion → no wind → the Davis Dam collapses tiny (cloud stays concentrated = dense), inverted, factory in the R_A cavity. KINETIC: hot disc → dry rock Moon, Theia's water → Earth's mantle. No special rules, universal dam laws, f_disc derived. FORMATION OUTPUT = a moonlet SWARM (innermost slot 3.7 R_E ≈ observed 3.83, + companions ~6.6/11/19 R_E, total ~0.022 M_E). The single observed Moon (0.0123 M_E) is the POST-FORMATION coalescent of that swarm (Ida-Canup-Stewart: innermost-massive sweeps the exterior; ~55% retained, rest re-accreted) — downstream evolution this FORMATION model deliberately doesn't compute, so the per-body residual vs one coalesced Moon is expected, not a misfit.",
-    "budget": {"rock":1.0105,"ice":0.0195,"hydrogen":0.0001},
-    "star": 0.0000026346,
+    "comment": "Theia impact. Total budget 1.063 M_E (per the Sol sim's Earth-formation allocation), of which the core (post-impact Earth) retains ~1.0 and ~0.063 is the debris M_d (lost+Moon). The debris is Theia's fragment, 34.5% water (Theia ~1.700 rock : 0.895 ice) — a DENSE cloud (Mars-sized impactor). Spin = the real post-impact 5-h day: λ≈2 (the PRIMORDIAL Sun is ~10 h at λ=1, NOT the current slow Sun). No fusion → no wind → the Davis Dam collapses tiny (cloud stays concentrated = dense), inverted, factory in the R_A cavity. KINETIC: hot disc → dry rock Moon, the debris' 34.5% water (~0.022 M_E) → Earth's mantle. No special rules, universal dam laws, f_disc derived. FORMATION OUTPUT = a moonlet SWARM (innermost slot ~3.7 R_E ≈ observed 3.83); the single observed Moon is its POST-FORMATION coalescent (Ida-Canup-Stewart) — downstream, not computed here, so the per-body residual vs one coalesced Moon is expected.",
+    "budget": {"rock":1.0412,"ice":0.0217,"hydrogen":0.0001},
+    "star": 0.0000030035,
     "spin": 2.0,
     "kinetic": true,
     "planets": [
