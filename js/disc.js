@@ -156,6 +156,92 @@ function breakup_spin(M_star) {
 function alfven_radius(M_star, spin) {
     return SOL_R_A_FORMATION * (M_star / SOL_M_PRIMORDIAL) * Math.pow(spin, 4.0 / 7.0);
 }
+// === CONDUCTOR LADDER ===============================================
+// Physical body radius (R⊕) spanning rock → gas-giant degeneracy plateau →
+// star. Piecewise mass–radius (terran / neptunian / jovian-plateau / stellar),
+// anchored at Earth (1 R⊕), Jupiter (~11 R⊕) and Sol (109 R⊕).
+function body_radius_earth(M_E) {
+    const ME_PER_MSUN = 332946.0;
+    const M_ign = 0.08 * ME_PER_MSUN; // hydrogen-burning limit in M⊕
+    if (M_E <= 2.0)
+        return Math.pow(M_E, 0.28); // terran
+    if (M_E <= 130.0)
+        return Math.pow(2, 0.28) * Math.pow(M_E / 2, 0.55); // neptunian
+    if (M_E <= M_ign) { // gas-giant plateau
+        const R130 = Math.pow(2, 0.28) * Math.pow(65, 0.55);
+        return R130 * Math.pow(M_E / 130, -0.02);
+    }
+    return 109.0 * Math.pow(M_E / ME_PER_MSUN, 0.8); // stellar main sequence
+}
+// Metallic-hydrogen conducting fraction (by mass) of the H envelope, from an
+// n=1 polytrope (R≈const across the giant regime — the polytrope gives that).
+// ρ(r)=ρ_c·sin(πr/R)/(πr/R), ρ_c=(π²/3)·ρ̄. Solve ρ(r_d)=RHO_METALLIC_H for the
+// dynamo radius, return the enclosed mass fraction. 0 if ρ_c never reaches ρ_t.
+function metallic_h_fraction(M_E, R_E) {
+    const M_g = M_E * EARTH_G_PER_ME;
+    const R_cm = R_E * EARTH_CM_PER_RE;
+    const rho_mean = M_g / ((4 / 3) * Math.PI * Math.pow(R_cm, 3)); // g/cc
+    const rho_c = (Math.PI * Math.PI / 3) * rho_mean;
+    if (rho_c <= RHO_METALLIC_H)
+        return 0;
+    const target = RHO_METALLIC_H / rho_c;
+    // sinc(πx) decreasing 1→0 on x∈(0,1); bisect for x=r_d/R.
+    let lo = 0, hi = 1, x = 0.5;
+    for (let i = 0; i < 60; i++) {
+        x = (lo + hi) / 2;
+        const f = Math.sin(Math.PI * x) / (Math.PI * x);
+        if (f > target)
+            lo = x;
+        else
+            hi = x;
+    }
+    const xi = Math.PI * x; // enclosed-mass fraction (n=1)
+    return Math.max(0, Math.min(1, (Math.sin(xi) - xi * Math.cos(xi)) / Math.PI));
+}
+// Total conductive mass (M⊕-equivalents), weighted by each conductor's relative
+// dynamo potential. Stellar: whole mass is plasma. Sub-stellar: molten-iron rock
+// (gated below IRON_MELT_MASS) + metallic hydrogen.
+function conductive_mass_earth(M_E, M_rock_E, M_h_E) {
+    const ME_PER_MSUN = 332946.0;
+    if (M_E >= 0.08 * ME_PER_MSUN)
+        return CONDUCT_PLASMA * M_E; // STELLAR: ionized plasma
+    const melt = Math.max(0, Math.min(1, M_E / IRON_MELT_MASS_E)); // iron-melt ramp (Mars dark)
+    const rock_cond = melt * M_rock_E;
+    const mh = metallic_h_fraction(M_E, body_radius_earth(M_E)) * M_h_E;
+    return CONDUCT_ROCK * rock_cond + CONDUCT_METALLIC_H * mh;
+}
+// Dynamo surface field relative to Sol (=1): saturated B ∝ (conductive mass)^exp,
+// organized by spin. Returns 0 if there is no conducting fluid (unmagnetized).
+function dynamo_field_rel(M_E, M_rock_E, M_h_E, spin) {
+    const ME_PER_MSUN = 332946.0;
+    const Mc = conductive_mass_earth(M_E, M_rock_E, M_h_E);
+    if (Mc <= 0 || spin <= 0)
+        return 0;
+    const Mc_sol = CONDUCT_PLASMA * ME_PER_MSUN; // Sol: all plasma
+    return Math.pow(Mc / Mc_sol, DYNAMO_SAT_EXP) * Math.pow(spin, 0.25); // spin organizes (saturating)
+}
+// Predictive surface field (Gauss): conductor ladder, organized by spin with a
+// dynamo onset (Rossby) — sub-stellar fields die below DYNAMO_SPIN_ONSET; stars
+// (plasma rung) run regardless via differential rotation. Earth-anchored (~0.5 G).
+function dynamo_surface_field(M_E, M_rock_E, M_h_E, spin) {
+    const ME_PER_MSUN = 332946.0;
+    const Mc = conductive_mass_earth(M_E, M_rock_E, M_h_E);
+    if (Mc <= 0 || spin <= 0)
+        return 0;
+    const Mc_earth = conductive_mass_earth(1.0, 0.32, 0.0); // Earth iron-core reference
+    const stellar = M_E >= 0.08 * ME_PER_MSUN;
+    const f_spin = stellar ? 1.0 : Math.min(1.0, Math.pow(spin / DYNAMO_SPIN_ONSET, 2.0));
+    return DYNAMO_B_EARTH * Math.pow(Mc / Mc_earth, DYNAMO_SAT_EXP) * f_spin;
+}
+// Does the magnetosphere PROJECT beyond the body? Surface magnetic pressure
+// B²/2μ₀ vs the external (formation-disc / ambient) pressure. ratio>1 ⇒ exterior
+// Alfvén Dam exists; ratio<1 ⇒ BURIED (field confined inside R_body), all matter
+// infalls to a single body. P_ext defaults to the formation disc pressure.
+function magnetosphere_projection(M_E, M_rock_E, M_h_E, spin, P_ext = P_EXT_FORMATION) {
+    const B = dynamo_surface_field(M_E, M_rock_E, M_h_E, spin); // Gauss
+    const P_mag = Math.pow(B * 1e-4, 2) / (2 * MU0_SI); // Pa (B: G→T)
+    return P_mag / P_ext;
+}
 function compression(M_star, spin, omega, f_disc) {
     const om = (omega === undefined) ? spin : omega;
     return alfven_radius(M_star, om) / disc_radius(M_star, spin, om, f_disc);

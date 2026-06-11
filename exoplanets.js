@@ -40,7 +40,7 @@ window.EXOPLANETS = [
     "spin": 1266.7703,
     "planets": [
       {"name":"Alpha Centauri B","r":23.52,"observed":302770,"core":true},
-      {"name":"Proxima Centauri","r":12950,"observed":40625,"kbo":true}
+      {"name":"Proxima Centauri","r":12950,"observed":40625}
     ]
   },
   {

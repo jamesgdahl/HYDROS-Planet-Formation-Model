@@ -206,6 +206,54 @@ const SOL_M_PRIMORDIAL = 1.0; // Sol IS the unit (1 = 1.14 current M_sun)
 const SOL_R_DISC = 30.069923;
 const SOL_R_A_FORMATION = 0.20;
 const SOL_INTERCEPT = 0.596;
+// Sol's collapse centrifugal radius (Terebey-Shu-Cassen R_c = j²/GM ∝ spin²/M).
+// Sets the self-similar nebula profile (Lynden-Bell & Pringle, γ=1): the disc
+// reservoir f_disc·M is the nebula mass between R_A and R_disc, so f_disc is
+// DERIVED from spin + budget, never fit to the observed planets. Anchored so
+// Sol (spin 1, M 1) yields f_disc = 0.0104 (reservoir 3951 M⊕, ~8.5% of M_d).
+const SOL_R_C = 337.01;
+// === CONDUCTOR LADDER (dynamo source) ===============================
+// A body's magnetic field comes from a rotating, electrically CONDUCTING FLUID.
+// Which budget component is conducting is set by the internal ρ·g (pressure)
+// crossing a phase boundary, GATED BY MASS — the same template as fusion
+// ignition, generalized to a ladder:
+//   • STELLAR (M ≥ IGNITION): H/He fully ionized → the whole mass is plasma.
+//   • GAS GIANT: H past ~1 Mbar → metallic hydrogen (n=1 polytrope crossing).
+//   • ROCKY: iron core molten/convecting (freezes below IRON_MELT_MASS → Mars).
+// Each conductor contributes "conductive mass" weighted by its RELATIVE
+// CONDUCTIVE POTENTIAL per Earth-mass (dynamo efficiency). These are the
+// calibration constants — tune so Sol/Jupiter/Earth surface fields emerge.
+const CONDUCT_ROCK = 1.0; // molten-iron rock — reference, per M⊕
+const CONDUCT_METALLIC_H = 1.0; // metallic hydrogen, per M⊕   [TO CALIBRATE]
+const CONDUCT_PLASMA = 1.0e-4; // ionized stellar plasma, per M⊕ (feeble per mass)
+const RHO_METALLIC_H = 0.7; // g/cc — metallic-H transition density (P≈1 Mbar)
+const IRON_MELT_MASS_E = 0.3; // M⊕ — iron core freezes below this (Mars goes dark)
+const DYNAMO_SAT_EXP = 0.16; // B ∝ (conductive mass)^this — saturated dynamo (R&C ~1/6)
+const EARTH_G_PER_ME = 5.972e27; // grams per Earth mass
+const EARTH_CM_PER_RE = 6.371e8; // cm per Earth radius
+// Magnetosphere PROJECTION gate. The field projects beyond the body (an exterior
+// Alfvén Dam exists) only when its surface magnetic pressure B²/2μ₀ beats the
+// external FORMATION pressure (the dense disc/nebula it's embedded in — NOT the
+// thin present-day wind). Below that the magnetopause is buried inside R_body:
+// the BURIED regime, where all matter just infalls to one body (Mercury, Venus,
+// pre-impact Earth). [TO CALIBRATE against the solar-system bodies + Theia.]
+const DYNAMO_B_EARTH = 0.5; // G — Earth iron-dynamo surface field (anchor)
+const DYNAMO_SPIN_ONSET = 0.02; // λ — dynamo onset; below this rotation B dies (Rossby)
+const P_EXT_FORMATION = 6.0e-4; // Pa — formation disc/nebula pressure the field must clear
+const MU0_SI = 1.2566e-6; // vacuum permeability (SI)
+// Davis-Dam WIND = luminosity flux + small magnetic-only baseline (literature-grounded:
+// the wind is magnetically amplified but SATURATES and is flux/luminosity-ceilinged —
+// Shoda+2020 Alfvén-wave magnetic-rotator winds; Vidotto+2013 M-dwarf winds stay weak
+// despite strong fields). So the field's strength feeds R_A (magnetopause), NOT the wind —
+// a strong-field M-dwarf still has a feeble wind ⇒ small R_disc + large R_A ⇒ inverted.
+const WIND_MAG_FRAC = 1.0e-3; // magnetic-only wind baseline, relative to Sol's flux
+const WIND_OMEGA_EXP = 0.57; // R_disc wind ram-pressure rotation dependence (Shoda+2020 P_w∝Ω^0.57)
+// Fully-convective α² dynamo boost: below ~0.35 M⊙ a low-mass star loses its tachocline and
+// runs a fully-convective dynamo saturating near kG (TRAPPIST-1 ~600 G vs Sun ~1 G). Applies
+// to H-dominated convective bodies (M-dwarfs / BDs / giants), NOT rocky iron-core dynamos.
+const DYNAMO_CONV_BOOST = 50.0; // field multiplier for fully-convective bodies [TO CALIBRATE]
+const FULLY_CONV_MASS_E = 116531.0; // M⊕ ≈ 0.35 M⊙ — fully-convective threshold
+const EARTH_RE_IN_AU = 4.2635e-5; // Earth radius in AU (for R_body vs R_A comparison)
 // CASCADE_RATIO derivation: each slot sits at the half-amplitude-at-45°
 // projection (1/(2√2)) of the previous slot's Gaussian HWHM (√(2 ln 2)).
 // Equivalent forms: 1 - √(ln 2)/2 = 1 - 1/(2√2)·√(2 ln 2). The factor

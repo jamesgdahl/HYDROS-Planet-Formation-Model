@@ -47,11 +47,6 @@ function cascade_sites(M_star, spin, min_slots, omega, f_disc) {
 }
 function assign_planets_to_slots(planets, M_star, spin, f_disc, omega) {
     const observed = planets.filter(p => (p.observed || 0) > 0);
-    // No cascade planets (e.g. an inverted system where every body is a pile-up
-    // factory product) ⇒ no cascade slots. Otherwise cascade_sites' ≥1-slot floor
-    // would mint a phantom unfilled "slot_0_lost" body alongside the factory chain.
-    if (observed.length === 0)
-        return [];
     const sites = cascade_sites(M_star, spin, observed.length, omega, f_disc);
     const site_pred = sites.map(s => slot_predicted_mass(s.r, M_star, spin, f_disc, undefined, omega));
     // Rocky inventory at each site (rock + ice). Used as match target for
@@ -2301,7 +2296,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
     const M = mass_from_budget(budget);
     const Z = metallicity_from_budget(budget);
     const f_rock = f_rock_from_budget(budget);
-    const inverted = is_inverted_budget(M);
+    let inverted = is_inverted_budget(M); // refined to the magnetopause regime in the physics-dam path
     set_composition(Z, f_rock);
     try {
         // Interior fit population: slot products only — core components (co-primary
@@ -2329,6 +2324,8 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         // bisection. Fallback (no primary mass / no Ω — sub-cascades): the legacy anchor.
         const usePhysicsDam = primaryMass != null && isFinite(primaryMass) && primaryMass > 0 && omega !== undefined;
         let R_disc_phys = null;
+        let R_A_mag = null;
+        let f_disc_derived = null;
         let spin;
         if (usePhysicsDam) {
             const co = planets.filter(p => p.core && (p.observed || 0) > 0);
@@ -2345,93 +2342,124 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             const M_d_sol = M_SUN_TO_EARTH - M_SUN_EARTH; // Sol's nebula (derived)
             const spin_eff = Math.min(omega, breakup_spin(M)); // disc rotation ≤ breakup
             const D = (M_d / M_d_sol) / Math.pow(Math.max(spin_eff, 1e-6), 4); // ∝ M_d / R_c², R_c ∝ spin²
-            let W = Math.pow(primaryMass, 3.54); // combined wind, Σ core elements
+            // DAVIS-DAM WIND = luminosity flux + small magnetic-only baseline (literature-grounded:
+            // magnetically amplified but SATURATING & flux-ceilinged — Shoda+2020, Vidotto+2013).
+            // Modulated by Ω^0.57 (wind ram pressure). Sol-normalized so Sol → 30 AU. The field's
+            // STRENGTH feeds R_A (magnetopause) below, NOT the wind — so an M-dwarf's strong field
+            // can't manufacture wind out of its feeble luminosity.
+            let flux = Math.pow(primaryMass, 3.54); // Σ core-element luminosity flux
             for (const p of co)
-                W += Math.pow((p.observed || 0) / M_SUN_EARTH, 3.54);
-            R_disc_phys = SOL_R_DISC * Math.sqrt(W * Math.pow(omega, 0.77)) * Math.pow(D, -0.5);
+                flux += Math.pow((p.observed || 0) / M_SUN_EARTH, 3.54);
+            // The magnetic-only baseline is a CORONAL stellar wind — it exists only for FUSING
+            // stars (M ≥ IGNITION). A non-fusing body (planet, e.g. post-Theia Earth) has no
+            // stellar wind, so its Davis-Dam wind is ~0 ⇒ R_disc collapses to the body and R_A
+            // (magnetopause) dominates ⇒ inverted (the Moon forms in the magnetospheric cavity).
+            const mag_base = (M >= IGNITION_MASS) ? WIND_MAG_FRAC : 0.0;
+            const W = (flux + mag_base) / (1.0 + WIND_MAG_FRAC); // + coronal baseline (stars only), Sol-normed
+            R_disc_phys = SOL_R_DISC * Math.sqrt(W * Math.pow(omega, WIND_OMEGA_EXP)) * Math.pow(D, -0.5);
             spin = spin_for_disc_radius(M, R_disc_phys, omega);
+            // MAGNETOPAUSE R_A = R_body·(field)^⅓, Sol-anchored to 0.2 AU. The dynamo field carries
+            // the fully-convective α² boost for H-rich low-mass bodies (M-dwarfs/giants) — so their
+            // strong field gives a LARGE R_A even as their wind (R_disc) stays feeble ⇒ inverted.
+            // R_body (mass–radius) carries the scale; field is a weak ⅙-power → ⅓ in R_A.
+            const M_E_body = M * M_SUN_TO_EARTH;
+            const fullyConv = M_E_body < FULLY_CONV_MASS_E && Z < 0.5; // convective, H-dominated (not rocky)
+            const B_rel = dynamo_field_rel(M_E_body, budget.rock, budget.hydrogen, spin_eff)
+                / Math.pow(M_SUN_TO_EARTH / M_SUN_EARTH, 0.16); // field relative to Sol (=1)
+            const B_RA = B_rel * (fullyConv ? DYNAMO_CONV_BOOST : 1.0);
+            R_A_mag = SOL_R_A_FORMATION
+                * (body_radius_earth(M_E_body) / body_radius_earth(M_SUN_TO_EARTH))
+                * Math.pow(Math.max(B_RA, 1e-9), 1.0 / 3.0);
+            // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
+            // dams over R_c=SOL_R_C·spin²/M. From spin + budget alone; bare ≡ populated disc.
+            const R_c = SOL_R_C * spin_eff * spin_eff / M;
+            const reservoir = M_d * (Math.exp(-R_A_mag / R_c) - Math.exp(-R_disc_phys / R_c));
+            f_disc_derived = Math.max(reservoir / (M * M_SUN_TO_EARTH), 1e-6);
+            // REGIME from the magnetopause: buried (R_A inside the body) treated as non-inverting
+            // here; magnetized → inverted iff the magnetosphere reaches past the Davis Dam.
+            const R_body_AU = body_radius_earth(M_E_body) * EARTH_RE_IN_AU;
+            inverted = (R_A_mag >= R_body_AU) && (R_A_mag >= R_disc_phys);
         }
         else {
             spin = (omega !== undefined)
                 ? spin_for_disc_radius(M, outermost, omega)
                 : spin_for_disc_radius(M, outermost);
         }
-        set_r_disc_norm(R_disc_phys != null ? R_disc_phys : outermost);
+        // DISC SCALE = the DERIVED dam, not the observed outermost body — so a bare system
+        // (no observed planets) sets its snow line / Ṁ / cascade from budget + spin alone,
+        // exactly as a forward model must. Falls back to outermost only if no physics dam.
+        const R_disc_scale = R_disc_phys != null ? R_disc_phys : outermost;
+        set_r_disc_norm(R_disc_scale);
         // UNIFIED RATE → snow line. B = relative mass budget; C = capture fraction
         // (1 self-fed, R_disc/R_Hill for a parent-fed sub-disc).
         const B = M / SOL_M_PRIMORDIAL;
-        const C = parent ? capture_fraction(outermost, parent.a, M, parent.M) : 1.0;
-        const Mdot_of = (fd) => accretion_rate(M, Z, f_rock, fd, outermost, B, C);
+        const C = parent ? capture_fraction(R_disc_scale, parent.a, M, parent.M) : 1.0;
+        const Mdot_of = (fd) => accretion_rate(M, Z, f_rock, fd, R_disc_scale, B, C);
         const om_for_RA = (omega !== undefined) ? omega : spin;
         const R_A_used = alfven_radius(M, om_for_RA);
         const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
-        // Bisection targets: the uniform-disc cascade slots. For an INVERTED system
-        // there is no cascade — its bodies are pile-up FACTORY products (exterior), so
-        // target those instead, closing f_disc to the observed pile chain.
-        const sel = (fit) => fit.slots.filter(s => s.filled && !s.external && !s.remnant && (inverted || !s.exterior)
+        // Fit-quality selector: filled slot products (inverted → pile-up factory products).
+        // Used for the residual readout, and (sub-cascade only) the f_disc bisection.
+        const sel = (fr) => fr.slots.filter(s => s.filled && !s.external && !s.remnant && (inverted || !s.exterior)
             && (immut.size ? immut.has(s.name) : true));
-        // f_disc bisection at a FIXED snow line (no per-iteration snow-line update —
-        // co-converging the snow line with the rock/ice split runs away: rocky moons
-        // → less ice → higher f_disc → higher Ṁ → snow line pushed out → more rocky).
-        // The sign-modulation is NOT applied here: it exempts the ISU targets (so the
-        // target masses are the clean allocation values) and otherwise conserves the
-        // non-target total, so the bisected f_disc is unaffected — it's applied once
-        // as a post-process below, only redistributing the non-ISU slots.
-        const bisectF = () => {
-            let lo = 0.0005, hi = 0.5, f = 0.01;
-            let fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
-            const tgt0 = sel(fit);
-            const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
-            if (totalTarget > 0) {
-                const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
-                const tol = Math.max(1e-6, 0.001 * smallest);
-                for (let i = 0; i < 60; i++) {
-                    const fm = Math.sqrt(lo * hi);
-                    const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega });
-                    const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
-                    f = fm;
-                    fit = f2;
-                    if (Math.abs(e) < tol)
-                        break;
-                    if (e > 0)
-                        hi = fm;
-                    else
-                        lo = fm;
-                }
-            }
-            return { f, fit };
-        };
-        // Pass A: all-icy baseline (snow line off) → a STABLE f_disc free of the
-        // rocky-suppression feedback. Pass B: freeze the snow line from that
-        // baseline's accretion rate, then bisect once more.
-        reset_snow_line();
-        const fA = bisectF().f;
         // TWO accretion regimes, two snow-line laws — both VISCOUS, so both SPIN-
-        // INDEPENDENT (viscous heating dominates bolometric during accretion; spin would
-        // only matter in the rare edge case where its extra photons out-heat viscosity):
-        //  • UNIFORM-DISC (normal regime, inner planets): the smooth viscous disc →
-        //    Mulders line (R_SL ∝ Ṁ^4/9).
-        //  • PILE-UP (inverted regime, and the normal outer-dam edge): the same viscous
-        //    heating but in a DIFFUSE pile, so Mulders (which back-solves a uniform-disc
-        //    equivalent density) over-reads — the diffuse density falls along the gradient
-        //    and the snow line is where Σ_pile drops to Σ_crit (pile_snow_line). Evaluated
-        //    at the spin-independent accretion structure (ref spin 1); only the wind-driven
-        //    water dam tracks the actual spin. Maxed against the bolometric line in case
-        //    irradiation out-heats the (dilute) pile's viscosity.
+        // INDEPENDENT (viscous heating dominates bolometric during accretion):
+        //  • UNIFORM-DISC (normal regime): the smooth viscous disc → Mulders line (R_SL ∝ Ṁ^4/9).
+        //  • PILE-UP (inverted regime): same viscous heating but in a DIFFUSE pile, so
+        //    Mulders (a uniform-disc equivalent density) over-reads — pile_snow_line tracks
+        //    Σ_pile → Σ_crit. Maxed against the bolometric line. (Ref spin 1; spin-independent.)
         const SNOW_REF_SPIN = 1.0;
-        const snowA = inverted
-            ? Math.max(pile_snow_line(M, fA, alfven_radius(M, SNOW_REF_SPIN), SNOW_REF_SPIN), irradiation_snow_line(M))
-            : mulders_snow_line(M, Mdot_of(fA));
-        set_snow_line(snowA);
-        // Supply-limited formation clock for EVERY system (igniters + sub-cascades):
-        // t = M_core·(r/R_disc)/(Z·Ṁ·K). Set Ṁ on every fit (the gate to non-igniters
-        // is gone — igniters use the same clock, the r/R_disc + gas-starvation in Ṁ
-        // handle both the ice-giant ladder and the compact-CPD timing). t exceeding
-        // the disc lifetime ⇒ the body can't accrete in time ⇒ collapse-formed.
-        set_mdot(Mdot_of(fA));
-        const passB = bisectF();
-        let f = passB.f;
-        const fit = passB.fit;
+        const snow_of = (fd) => inverted
+            ? Math.max(pile_snow_line(M, fd, alfven_radius(M, SNOW_REF_SPIN), SNOW_REF_SPIN), irradiation_snow_line(M))
+            : mulders_snow_line(M, Mdot_of(fd));
+        let f;
+        let fit;
+        if (f_disc_derived != null) {
+            // FORWARD MODEL: f_disc is the DERIVED dam reservoir (above) — a pure function of
+            // spin + budget, blind to the observed planets. One pass: f → Ṁ → snow line →
+            // formation clock → allocate. A bare system and a populated one get the IDENTICAL
+            // disc geometry, snow line and slot masses; the planets only fill what physics laid.
+            f = f_disc_derived;
+            set_snow_line(snow_of(f));
+            set_mdot(Mdot_of(f));
+            fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega });
+        }
+        else {
+            // SUB-CASCADE fallback (gas-giant satellite disc — parent-fed, no stellar dam):
+            // f_disc still closed to the parent-fed products by bisection. Targets: the
+            // uniform-disc cascade slots (inverted → the pile-up factory products).
+            const bisectF = () => {
+                let lo = 0.0005, hi = 0.5, ff = 0.01;
+                let fr = slot_aware_fit(planets, M, spin, ff, { auto_compress: false, omega });
+                const tgt0 = sel(fr);
+                const totalTarget = tgt0.reduce((a, s) => a + s.observed, 0);
+                if (totalTarget > 0) {
+                    const smallest = tgt0.reduce((m, s) => Math.min(m, s.observed), Infinity);
+                    const tol = Math.max(1e-6, 0.001 * smallest);
+                    for (let i = 0; i < 60; i++) {
+                        const fm = Math.sqrt(lo * hi);
+                        const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega });
+                        const e = sel(f2).reduce((a, s) => a + (s.predicted - s.observed), 0);
+                        ff = fm;
+                        fr = f2;
+                        if (Math.abs(e) < tol)
+                            break;
+                        if (e > 0)
+                            hi = fm;
+                        else
+                            lo = fm;
+                    }
+                }
+                return { f: ff, fit: fr };
+            };
+            reset_snow_line();
+            const fA = bisectF().f;
+            set_snow_line(snow_of(fA));
+            set_mdot(Mdot_of(fA));
+            const passB = bisectF();
+            f = passB.f;
+            fit = passB.fit;
+        }
         // The Davis dam is fixed by the budget − core − captured-planets (f_disc-
         // independent). The outermost body's distance from it is the fit-quality metric —
         // no longer forced to zero by an anchor.
@@ -2452,9 +2480,9 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const resid = tot > 0
             ? Math.abs(tgt.reduce((a, s) => a + (s.predicted - s.observed), 0)) / tot : 0;
         const om_eff = (omega !== undefined) ? omega : spin;
-        // Report the accretion rate / snow line ACTUALLY USED (from the all-icy
-        // baseline fA that froze the snow line), not the final mass-matching f_disc.
-        const Mdot = Mdot_of(fA);
+        // Report the accretion rate / snow line ACTUALLY USED — from the same f_disc
+        // (derived dam reservoir, or sub-cascade bisection) that drove the allocation.
+        const Mdot = Mdot_of(f);
         // MULTI-CORE DESTABILIZATION (Holman-Wiegert 1999, generalized to N elements):
         // core elements orbiting the barycentre clear the annulus [hw_in, hw_out] =
         // [0.3·a_min, 2.4·a_max] — outside the tightest pair's circum-element stable
@@ -2505,12 +2533,25 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             score: 0, stripping_q: null, stripping_rt: null,
             budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
             budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
-            budget_Mdot: Mdot, budget_snow: inverted ? Math.max(pile_snow_line(M, fA, alfven_radius(M, 1.0), 1.0), irradiation_snow_line(M)) : mulders_snow_line(M, Mdot), budget_C: C,
+            budget_Mdot: Mdot, budget_snow: inverted ? Math.max(pile_snow_line(M, f, alfven_radius(M, 1.0), 1.0), irradiation_snow_line(M)) : mulders_snow_line(M, Mdot), budget_C: C,
             budget_h_reservoir: H_reservoir, budget_h_captured: Hcons.captured,
             budget_h_dispersed: Hcons.dispersed, budget_h_exhausted: Hcons.exhausted,
             budget_barycentre: r_bary,
             budget_hw_inner: hw_in, budget_hw_outer: hw_out,
             budget_R_disc: R_disc_final, budget_dam_align: dam_align,
+            // CONDUCTOR-LADDER magnetosphere classification (exposed, non-driving for now):
+            // does the dynamo field project beyond the body → exterior Alfvén Dam, or is it
+            // BURIED (single-body infall)? Then magnetized → normal / inverted by R_A vs R_disc.
+            ...(() => {
+                const M_E = M * M_SUN_TO_EARTH;
+                const rock_E = budget.rock, h_E = budget.hydrogen;
+                const B_G = dynamo_surface_field(M_E, rock_E, h_E, om_eff);
+                const R_body_AU = body_radius_earth(M_E) * EARTH_RE_IN_AU;
+                const R_A_m = R_A_mag != null ? R_A_mag : alfven_radius(M, om_eff);
+                const regime = (R_A_m < R_body_AU) ? 'buried'
+                    : (R_A_m >= R_disc_final ? 'inverted' : 'normal');
+                return { budget_field_G: B_G, budget_R_A_mag: R_A_m, budget_R_body_AU: R_body_AU, budget_regime: regime };
+            })(),
         };
     }
     finally {
