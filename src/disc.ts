@@ -47,14 +47,25 @@ function inversion_threshold_density(M_star: number, omega: number): number {
 
 function disc_radius(M_star: number, spin: number, omega?: number, f_disc?: number): number {
   const Omega = (omega === undefined) ? spin : omega;
+  // UNIVERSAL DAVIS DAM (one law, all scales): the wind-balance radius where the OUTWARD
+  // pressure equals the INWARD nebula density. Outward = combined stellar FLUX (Σ M_i^3.54,
+  // parked) + a coronal magnetic-wind baseline (fusing stars only); inward = the nebula
+  // density D = (M_d / M_d_sol) / spin⁴ (Terebey-Shu-Cassen centrifugal spread, capped at
+  // breakup). No inverted-plunge kludge: a feeble-wind body simply gets a small R_disc and
+  // the magnetosphere (R_A) overtakes it ⇒ inverted falls out. Sol (M_d_sol, flux 1, spin 1)
+  // → 30 AU. Needs the parked dam-inputs (COMP_NEBULA, COMP_FLUX); else legacy fallback.
+  if (COMP_NEBULA > 0 && COMP_FLUX >= 0) {
+    const M_d_sol = M_SUN_TO_EARTH - M_SUN_EARTH;
+    const spin_eff = Math.min(Omega, breakup_spin(M_star));
+    const D = (COMP_NEBULA / M_d_sol) / Math.pow(Math.max(spin_eff, 1e-6), 4);
+    const mag_base = (M_star >= IGNITION_MASS) ? WIND_MAG_FRAC : 0.0;  // coronal wind: fusing stars only
+    const W = (COMP_FLUX + mag_base) / (1.0 + WIND_MAG_FRAC);          // Sol-normed outward push
+    return SOL_R_DISC * Math.sqrt(W * Math.pow(Omega, WIND_OMEGA_EXP)) * Math.pow(D, -0.5);
+  }
+  // LEGACY fallback ({M,D,spin} catalog, no parked nebula): the old density-power form.
   const D = Math.pow(spin, 1.5);
   const R_density = SOL_R_DISC * Math.pow(M_star / SOL_M_PRIMORDIAL, 1.77)
        * Math.pow(Omega, 0.385) * Math.pow(D, -0.5);
-  // INVERTED PLUNGE: once the density is just enough to push the wind-balance
-  // edge to the magnetosphere (R_density ≤ R_A — the system has inverted), the
-  // density's job is done; the disc WEIGHT f_disc holds and plunges the Davis
-  // Dam BELOW R_A to R_A·drop(f_disc). So the density never has to do the
-  // (impossible) full drop to the innermost planet by pressure alone.
   if (f_disc !== undefined && f_disc > 0) {
     const R_A = alfven_radius(M_star, Omega);
     if (R_A >= R_density) return R_A * inverted_dam_drop(f_disc);
@@ -165,7 +176,22 @@ function breakup_spin(M_star: number): number {
 }
 
 function alfven_radius(M_star: number, spin: number): number {
-  return SOL_R_A_FORMATION * (M_star / SOL_M_PRIMORDIAL) * Math.pow(spin, 4.0 / 7.0);
+  // UNIVERSAL ALFVÉN DAM (one law, all scales): the magnetic field's reach — NOT a pressure
+  // balance (a magnetosphere can't be compressed by external pressure; that's the Davis Dam).
+  // R_A = R_body · (dynamo field)^⅓, the field from the conductor ladder (plasma / metallic-H
+  // / iron, set by composition) organized by spin, with the fully-convective α² boost for
+  // H-rich low-mass bodies. R_body (mass–radius) carries the scale. Sol (solar comp, spin 1)
+  // → 0.2 AU. Composition comes from the parked context (COMP_Z/F_ROCK, solar by default).
+  const M_E = M_star * M_SUN_TO_EARTH;
+  const rock = M_E * COMP_Z * COMP_F_ROCK;
+  const H = M_E * (1.0 - COMP_Z);
+  const B_REL_SOL = Math.pow(M_SUN_TO_EARTH / M_SUN_EARTH, DYNAMO_SAT_EXP);
+  const B_rel = dynamo_field_rel(M_E, rock, H, spin) / B_REL_SOL;
+  const fullyConv = M_E < FULLY_CONV_MASS_E && COMP_Z < 0.5;
+  const B_RA = B_rel * (fullyConv ? DYNAMO_CONV_BOOST : 1.0);
+  return SOL_R_A_FORMATION
+    * (body_radius_earth(M_E) / body_radius_earth(M_SUN_TO_EARTH))
+    * Math.pow(Math.max(B_RA, 1e-9), 1.0 / 3.0);
 }
 
 // === CONDUCTOR LADDER ===============================================

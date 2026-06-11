@@ -18,6 +18,8 @@ function cascade_slot_positions(M_star: number, spin: number,
   // R_disc) — the feeble-wind M-dwarf case; the compressed reservoir packs
   // max(11, min_slots). Normal regime: the ladder terminates at R_A.
   const om = (omega === undefined) ? spin : omega;
+  // Both dams are the universal laws now (disc_radius = outward pressure ⇄ density,
+  // alfven_radius = magnetic field reach) — the factory marches from the real Davis Dam.
   const R_disc = disc_radius(M_star, spin, om, f_disc);
   const R_A_phys = alfven_radius(M_star, om);
   const out: number[] = [];

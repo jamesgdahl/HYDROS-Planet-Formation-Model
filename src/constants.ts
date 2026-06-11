@@ -79,6 +79,18 @@ let COMP_KINETIC = false;
 function set_kinetic(k: boolean): void { COMP_KINETIC = k; }
 function reset_kinetic(): void { COMP_KINETIC = false; }
 
+// DAM INPUTS (context, like composition). The two universal dam laws live in disc_radius
+// (Davis = outward pressure ⇄ density) and alfven_radius (Alfvén = magnetic field reach).
+// They need two per-system INPUTS the bare (M, spin) signature can't carry: the nebula mass
+// M_d = budget − core (sets the density the wind pushes against) and the combined outward
+// FLUX Σ(M_i)^3.54 (super-linear in mass, so a binary's two cores ≠ one big one). Parked
+// here as context — NOT the dam outputs (those are computed from these). Negative sentinel
+// = legacy {M,D,spin} fallback. Always reset after the fit.
+let COMP_NEBULA = -1.0;   // M_d, nebula mass in M⊕ (budget − core)
+let COMP_FLUX = -1.0;     // Σ (M_core_i / M☉)^3.54, the combined stellar-flux wind
+function set_dam_inputs(m_d: number, flux: number): void { COMP_NEBULA = m_d; COMP_FLUX = flux; }
+function reset_dam_inputs(): void { COMP_NEBULA = -1.0; COMP_FLUX = -1.0; }
+
 // FORMATION CLOCK (v6 budget wiring) — ONE supply-limited clock for igniters
 // AND non-igniters: t_form = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF). The local
 // accretion rate Ṁ_local = Ṁ·(R_disc/r) falls ∝1/r, so t scales UP with AU

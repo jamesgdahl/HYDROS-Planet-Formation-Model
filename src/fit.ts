@@ -2285,7 +2285,6 @@ function budgetFit(planets: Planet[], budget: Budget,
     const usePhysicsDam = primaryMass != null && isFinite(primaryMass) && primaryMass > 0 && omega !== undefined;
     let R_disc_phys: number | null = null;
     let R_A_mag: number | null = null;
-    let omega_fit: number | undefined = undefined;
     let f_disc_derived: number | null = null;
     let spin: number;
     if (usePhysicsDam) {
@@ -2299,41 +2298,20 @@ function budgetFit(planets: Planet[], budget: Budget,
       // budget − core (a derived value). The spin is capped at the fragmentation
       // (breakup) limit: a core can't rotate faster — the excess angular momentum goes
       // into the co-primary, so a binary's disc isn't spun out to absurd radii.
-      const M_d = Math.max(M * M_SUN_TO_EARTH - M_core_earth, 1e-3);
-      const M_d_sol = M_SUN_TO_EARTH - M_SUN_EARTH;                   // Sol's nebula (derived)
-      const spin_eff = Math.min(omega as number, breakup_spin(M));   // disc rotation ≤ breakup
-      const D = (M_d / M_d_sol) / Math.pow(Math.max(spin_eff, 1e-6), 4);   // ∝ M_d / R_c², R_c ∝ spin²
-      // DAVIS-DAM WIND = luminosity flux + small magnetic-only baseline (literature-grounded:
-      // magnetically amplified but SATURATING & flux-ceilinged — Shoda+2020, Vidotto+2013).
-      // Modulated by Ω^0.57 (wind ram pressure). Sol-normalized so Sol → 30 AU. The field's
-      // STRENGTH feeds R_A (magnetopause) below, NOT the wind — so an M-dwarf's strong field
-      // can't manufacture wind out of its feeble luminosity.
-      let flux = Math.pow(primaryMass as number, 3.54);              // Σ core-element luminosity flux
+      const M_d = Math.max(M * M_SUN_TO_EARTH - M_core_earth, 1e-3);   // nebula = budget − core
+      const spin_eff = Math.min(omega as number, breakup_spin(M));     // disc rotation ≤ breakup
+      // Combined outward FLUX (Σ core-element luminosity, super-linear in mass).
+      let flux = Math.pow(primaryMass as number, 3.54);
       for (const p of co) flux += Math.pow((p.observed || 0) / M_SUN_EARTH, 3.54);
-      // The magnetic-only baseline is a CORONAL stellar wind — it exists only for FUSING
-      // stars (M ≥ IGNITION). A non-fusing body (planet, e.g. post-Theia Earth) has no
-      // stellar wind, so its Davis-Dam wind is ~0 ⇒ R_disc collapses to the body and R_A
-      // (magnetopause) dominates ⇒ inverted (the Moon forms in the magnetospheric cavity).
-      const mag_base = (M >= IGNITION_MASS) ? WIND_MAG_FRAC : 0.0;
-      const W = (flux + mag_base) / (1.0 + WIND_MAG_FRAC);          // + coronal baseline (stars only), Sol-normed
-      R_disc_phys = SOL_R_DISC * Math.sqrt(W * Math.pow(omega as number, WIND_OMEGA_EXP)) * Math.pow(D, -0.5);
-      // MAGNETOPAUSE R_A = R_body·(field)^⅓, Sol-anchored to 0.2 AU. The dynamo field carries
-      // the fully-convective α² boost for H-rich low-mass bodies (M-dwarfs/giants) — so their
-      // strong field gives a LARGE R_A even as their wind (R_disc) stays feeble ⇒ inverted.
-      // R_body (mass–radius) carries the scale; field is a weak ⅙-power → ⅓ in R_A.
+      // Park the dam INPUTS (nebula mass, flux) as context, then the TWO UNIVERSAL LAWS
+      // compute the dams — no inline formula, no override, no back-solve. The cascade and
+      // allocations call the SAME disc_radius/alfven_radius, so the factory marches from the
+      // real Davis Dam and the regime is the real magnetopause vs Davis comparison.
+      set_dam_inputs(M_d, flux);
+      R_disc_phys = disc_radius(M, omega as number, omega as number);   // Davis = outward pressure ⇄ density
+      R_A_mag = alfven_radius(M, omega as number);                      // Alfvén = magnetic field reach
+      spin = omega as number;                                           // real spin everywhere — no fake geometry spin
       const M_E_body = M * M_SUN_TO_EARTH;
-      const fullyConv = M_E_body < FULLY_CONV_MASS_E && Z < 0.5;     // convective, H-dominated (not rocky)
-      const B_rel = dynamo_field_rel(M_E_body, budget.rock, budget.hydrogen, spin_eff)
-        / Math.pow(M_SUN_TO_EARTH / M_SUN_EARTH, 0.16);             // field relative to Sol (=1)
-      const B_RA = B_rel * (fullyConv ? DYNAMO_CONV_BOOST : 1.0);
-      R_A_mag = SOL_R_A_FORMATION
-        * (body_radius_earth(M_E_body) / body_radius_earth(M_SUN_TO_EARTH))
-        * Math.pow(Math.max(B_RA, 1e-9), 1.0 / 3.0);
-      // Feed the OLD slot/cascade formulas an EFFECTIVE (spin, ω) that reproduce the NEW
-      // dams (R_A_mag, R_disc_phys), so slot_aware_fit/cascade mint at the magnetopause
-      // geometry without rewriting cascade/allocation. (Sol: ω_fit=1, spin=1 — identity.)
-      omega_fit = omega_for_alfven_radius(M, R_A_mag);
-      spin = spin_for_disc_radius(M, R_disc_phys, omega_fit);
       // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
       // dams over R_c=SOL_R_C·spin²/M. From spin + budget alone; bare ≡ populated disc.
       const R_c = SOL_R_C * spin_eff * spin_eff / M;
@@ -2396,7 +2374,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       // huge snow line forces the all-rock allocation.
       set_snow_line(kinetic ? 1e9 : snow_of(f));
       set_mdot(Mdot_of(f));
-      const om_slot = omega_fit ?? omega;
+      const om_slot = omega;
       fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot });
       // INVERTED in-situ: the observed bodies are the dense pile-up's in-situ factory
       // products. The self-similar reservoir under-counts that compressed pile, so close
@@ -2535,5 +2513,5 @@ function budgetFit(planets: Planet[], budget: Budget,
         return { budget_field_G: B_G, budget_R_A_mag: R_A_m, budget_R_body_AU: R_body_AU, budget_regime: regime };
       })(),
     };
-  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_kinetic(); }
+  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_kinetic(); reset_dam_inputs(); }
 }
