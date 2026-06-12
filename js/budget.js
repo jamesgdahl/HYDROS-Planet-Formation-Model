@@ -129,6 +129,14 @@ function disc_fraction_centrifugal(lambda) {
     const beta = rotational_beta(lambda);
     return Math.min(F_DISC_MAX, 0.305 * Math.pow(beta, 0.715));
 }
+// CLOSE-BINARY separation a_bin = A_BIN_COEF·λ² — the Terebey-Shu-Cassen centrifugal radius
+// (R_c = j²/GM ∝ spin²) of the inner pair: the SAME spin law that flings the WIDE fragment to
+// R_c = R_wind·λ², here for the close binary. A_BIN_COEF is the single anchor (Alpha Cen A-B
+// sits at 23.52 AU for λ=5.7 ⇒ 23.52/5.7² = 0.724).
+const A_BIN_COEF = 0.724;
+function close_binary_separation(lambda) {
+    return A_BIN_COEF * lambda * lambda;
+}
 function three_budget_split(b, lambda) {
     const M = mass_from_budget(b);
     const f_disc = disc_fraction_centrifugal(lambda);

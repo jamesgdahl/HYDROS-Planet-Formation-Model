@@ -2216,6 +2216,23 @@ function core_barycentre(primaryMass: number | undefined | null, planets: Planet
 function budgetFit(planets: Planet[], budget: Budget,
                    lambda?: number | null, parent?: BudgetParent | null,
                    primaryMass?: number | null): BudgetFitResult {
+  // FORWARD BINARY: a fragmenting stellar core (β = BETA_SOL·λ² ≥ 0.274, the bar-mode limit)
+  // with NO observed co-primary synthesizes its PREDICTED co-primary, so it flows through the
+  // barycentre / Holman-Wiegert / budget / display exactly like an observed one — Alpha Cen
+  // assembles A + B + Proxima from inputs alone. Mass = the centrifugal split (core =
+  // (1−f_disc_centrifugal)·budget; the remainder is the disc), separation a_bin ∝ λ² (the
+  // centrifugal radius j²/GM ∝ spin², the same law that flings the wide fragment to R_c).
+  // Guarded on M_B>0 so an artifact-high spin on a low-mass star — too little budget for a
+  // sibling — does NOT spuriously split (e.g. gj667).
+  if (parent == null && primaryMass != null && isFinite(primaryMass)
+      && primaryMass * M_SUN_EARTH >= M_STELLAR_BOUNDARY
+      && lambda != null && core_fragments(lambda)
+      && !planets.some(p => p.core && (p.observed || 0) > 0)) {
+    const M_B = (1 - disc_fraction_centrifugal(lambda)) * mass_from_budget(budget) * M_SUN_TO_EARTH
+      - primaryMass * M_SUN_EARTH;
+    if (M_B > 0) planets = [...planets,
+      { name: "Co-primary (predicted)", r: close_binary_separation(lambda), observed: M_B, core: true }];
+  }
   // Re-reference every body to the core barycentre: the dams are emitted from it and
   // products orbit it, so positions are measured from the barycentre, not the primary.
   const r_bary = core_barycentre(primaryMass, planets);
@@ -2281,26 +2298,16 @@ function budgetFit(planets: Planet[], budget: Budget,
     let f_disc_derived: number | null = null;
     let spin: number;
     if (usePhysicsDam) {
+      // Co-primaries — OBSERVED or forward-SYNTHESIZED above — make this a fragmenting binary
+      // (⇒ the centrifugal dam fires in disc_radius). The synthesis already gated on the spin
+      // fragmentation criterion + a positive sibling mass, so a plain co.length test suffices.
       const co = planets.filter(p => p.core && (p.observed || 0) > 0);
-      // Fragmentation is a PHYSICS decision from spin (β = BETA_SOL·λ² ≥ 0.274, the bar-mode
-      // limit), not merely a response to OBSERVED co-primaries — so the forward model self-
-      // fragments: Alpha Cen from inputs alone (λ=5.7 ⇒ β=0.275) tears its core in two and
-      // flings the wide fragment to the centrifugal dam, forming Proxima at slot 0. Restricted
-      // to real stellar PRIMARIES (M ≥ 0.08 M☉, top-level system, ω known) so a high-spin moon
-      // disc or sub-cascade can't spuriously split into co-stars.
-      const frag_from_spin = parent == null
-        && (primaryMass as number) * M_SUN_EARTH >= M_STELLAR_BOUNDARY
-        && omega !== undefined && core_fragments(omega);
-      set_fragmenting(co.length > 0 || frag_from_spin);   // observed co-primary OR spin says so
-      // A FRAGMENTING core hides a co-primary inside the budget. With B OBSERVED, add it to
-      // the core. FORWARD (no observed co-primary) PREDICT the split from the centrifugal
-      // physics: the core keeps (1 − f_disc_centrifugal) of the budget, the rest is the disc.
-      // Without this the co-primary's ~0.9 M☉ stays in the nebula, f_disc balloons (0.52 vs
-      // 0.12) and every outer slot over-forms into a phantom giant/star. disc_fraction_
-      // centrifugal(λ=5.7)=0.121 ⇒ predicted B ≈ 0.905 M☉ (observed 0.909) — the split falls out.
-      const M_core_earth = (co.length === 0 && frag_from_spin)
-        ? (1 - disc_fraction_centrifugal(omega as number)) * M * M_SUN_TO_EARTH
-        : (primaryMass as number) * M_SUN_EARTH + co.reduce((a, p) => a + (p.observed || 0), 0);
+      set_fragmenting(co.length > 0);
+      // Core = primary + every co-primary (observed, or the forward-synthesized fragment). The
+      // synthesized B carries the centrifugal-split mass, so the co-primary's ~0.9 M☉ leaves the
+      // nebula and f_disc stays ~0.12 (not 0.52) — no inflated-budget O-class phantoms.
+      const M_core_earth = (primaryMass as number) * M_SUN_EARTH
+        + co.reduce((a, p) => a + (p.observed || 0), 0);
       // DERIVED nebula density (no calibration constant). The disc mass is the nebula
       // M_d = budget − core (budget minus the stars). It spreads over the centrifugal
       // disc (Terebey-Shu-Cassen R_c = j²/GM ∝ spin² — "extended by spin"), giving the
@@ -2451,10 +2458,10 @@ function budgetFit(planets: Planet[], budget: Budget,
     // sibling fragment in the CORE bucket (it drives the wind/dam, but isn't extra disc-
     // hosting mass). Summing A+B over-allocates H ~2× (Proxima +125%). Single stars: no
     // co-primary ⇒ M_disc_host = M (unchanged).
+    // The planet-forming disc is hosted by the PRIMARY; the co-primary (observed or forward-
+    // synthesized) is a core-bucket sibling, not extra disc-hosting mass.
     const hasCoPrimary = planets.some(p => p.core && (p.observed || 0) > 0);
-    // The planet-forming disc is hosted by the PRIMARY (the co-primary — observed OR predicted
-    // forward by the fragmentation — is a core-bucket sibling, not disc-hosting mass).
-    const M_disc_host = ((hasCoPrimary || COMP_FRAGMENTING) && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
+    const M_disc_host = (hasCoPrimary && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
       ? primaryMass : M;
     const H_reservoir = f * m_star_earth(M_disc_host);
     const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
