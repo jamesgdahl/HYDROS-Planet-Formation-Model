@@ -699,7 +699,7 @@ function calculate() {
       <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? '—' : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
       <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
-      <td>${r_form > 0 && M_star > 0 ? fmt(Math.sqrt(r_form * r_form * r_form / M_star), 2) + (s.filled && r_now > 0 && Math.abs(r_now - r_form) > 1e-9 ? ' / ' + fmt(Math.sqrt(r_now * r_now * r_now / M_star), 2) : '') : '—'}</td>
+      <td>${s.core_component ? '—' : (r_form > 0 && M_star > 0 ? fmt(Math.sqrt(r_form * r_form * r_form / M_star), 2) + (s.filled && r_now > 0 && Math.abs(r_now - r_form) > 1e-9 ? ' / ' + fmt(Math.sqrt(r_now * r_now * r_now / M_star), 2) : '') : '—')}</td>
       <td>${s.t_form > 0 ? fmtTime(s.t_form) : '—'}</td>
       <td>${fmtM(s.rock)}</td>
       <td>${fmtM(s.ice)}</td>
@@ -769,17 +769,23 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
 
   const rho = 1 - Math.sqrt(Math.log(2)) / 2;          // 0.5837
   const alpha = Math.PI / (-Math.log(rho));            // 5.836
-  // The two dams are a SEE-SAW, not independent. ampRatio = w_Alfvén/w_Maas
-  // defaults to compression C = R_A/R_disc (no cap). The dominant waveform
-  // is normalized to 100% and the weaker is scaled down by the ratio:
-  // normal regime (C<1) → Davis at 1.0, Alfvén = C; inverted (C>1) → Alfvén
-  // at 1.0, Davis = 1/C (the gas-pressure dam is suppressed as the
-  // magnetosphere expands past it); equal only at the C=1 crossover.
+  // The waveform amplitude DECAYS from each dam — the resonance diminishes into the cavity
+  // (this is the availability envelope, the same decay that sets the masses): amp ∝
+  // (dist/R_dam)^DECAY, DECAY = ln2/(−ln ρ) ≈ 1.29 (half-amplitude per ρ-step). Maas decays
+  // INWARD from R_disc; each Alfvén comb decays OUTWARD from its core's R_A. (Phase is NOT
+  // compensated — the natural product env·cos peaks ~3.6% off the cos-antinode.)
+  const DECAY = Math.log(2) / (-Math.log(rho));        // ≈ 1.286
+  // PHYSICAL dam_weights see-saw (matches cascade.ts dam_weights, which the fit uses):
+  // the dominant dam is normalized to 1, the weaker scaled by C = R_A/R_disc. Normal
+  // (C<1): wM=1, wA=C — so a feeble-magnetosphere star like Sol (C≈0.007) is >99% Maas
+  // and the Alfvén comb is correctly near-invisible. Inverted (C≥1): Alfvén dominates,
+  // wA=1, wM=1/C. ampRatio stays as an OPTIONAL exploratory multiplier on the Alfvén comb
+  // (default 1 = the physical weight). The old default-1 wA wrongly drew Sol Alfvén-heavy.
   const C = R_A / R_disc;
-  if (ampRatio == null || !isFinite(ampRatio) || ampRatio < 0) ampRatio = C;
-  const wA = ampRatio >= 1 ? 1 : ampRatio;   // dominant → 100%
-  const wM = ampRatio >= 1 ? 1 / ampRatio : 1;
-  const maas = r => wM * Math.cos(alpha * Math.log(R_disc / r));    // Davis reverberation (inward)
+  if (ampRatio == null || !isFinite(ampRatio) || ampRatio < 0) ampRatio = 1;
+  const wM = C >= 1 ? 1 / C : 1;
+  const wA = (C >= 1 ? 1 : C) * ampRatio;
+  const maas = r => wM * Math.pow(Math.min(r / R_disc, 1), DECAY) * Math.cos(alpha * Math.log(R_disc / r));  // Maas wave, decays inward from R_disc
   // One Alfvén waveform PER CORE element (each fragment's magnetosphere), centred on the
   // core's barycentre-relative position d_i and anchored at its own R_A_i (from its mass).
   // A single star (one core at d=0) is the familiar wA·cos(α·ln(r/R_A)); a binary
@@ -797,7 +803,15 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
     })).filter(cw => isFinite(cw.RA) && cw.RA > 0);
     if (!coreWaves.length) coreWaves = [{ name: 'core', d: 0, RA: R_A }];
   }
-  const alfvenOf = cw => r => wA * Math.cos(alpha * Math.log(Math.max(Math.abs(r - cw.d), 1e-9) / cw.RA));
+  // Each Alfvén comb is LOCAL to its core: an amplitude envelope decays it away from
+  // R_A (the magnetosphere doesn't reach the outer dam), so it neither piles onto the
+  // Maas peak at slot 0 nor blows up. The inner distance is clamped so the comb doesn't
+  // oscillate into a singularity right at the core position.
+  const alfvenOf = cw => r => {
+    const d = Math.max(Math.abs(r - cw.d), cw.RA * 0.2);   // clamp inner: bound the comb at the core
+    const env = Math.pow(Math.min(cw.RA / d, 1), DECAY);   // decays OUTWARD from this core's R_A
+    return wA * env * Math.cos(alpha * Math.log(d / cw.RA));  // per-core Alfvén wave
+  };
   const alfven = r => coreWaves.reduce((a, cw) => a + alfvenOf(cw)(r), 0);  // total Alfvén (Σ cores)
   const sup = r => maas(r) + alfven(r);                // NET (signed) superposition
 
@@ -807,8 +821,13 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
   const plotW = W - ML - MR, plotH = H - MT - MB;
   const umin = Math.log(rmin), umax = Math.log(rmax);
   const X = r => ML + (Math.log(r) - umin) / (umax - umin) * plotW;
-  const aLim = Math.max(1.05, wM + wA) * 1.05;   // symmetric range for the signed net
-  const Y = a => MT + (aLim - a) / (2 * aLim) * plotH;
+  const aLim = Math.max(1.05, wM + wA * coreWaves.length) * 1.05;   // fits the net (Maas + Σ Alfvén)
+  // SYMLOG Y: the amplitude decays steeply inward, so on a linear axis the inner antinodes
+  // collapse onto the zero line. Signed-log (linear within ±symlin, log beyond) keeps them
+  // visible while resolving the sign flips. a=0 → centre line; ±aLim → top/bottom.
+  const symlin = aLim * 0.005;
+  const symMax = Math.log(1 + aLim / symlin);
+  const Y = a => MT + (1 - (Math.sign(a) * Math.log(1 + Math.abs(a) / symlin)) / symMax) / 2 * plotH;
 
   const N = 500;
   const poly = fn => {
@@ -860,7 +879,11 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
     let i0 = 0, i1 = G;
     for (let z = 0; z < zci.length - 1; z++)
       if (zci[z] <= gi && gi <= zci[z + 1]) { i0 = zci[z]; i1 = zci[z + 1]; break; }
-    const v = sup(s.slot_r), cx = X(s.slot_r), cy = Y(v);
+    // Marker sits at the planet's ACTUAL observed orbit (observed_r), not the formation
+    // slot — so the dot shows where the planet really is; its offset from the antinode is
+    // the post-formation displacement. Empty slots fall back to slot_r.
+    const pr = (s.filled && isFinite(s.observed_r) && s.observed_r > 0) ? s.observed_r : s.slot_r;
+    const v = sup(pr), cx = X(pr), cy = Y(v);
     const half = !Number.isInteger(s.slot_n);
     const st = s._chart || { c: s.filled ? '#e0b000' : '#666', t: s.filled ? 'planet' : 'empty slot' };
     const nm = s.filled ? s.name : `(slot ${s.slot_n})`;
@@ -882,7 +905,7 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
   const sw = (c, t) => `<span style="color:${c}">●</span> ${t}`;
   el.innerHTML =
     `<h3 style="margin:6px 0">Alfvén–Maas Superposition <span style="font-weight:normal;font-size:0.8em;color:#999">(exploratory — amplitudes not yet calibrated)</span></h3>`
-    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">Alfvén/Maas ratio (dam see-saw; default C=${C.toFixed(3)} → ${ampRatio > 1 ? 'Alfvén-dominant' : ampRatio < 1 ? 'Davis-dominant' : 'balanced'}, dominant=100%): `
+    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">Alfvén ×multiplier (default 1 = physical dam_weights see-saw: wA=${(C>=1?1:C).toExponential(1)}, wM=${(C>=1?(1/C):1).toFixed(2)}, C=R_A/R_disc=${C.toExponential(1)}; raise to explore): `
     + `<input type="number" step="0.05" min="0" value="${(+ampRatio).toFixed(3)}" style="width:6rem;padding:0.2rem" onchange="renderWaveform(window._wf.fit, window._wf.R_disc, window._wf.R_A, window._wf.r_snow, parseFloat(this.value))"></div>`
     + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px;line-height:1.7">`
       + sw('#9aa0a6', 'core remnant') + ' &nbsp; ' + sw('#d8c49a', 'rocky HZ') + ' &nbsp; ' + sw('#3b7be0', 'HZ + delivery')
@@ -902,7 +925,7 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
     + `<text x="${ML}" y="15" font-size="11" fill="#5aa9e6" style="pointer-events:none">— Maas (Davis, w=${wM.toFixed(2)})</text>`
     + `<text x="${ML + 165}" y="15" font-size="11" fill="#e6695a" style="pointer-events:none">— Alfvén${coreWaves.length > 1 ? ' ×' + coreWaves.length + ' cores' : ''} (w=${wA.toFixed(2)})</text>`
     + `<text x="${ML + 310}" y="15" font-size="11" fill="#b07cff" style="pointer-events:none">— net superposition</text>`
-    + `<text x="16" y="${(MT + plotH / 2).toFixed(1)}" font-size="10" fill="#aaa" transform="rotate(-90 16 ${(MT + plotH / 2).toFixed(1)})" text-anchor="middle" style="pointer-events:none">net amplitude</text>`
+    + `<text x="16" y="${(MT + plotH / 2).toFixed(1)}" font-size="10" fill="#aaa" transform="rotate(-90 16 ${(MT + plotH / 2).toFixed(1)})" text-anchor="middle" style="pointer-events:none">net amplitude (symlog)</text>`
     + `<text x="${(ML + plotW / 2).toFixed(1)}" y="${H - 6}" font-size="10" fill="#aaa" text-anchor="middle" style="pointer-events:none">AU (log scale)</text>`
     + `</svg>`;
 }

@@ -228,6 +228,23 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     for (const s of slot_data) {
         pebble[s.slot_n] = total_w > 0 ? pebble_total * weights[s.slot_n] / total_w : 0;
     }
+    // AVAILABILITY CAP — mass = min(accretion potential, availability). The AAF
+    // (rock+ice) is the local accretion POTENTIAL; the standing wave concentrates
+    // only so much MATERIAL at each slot (availability = the disc-solid budget
+    // shared out by waveform amplitude). An accreted core can't exceed the
+    // material present, so core = min(potential, availability). This caps the
+    // over-predicted outer cores (Uranus' AAF solid ~18.8 → ~11.9), opening the
+    // room the H/He envelope then fills, while potential-limited slots (the
+    // terrestrials) are untouched (min = potential). NORMAL accretors only:
+    // fragments (collapse, unbounded) and the inverted factory bypass the cap.
+    const avail_amp = (rr) => Math.pow(Math.min(rr, R_disc_local) / Math.max(R_disc_local, 1e-9), rr > snow_line(M_star, f_disc) ? INV_ICE_DESCENT : INV_ROCK_DESCENT);
+    let avail_sumA = 0;
+    for (const s of slot_data)
+        if (fit_r(s) > 0)
+            avail_sumA += avail_amp(fit_r(s));
+    const disc_solid_budget = f_disc * m_star_earth(M_star) * COMP_Z;
+    const cap_active = !inverted && !COMP_FRAGMENTING && R_disc_local > 0 && avail_sumA > 0;
+    const availability_of = (rr) => cap_active ? disc_solid_budget * avail_amp(rr) / avail_sumA : Infinity;
     // First pass: identify migrants for MISSING-slot attribution.
     // Nearest checks run over all candidate sites (rungs + interstitials).
     const migrants = [];
@@ -252,12 +269,26 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         ice += (1 - COMP_F_ROCK) * pebble[n];
         let peb = 0;
         let core = rock + ice + peb;
+        // POTENTIAL core (pre-cap): the formation clock and the gas runaway are set by the
+        // accretion the body actually did over time — NOT by the availability cap on the final
+        // solid. Capping the core here shrank t_form (Jupiter 1.6 → 0.9 Myr) and blew the gas
+        // window wide open. So the clock + gas read potential_core; only the SOLID is capped.
+        const potential_core = core;
+        // Cap the accreted core at the available material (preserve rock:ice ratio).
+        const availability = availability_of(r);
+        if (core > availability && core > 0) {
+            const cap_k = availability / core;
+            rock *= cap_k;
+            ice *= cap_k;
+            peb *= cap_k;
+            core = availability;
+        }
         const in_void = false;
         const observed = s.filled ? s.observed : 0;
         // Inverted bodies CAN become gas giants too — if the aggregate core
         // reaches the gas threshold and an envelope is available (an inverted hot
         // Jupiter). So no special suppression: gas-eligible on core mass alone.
-        const gas_eligible = (core > gas_threshold_mass(r, M_star, f_disc));
+        const gas_eligible = (potential_core > gas_threshold_mass(r, M_star, f_disc));
         // Strip detection: filled slots use observed mass as escape gate;
         // lost slots use primordial core mass (what would have been there).
         // Lost-slot predictions then reflect post-strip survival mass.
@@ -285,8 +316,8 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         const should_bisect_t_form = s.filled && observed > 0
             && (is_immutable_planet || !any_isu);
         if (!gas_eligible) {
-            // Sub-threshold rocky: total = core, t_form from cascade.
-            t_form = formation_time(r, core, M_star, f_disc);
+            // Sub-threshold rocky: total = core, t_form from cascade (potential core).
+            t_form = formation_time(r, potential_core, M_star, f_disc);
             h_he = 0;
             total = core;
         }
@@ -320,15 +351,17 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             }
         }
         else {
-            t_form = formation_time(r, core, M_star, f_disc);
-            h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
+            // FORWARD (no fit): the clock runs on the potential core (full accretion time), so
+            // the gas window isn't artificially widened by the cap. Gas sits on the capped solid.
+            t_form = formation_time(r, potential_core, M_star, f_disc);
+            h_he = hydrogen_capture(potential_core, t_form, spin, r, M_star, f_disc, omega);
             total = core + h_he;
         }
         // Snapshot PRIMORDIAL composition (with cascade-default t_form, no
         // bisection, no stripping) — used by classifier for diagnostic tags.
-        const t_form_p = formation_time(r, core, M_star, f_disc);
+        const t_form_p = formation_time(r, potential_core, M_star, f_disc);
         const h_he_p = gas_eligible
-            ? hydrogen_capture(core, t_form_p, spin, r, M_star, f_disc, omega) : 0;
+            ? hydrogen_capture(potential_core, t_form_p, spin, r, M_star, f_disc, omega) : 0;
         const primordial = {
             rock, ice, pebble: peb, h_he: h_he_p,
             core, total: core + h_he_p,
@@ -371,9 +404,10 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         results.push({
             devoured_credit: credit_applied || undefined,
             slot_n: n, slot_r: s.slot_r, r_used: r,
+            observed_r: (s.filled && planet_by_slot[n]) ? planet_by_slot[n].r : s.slot_r,
             filled: s.filled, name: s.name,
             interstitial: s.interstitial,
-            rock, ice, pebble: peb, core, t_form, h_he,
+            rock, ice, pebble: peb, core, potential_core, t_form, h_he,
             predicted: total, observed, err_pct, implied_dM, stripped,
             in_void, primordial, interpretation,
         });
@@ -2139,7 +2173,7 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
         // refresh the formation clock from the FINAL (post-transfer) core, and the
         // residual bookkeeping
         if (M_star !== undefined && f_disc !== undefined) {
-            s.t_form = formation_time(s.slot_r, s.core, M_star, f_disc);
+            s.t_form = formation_time(s.slot_r, s.potential_core ?? s.core, M_star, f_disc);
         }
         if (s.observed > 0) {
             s.err_pct = (s.predicted - s.observed) / s.observed * 100;

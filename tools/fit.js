@@ -228,7 +228,9 @@ function printSlotTable(sys, r) {
     const fmtP = (p) => p <= 0 ? '—' : (p < 100 ? p.toFixed(2) : p.toExponential(2));
     const Porb = (s.slot_r > 0 && Mshow > 0) ? Math.sqrt(Math.pow(s.slot_r, 3) / Mshow) : 0;
     const Pobs = (pl && pl.r > 0 && Mshow > 0) ? Math.sqrt(Math.pow(pl.r, 3) / Mshow) : 0;
-    const Ps = fmtP(Porb) + (Pobs > 0 ? '/' + fmtP(Pobs) : '');
+    // Core components (co-primary fragments) have a CORE ROTATION, not a planetary
+    // orbital period — don't show one (it would conflate with the planets' periods).
+    const Ps = s.core_component ? '—' : (fmtP(Porb) + (Pobs > 0 ? '/' + fmtP(Pobs) : ''));
     console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  r_form=${sr.padStart(9)}  r_obs=${robs.padStart(9)}  da=${da.padStart(6)}  P=${Ps.padStart(13)}yr  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
   }
 }

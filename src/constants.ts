@@ -218,8 +218,19 @@ const THRESHOLD_GAS = 3.0;
 // ε = 0.2864 is Sol-anchored ONCE on Jupiter's in-situ envelope (physical
 // gas-capture-fraction range 0.1–0.3); k carries its gas-poor steepening.
 // TAU_KH0_MYR = Ikoma, Nakazawa & Emori (2000) KH-contraction prefactor 10^8 yr.
-const GAS_CAPTURE_EFF = 0.2217;
-const GAS_WINDOW_K = 0.691;
+const GAS_CAPTURE_EFF = 0.0999;  // runaway feast fraction, Sol-anchored so Jupiter lands exactly
+const GAS_WINDOW_K = 0.691;      // legacy (old exp window); retained but unused by hydrogen_capture
+// DAM-TRICKLE gas clock: τ[Myr] = (R_disc³ / M) · GAS_TRICKLE_COEF. The Davis-Dam H/He pileup
+// drains INWARD onto the star by GRAVITY-driven drift, v ∝ g ∝ M/r², so the drain time
+// τ = ∫dr/v ∝ R_disc³/M — gravity ∝ 1/r² makes a far dam drain CUBICALLY slower. COEF anchors
+// Sol (R_disc≈30 AU) to the ~3.5 Myr disc lifetime ⇒ COEF = 3.5/30³ ≈ 1.296e-4. Gas/ice-giant
+// cliff falls between Saturn (3.1) and Uranus (6.5 Myr); HR 8799 (R_disc≈67) → τ≈30 Myr so its
+// wide giants stay pre-cliff; Alpha Cen (R_disc≈9000 AU) → effectively never drains (Proxima eons).
+const GAS_TRICKLE_COEF = 1.296e-4;
+// DAVIS-DAM H/He PILEUP (the ice-giant, post-cliff channel): M_pileup = GAS_PILEUP_EFF·M_gas·
+// (r/R_disc)^GAS_PILEUP_Q, peaked at the dam, tapering inward; Alfvén-ungated (diamagnetic H/He).
+const GAS_PILEUP_EFF = 5.9e-4;   // Sol-anchored on Neptune's envelope (~2.35 M⊕ at R_disc)
+const GAS_PILEUP_Q = 0.22;       // inward GROWTH of the pileup (∝(R_disc/r)^q): Uranus ≳ Neptune
 const TAU_KH0_MYR = 100.0;
 const PEBBLE_CAPTURE_EFFICIENCY = 0.40;
 const ETA_ROCK = 0.78;

@@ -71,12 +71,14 @@ interface FitSlot {
   slot_n: number;
   slot_r: number;
   r_used: number;
+  observed_r?: number;   // the planet's actual observed orbit (≠ slot_r when displaced); for the chart marker
   filled: boolean;
   name: string;
   rock: number;
   ice: number;
   pebble: number;
   core: number;
+  potential_core?: number;   // pre-cap core — the accretion clock / gas runaway use this, not the capped solid
   t_form: number;
   h_he: number;
   predicted: number;

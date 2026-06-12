@@ -138,46 +138,44 @@ function pebble_allocation_weight(r, M_star, f_disc) {
     return Math.pow(delta, -0.5);
 }
 function hydrogen_capture(core_mass, t_form_myr, spin, r, M_star, f_disc, omega) {
-    spin = (omega === undefined) ? spin : omega; // wind term is inner-jaw
-    // Runaway gate: the core must (a) out-pull the stellar wind competing for the
-    // H/He at this radius AND (b) beat the Kelvin-Helmholtz clock (Ikoma 2000)
-    // before the gas disperses — the combined wind-competition threshold.
+    const om = (omega === undefined) ? spin : omega; // inner-jaw rotation (wind + dam)
+    // Runaway gate: the core must out-pull the stellar wind AND beat the KH clock.
     if (core_mass < gas_threshold_mass(r, M_star, f_disc))
         return 0;
-    // DERIVED supply-limited capture (core-accretion paradigm). Once a core runs
-    // away, the local Tanigawa-Watanabe disc-limited rate (∝ M^4/3·Σ_gas·...)
-    // vastly outstrips the disc gas supply, so the captured envelope is set by
-    // how much of the DISC GAS RESERVOIR is still available — NOT by M_core (a
-    // forming giant swallows essentially everything its gap can reach). So:
-    //   M_gas = ε · M_gas_disc · exp(−k·t_form) · wind_supp,
-    // M_gas_disc = f_disc·M_star (the reservoir), ε the universal capture
-    // fraction, exp(−k·t_form) the closing capture window. This is what makes
-    // Jupiter's H/He fall out of Sol's DISC (f_disc, M_star) instead of a fit
-    // amplitude re-tuned to the cascade's current core allocation; with all four
-    // Sol giants' cores ≈ 16 M⊕, the old A_0·M_core² was a disguised constant ≈
-    // ε·M_gas_disc and the whole Jupiter→Neptune envelope ladder is TIMING (the
-    // exp term), which this preserves.
     const M_gas_disc = f_disc * m_star_earth(M_star);
-    // k = capture-window e-fold, tied to the SYSTEM gas-disc lifetime: k ∝
-    // 1/τ_disc. A massive disc (τ_disc ≫ 5 Myr — Alpha Cen ~32 Myr) keeps capturing
-    // gas far longer, so outer slots stay gas-bearing instead of being cut off at
-    // the universal 5 Myr; a thin disc shuts the window fast. Sol (τ_disc≈5) is
-    // unchanged (k≈GAS_WINDOW_K).
-    const k = GAS_WINDOW_K * T_DISC_DISPERSAL_MYR / gas_dispersal_time(M_star, f_disc);
-    const window = Math.exp(-k * t_form_myr);
-    const wind_term = (spin / WIND_SPIN_REF) * Math.pow(WIND_R_REF / Math.max(r, 0.01), 2);
+    // DAM-TRICKLE CLOCK (replaces the exp(−k·t) window). H/He piles up at the Davis Dam
+    // (R_disc, the pressure max) and drains INWARD onto the star. The inward drift is GRAVITY-
+    // driven: v ∝ g ∝ M/r², so the drain time τ = ∫dr/v ∝ R_disc³/M — gravity falling off as
+    // 1/r² makes a FAR dam drain CUBICALLY slower. GAS_TRICKLE_COEF anchors Sol (R_disc≈30 AU →
+    // ~3.5 Myr disc lifetime; cliff between Saturn 3.1 and Uranus 6.5 Myr). HR 8799 (R_disc≈67 AU)
+    // → ~30 Myr, so its slow-forming wide giants stay PRE-cliff (the disc persists, gas available);
+    // a 9000 AU dam (Alpha Cen) → effectively never drains, so a wide igniter (Proxima) drinks for
+    // eons. (The "dispersed" gas isn't lost — it trickles onto the star; the heliosphere is far
+    // too rarefied to hold it.)
+    const r_disc = disc_radius(M_star, spin, om, f_disc);
+    const tau = Math.pow(r_disc, 3) / Math.max(M_star, 1e-9) * GAS_TRICKLE_COEF; // Myr
+    // RUNAWAY feast: a core reaching runaway BEFORE the cliff seizes the draining disc; the
+    // available gas declines to zero AT the cliff (t=τ). Earlier runaway ⇒ longer feast
+    // (Jupiter ≫ Saturn). Past the cliff there is no runaway — the disc has drained to the star.
+    const x = (tau > 0) ? t_form_myr / tau : Infinity;
+    const feast = (x < 1) ? (1 - x * x) : 0;
+    const wind_term = (om / WIND_SPIN_REF) * Math.pow(WIND_R_REF / Math.max(r, 0.01), 2);
     const wind_suppression = 1.0 / (1.0 + wind_term);
-    const captured = GAS_CAPTURE_EFF * M_gas_disc * wind_suppression;
-    // IGNITER: a body that crosses the hydrogen-burning threshold (M_STELLAR_BOUNDARY ≈
-    // 0.08 M☉) becomes a self-gravitating STAR — it ignites EARLY (at the threshold) and
-    // keeps accreting H for the system's whole lifetime, NOT cut off when the nebular
-    // gas-window closes. So the exp(−k·t_form) window does NOT apply above ignition: an
-    // igniter accretes until its full mass (the reservoir is exhausted at t_form), then
-    // stops. Proxima — a slow wide-dam accretor — lit early and FINISHED gathering H at
-    // t_form ≈ 4.77 Gyr, i.e. ~hundreds of Myr ago, since Alpha Cen (~5.3 Gyr) is older
-    // than t_form. Below ignition (planets), the window applies: accretion stops at disc
-    // dispersal.
-    if (core_mass + captured >= M_STELLAR_BOUNDARY)
-        return captured;
-    return captured * window;
+    // DAVIS-DAM PILEUP (POST-cliff ice-giant channel): gas trapped at the dam trickles INWARD,
+    // so the inner ice giant catches the through-flow while the one sitting AT the dam (the launch
+    // point) gets a touch less — Uranus ≳ Neptune, ∝(R_disc/r)^q (increasing inward). Gated to
+    // post-cliff (x≥1) so the pre-cliff runaway giants don't double-dip. Ungated by the (magnetic)
+    // Alfvén Dam since H/He is diamagnetic. ~2.5 M⊕ comparable for Sol's ice giants.
+    const pileup = (x >= 1)
+        ? GAS_PILEUP_EFF * M_gas_disc
+            * Math.pow(Math.max(r_disc, 1e-9) / Math.max(r, 1e-9), GAS_PILEUP_Q) * wind_suppression
+        : 0;
+    const runaway = GAS_CAPTURE_EFF * M_gas_disc * wind_suppression;
+    // IGNITER: a body crossing the H-burning threshold becomes a star — it keeps accreting the
+    // inflowing supply over the whole (long) trickle, NOT cut by the cliff (feast≈1 anyway for a
+    // wide dam). Below ignition (planets), runaway is gated by the trickle-cliff feast; the dam
+    // pileup is added on top (the ice-giant channel).
+    if (core_mass + runaway >= M_STELLAR_BOUNDARY)
+        return runaway + pileup;
+    return runaway * feast + pileup;
 }
