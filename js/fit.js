@@ -2227,6 +2227,12 @@ function apply_hydrogen_conservation(slots, reservoir) {
             exhausted = true;
         s.h_he = got;
         s.predicted = s.core + got;
+        // Keep the primordial composition in step with the cap, or it keeps the raw window want
+        // (~8.6e9 M⊕ at a far dam) and any total-allocated readout balloons into the billions.
+        if (s.primordial) {
+            s.primordial.h_he = got;
+            s.primordial.total = s.predicted;
+        }
         remaining -= got;
         captured += got;
         if (s.observed > 0) {
@@ -2240,6 +2246,10 @@ function apply_hydrogen_conservation(slots, reservoir) {
         for (const s of empty) {
             s.h_he = 0;
             s.predicted = s.core;
+            if (s.primordial) {
+                s.primordial.h_he = 0;
+                s.primordial.total = s.core;
+            }
         }
     return { captured, dispersed: total_res - captured, exhausted };
 }

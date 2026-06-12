@@ -2175,6 +2175,9 @@ function apply_hydrogen_conservation(slots: FitSlot[], reservoir: number):
     if (got < want - 1e-9) exhausted = true;
     s.h_he = got;
     s.predicted = s.core + got;
+    // Keep the primordial composition in step with the cap, or it keeps the raw window want
+    // (~8.6e9 M⊕ at a far dam) and any total-allocated readout balloons into the billions.
+    if (s.primordial) { s.primordial.h_he = got; s.primordial.total = s.predicted; }
     remaining -= got;
     captured += got;
     if (s.observed > 0) {
@@ -2184,7 +2187,10 @@ function apply_hydrogen_conservation(slots: FitSlot[], reservoir: number):
   }
   // Empty slots when real bodies took the disc: they formed nothing, so zero their gas —
   // otherwise an uncapped far-disc window want renders as a phantom O-class "star".
-  if (filled.length) for (const s of empty) { s.h_he = 0; s.predicted = s.core; }
+  if (filled.length) for (const s of empty) {
+    s.h_he = 0; s.predicted = s.core;
+    if (s.primordial) { s.primordial.h_he = 0; s.primordial.total = s.core; }
+  }
   return { captured, dispersed: total_res - captured, exhausted };
 }
 
