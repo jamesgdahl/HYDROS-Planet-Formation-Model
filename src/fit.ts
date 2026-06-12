@@ -2148,20 +2148,20 @@ function apply_sign_modulation(slots: FitSlot[], C: number,
 //     disc lets the giants consume nearly all of it; flat profile, latest/shortest-window the runt.
 // The gas INTERIOR to the innermost giant has no planet to catch it ⇒ clears to the star (reduces
 // the planet-available budget); for a compact disc this barely binds (window-limited anyway).
-function apply_hydrogen_conservation(slots: FitSlot[], reservoir: number, r_disc: number):
+function apply_hydrogen_conservation(slots: FitSlot[], reservoir: number):
     { captured: number; dispersed: number; exhausted: boolean } {
   const giants = slots.filter(s => s.filled && !s.external && !s.exterior && (s.predicted - s.core) > 1e-9);
   const total_res = Math.max(0, reservoir);
   if (!giants.length) return { captured: 0, dispersed: total_res, exhausted: false };
-  const r_in = 0.05;
-  const r_inner = giants.reduce((m, s) => Math.min(m, s.slot_r), Infinity);
-  const Rd = Math.max(r_disc, r_inner, r_in);
-  const interior = (Rd > r_in)
-    ? Math.min(0.95, Math.max(0, (Math.sqrt(Math.max(r_inner, r_in)) - Math.sqrt(r_in)) / (Math.sqrt(Rd) - Math.sqrt(r_in))))
-    : 0;
-  const budget = total_res * (1 - interior);   // gas exterior to the innermost giant
+  // DRAINAGE to the star = the gorging WINDOW itself (τ = R_disc³/M, set in
+  // hydrogen_capture), NOT a geometric position clamp. A NEAR dam (small τ) gives short
+  // windows ⇒ the giants want little ⇒ the remainder disperses to the star (Sol's ~90%);
+  // a FAR dam (huge τ) gives windows so long the giants want the whole reservoir ⇒ nothing
+  // drains (Proxima sits at the dam, keeps it, and ignites). `dispersed = total − captured`
+  // IS the drained gas. The old √r "interior clearing" was a hack with no τ in it — it
+  // declared interior gas drained by position alone, starving any body at a far dam (−87%).
   const total_want = giants.reduce((a, s) => a + (s.predicted - s.core), 0);
-  const scale = (total_want > budget && total_want > 0) ? budget / total_want : 1.0;
+  const scale = (total_want > total_res && total_want > 0) ? total_res / total_want : 1.0;
   let captured = 0;
   for (const s of giants) {
     const got = (s.predicted - s.core) * scale;
@@ -2409,8 +2409,16 @@ function budgetFit(planets: Planet[], budget: Budget,
     // hydrogen reservoir (f_disc·M_star = the disc's share of b_hydrogen). The
     // un-captured remainder is dispersed (onto the star / flung out). `exhausted`
     // ⇒ the giants want more gas than the disc holds: raise the budget / spin.
-    const H_reservoir = f * m_star_earth(M);
-    const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir, R_disc_final);
+    // DISC HOST mass: a circumstellar disc's H scales with its HOST star, not the whole
+    // system. For a binary the planet-forming disc is the PRIMARY's — the co-primary is a
+    // sibling fragment in the CORE bucket (it drives the wind/dam, but isn't extra disc-
+    // hosting mass). Summing A+B over-allocates H ~2× (Proxima +125%). Single stars: no
+    // co-primary ⇒ M_disc_host = M (unchanged).
+    const hasCoPrimary = planets.some(p => p.core && (p.observed || 0) > 0);
+    const M_disc_host = (hasCoPrimary && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
+      ? primaryMass : M;
+    const H_reservoir = f * m_star_earth(M_disc_host);
+    const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
     const tgt = sel(fit);
     const tot = tgt.reduce((a, s) => a + s.observed, 0);
     const resid = tot > 0
