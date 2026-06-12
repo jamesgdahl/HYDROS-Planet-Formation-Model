@@ -2201,30 +2201,47 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
 // The gas INTERIOR to the innermost giant has no planet to catch it ⇒ clears to the star (reduces
 // the planet-available budget); for a compact disc this barely binds (window-limited anyway).
 function apply_hydrogen_conservation(slots, reservoir) {
-    const giants = slots.filter(s => s.filled && !s.external && !s.exterior && (s.predicted - s.core) > 1e-9);
     const total_res = Math.max(0, reservoir);
-    if (!giants.length)
-        return { captured: 0, dispersed: total_res, exhausted: false };
-    // DRAINAGE to the star = the gorging WINDOW itself (τ = R_disc³/M, set in
-    // hydrogen_capture), NOT a geometric position clamp. A NEAR dam (small τ) gives short
-    // windows ⇒ the giants want little ⇒ the remainder disperses to the star (Sol's ~90%);
-    // a FAR dam (huge τ) gives windows so long the giants want the whole reservoir ⇒ nothing
-    // drains (Proxima sits at the dam, keeps it, and ignites). `dispersed = total − captured`
-    // IS the drained gas. The old √r "interior clearing" was a hack with no τ in it — it
-    // declared interior gas drained by position alone, starving any body at a far dam (−87%).
-    const total_want = giants.reduce((a, s) => a + (s.predicted - s.core), 0);
-    const scale = (total_want > total_res && total_want > 0) ? total_res / total_want : 1.0;
-    let captured = 0;
-    for (const s of giants) {
-        const got = (s.predicted - s.core) * scale;
+    const claims = (s) => !s.external && !s.exterior && (s.predicted - s.core) > 1e-9;
+    // DRAINAGE = the gorging WINDOW itself (τ = R_disc³/M, in hydrogen_capture), no geometric
+    // clamp. But the gas physically PILES AT THE DAM (R_disc) and drains INWARD toward the
+    // star, so it is allocated OUTERMOST-FIRST — each body takes min(want, gas still flowing
+    // past it):
+    //   • NEAR dam (small τ) → small window-wants → every body gets its full want and the
+    //     remainder disperses to the star (Sol keeps ~10%, the measured 90% drains).
+    //   • FAR dam (huge τ) → the OUTERMOST body's want exceeds the whole reservoir → it keeps
+    //     everything and ignites (Proxima at slot 0); the interior gets nothing. No proportional
+    //     smearing into brown dwarfs, and no uncapped far-disc want left to render as a phantom
+    //     O-class "star" (Alpha Cen had ~25,000 M☉ ghosts).
+    // When REAL (observed) bodies exist they are the recipients (empty slots form nothing); a
+    // pure forward run with NO observed bodies lets the predicted cascade itself accrete —
+    // dam-slot first — so the system self-assembles (Proxima from inputs alone).
+    const filled = slots.filter(s => s.filled && claims(s));
+    const empty = slots.filter(s => !s.filled && claims(s));
+    const recipients = (filled.length ? filled : empty).slice().sort((a, b) => b.slot_r - a.slot_r);
+    let remaining = total_res, captured = 0, exhausted = false;
+    for (const s of recipients) {
+        const want = s.predicted - s.core;
+        const got = Math.min(want, Math.max(0, remaining));
+        if (got < want - 1e-9)
+            exhausted = true;
+        s.h_he = got;
         s.predicted = s.core + got;
+        remaining -= got;
         captured += got;
         if (s.observed > 0) {
             s.err_pct = (s.predicted - s.observed) / s.observed * 100;
             s.implied_dM = s.observed - s.predicted;
         }
     }
-    return { captured, dispersed: total_res - captured, exhausted: scale < 1.0 };
+    // Empty slots when real bodies took the disc: they formed nothing, so zero their gas —
+    // otherwise an uncapped far-disc window want renders as a phantom O-class "star".
+    if (filled.length)
+        for (const s of empty) {
+            s.h_he = 0;
+            s.predicted = s.core;
+        }
+    return { captured, dispersed: total_res - captured, exhausted };
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2312,9 +2329,25 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         let spin;
         if (usePhysicsDam) {
             const co = planets.filter(p => p.core && (p.observed || 0) > 0);
-            set_fragmenting(co.length > 0); // co-primaries ⇒ fragmenting binary ⇒ centrifugal dam
-            const M_core_earth = primaryMass * M_SUN_EARTH
-                + co.reduce((a, p) => a + (p.observed || 0), 0);
+            // Fragmentation is a PHYSICS decision from spin (β = BETA_SOL·λ² ≥ 0.274, the bar-mode
+            // limit), not merely a response to OBSERVED co-primaries — so the forward model self-
+            // fragments: Alpha Cen from inputs alone (λ=5.7 ⇒ β=0.275) tears its core in two and
+            // flings the wide fragment to the centrifugal dam, forming Proxima at slot 0. Restricted
+            // to real stellar PRIMARIES (M ≥ 0.08 M☉, top-level system, ω known) so a high-spin moon
+            // disc or sub-cascade can't spuriously split into co-stars.
+            const frag_from_spin = parent == null
+                && primaryMass * M_SUN_EARTH >= M_STELLAR_BOUNDARY
+                && omega !== undefined && core_fragments(omega);
+            set_fragmenting(co.length > 0 || frag_from_spin); // observed co-primary OR spin says so
+            // A FRAGMENTING core hides a co-primary inside the budget. With B OBSERVED, add it to
+            // the core. FORWARD (no observed co-primary) PREDICT the split from the centrifugal
+            // physics: the core keeps (1 − f_disc_centrifugal) of the budget, the rest is the disc.
+            // Without this the co-primary's ~0.9 M☉ stays in the nebula, f_disc balloons (0.52 vs
+            // 0.12) and every outer slot over-forms into a phantom giant/star. disc_fraction_
+            // centrifugal(λ=5.7)=0.121 ⇒ predicted B ≈ 0.905 M☉ (observed 0.909) — the split falls out.
+            const M_core_earth = (co.length === 0 && frag_from_spin)
+                ? (1 - disc_fraction_centrifugal(omega)) * M * M_SUN_TO_EARTH
+                : primaryMass * M_SUN_EARTH + co.reduce((a, p) => a + (p.observed || 0), 0);
             // DERIVED nebula density (no calibration constant). The disc mass is the nebula
             // M_d = budget − core (budget minus the stars). It spreads over the centrifugal
             // disc (Terebey-Shu-Cassen R_c = j²/GM ∝ spin² — "extended by spin"), giving the
@@ -2477,7 +2510,9 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         // hosting mass). Summing A+B over-allocates H ~2× (Proxima +125%). Single stars: no
         // co-primary ⇒ M_disc_host = M (unchanged).
         const hasCoPrimary = planets.some(p => p.core && (p.observed || 0) > 0);
-        const M_disc_host = (hasCoPrimary && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
+        // The planet-forming disc is hosted by the PRIMARY (the co-primary — observed OR predicted
+        // forward by the fragmentation — is a core-bucket sibling, not disc-hosting mass).
+        const M_disc_host = ((hasCoPrimary || COMP_FRAGMENTING) && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
             ? primaryMass : M;
         const H_reservoir = f * m_star_earth(M_disc_host);
         const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
