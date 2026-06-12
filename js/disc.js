@@ -44,6 +44,18 @@ function inversion_threshold_density(M_star, omega) {
 }
 function disc_radius(M_star, spin, omega, f_disc) {
     const Omega = (omega === undefined) ? spin : omega;
+    // FRAGMENTING CORE (β = E_rot/|E_grav| = BETA_SOL·λ² ≥ 0.274, the bar-mode limit):
+    // the core split into co-primaries and the WIDE fragment is flung to the un-capped
+    // CENTRIFUGAL radius R_c = R_wind(M)·λ² (Terebey-Shu-Cassen). The wind/pressure law
+    // below is suppressed by the large disc mass (D^−½) and badly under-predicts it —
+    // Alpha Cen → Proxima sits at ~9000 AU (R_c), not ~300 (wind). The excess angular
+    // momentum that tore the core in two is what spins the outer dam out to thousands of
+    // AU; BETA_SOL is calibrated so the same λ fragments the core AND sets the dam.
+    // (Memory: binary-two-waveform-proxima.) Gated on COMP_FRAGMENTING (real co-primary
+    // present) so it fires only for fragmenting BINARIES — not a high-spin moon disc
+    // (Saturn) or an artifact-spin single star.
+    if (COMP_FRAGMENTING && core_fragments(Omega))
+        return centrifugal_radius(M_star, Omega);
     // UNIVERSAL DAVIS DAM (one law, all scales): the wind-balance radius where the OUTWARD
     // pressure equals the INWARD nebula density. Outward = combined stellar FLUX (Σ M_i^3.54,
     // parked) + a coronal magnetic-wind baseline (fusing stars only); inward = the nebula
@@ -113,8 +125,6 @@ function insolation_snow_line(M_star, L_obs) {
 // phase is exhausted by ~vintage 3 (b,c,d rock; e,f ice). Distinct from
 // `insolation_snow_line` (stellar irradiation) and `snow_line` (disc temp).
 function viscous_snow_line(M_star, f_disc) {
-    if (COMP_KINETIC)
-        return Infinity; // hot impact-vapor disc — no ice condenses (all rock)
     return VISC_COEFF * Math.pow(Math.max(f_disc, 0) * Math.pow(M_star / SOL_M_PRIMORDIAL, 2.0), 1.0 / 3.0);
 }
 // Nebula density D (Sol = 1): the physical free variable of the VICE's
@@ -304,10 +314,25 @@ function slope(M_star, f_disc) {
 // A t_form exceeding the disc lifetime means the body can't assemble by
 // accretion → it is collapse-formed (a star), flagged downstream.
 function formation_time(r, core, M_star, f_disc) {
+    // ACCRETION TIME [Myr] — the supply-limited growth clock, Sol-anchored:
+    // t = core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF) × the primordial SPIN. The ×spin is
+    // the missing multiplier — it is ≡1 at Sol (λ=1), which is why ONLY Sol read the
+    // correct Myr before; every other (non-unit-spin) system was off by its spin factor.
+    // Physically the bare clock runs ∝ r, and ×spin upgrades it to the orbital-period
+    // cascade (r ∝ spin² at a slot ⇒ t ∝ r^1.5 ∝ P_orbit): the fast-spinning inner disc
+    // forms fastest, the slow outer disc slowest. Distinct from orbital_period() below
+    // (the raw period in yr); this is the Myr accretion clock that gates gas capture.
     if (COMP_MDOT > 0 && core > 0 && COMP_R_DISC > 0 && r > 0) {
-        return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF);
+        return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF) * COMP_SPIN;
     }
     return 0.10 * r / slope(M_star, f_disc); // fallback: non-budget legacy systems
+}
+// Keplerian orbital period [yr] at radius r: P = sqrt(r[AU]³ / M★[M☉]) (G, 2π absorbed
+// by the AU/yr/M☉ unit system). Pure geometry — the disc's local rotation clock, the
+// inner edge corotating with the star. Display/derived quantity; see formation_time
+// for the Myr accretion clock that scales with this via the ×spin factor.
+function orbital_period(r, M_star) {
+    return (M_star > 0 && r > 0) ? Math.sqrt(r * r * r / M_star) : 0;
 }
 function intercept(M_star, spin) {
     return SOL_INTERCEPT * (M_star / SOL_M_PRIMORDIAL) * Math.pow(spin, 2.0 / 7.0);

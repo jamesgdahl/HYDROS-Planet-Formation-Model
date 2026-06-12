@@ -64,15 +64,6 @@ function reset_r_disc_norm() { COMP_R_DISC = -1.0; }
 let COMP_R_SNOW = -1.0;
 function set_snow_line(r) { COMP_R_SNOW = r; }
 function reset_snow_line() { COMP_R_SNOW = -1.0; }
-// KINETIC disc override (Earth-Theia and the like). The debris is a hot MIXED rock+water
-// cloud heated by the IMPACT, not stellar light. The Moon-forming ring is volatile-stripped,
-// so the slots take ROCK and the Moon is dry; the WATER is not minted into a slot — it stays
-// with the central body (delivered to Earth's MANTLE, the leading mantle-water origin). When
-// set, viscous_snow_line → +∞ so the inverted rock allocation fills every slot and the ice
-// budget falls to the core instead of icing the Moon. Reset after the fit.
-let COMP_KINETIC = false;
-function set_kinetic(k) { COMP_KINETIC = k; }
-function reset_kinetic() { COMP_KINETIC = false; }
 // DAM INPUTS (context, like composition). The two universal dam laws live in disc_radius
 // (Davis = outward pressure ⇄ density) and alfven_radius (Alfvén = magnetic field reach).
 // They need two per-system INPUTS the bare (M, spin) signature can't carry: the nebula mass
@@ -95,9 +86,22 @@ function reset_dam_inputs() { COMP_NEBULA = -1.0; COMP_FLUX = -1.0; }
 // in ~1.9 Myr (Neptune ~9.8 → ice giant). No ignition cap — the envelope keeps
 // growing after the star lights; t_form > disc lifetime ⇒ collapse-formed.
 let COMP_MDOT = -1.0; // budget gas accretion rate Ṁ [M⊙/yr], or <0
-const FORM_CLOCK_COEFF = 6.669e9; // t[Myr] = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF)
+const FORM_CLOCK_COEFF = 6.669e9; // t[Myr] = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF)·spin
 const CLOCK_COEFF = FORM_CLOCK_COEFF; // legacy alias (unused; kept for safety)
 function set_mdot(md) { COMP_MDOT = md; }
+// Primordial SPIN factor on the accretion clock (≡1 at Sol, λ=1). Set per budget fit;
+// the ×spin is the missing multiplier that scales formation_time off Sol to the
+// orbital-period cascade. Defaults to 1 (legacy / non-budget paths unaffected).
+let COMP_SPIN = 1.0;
+function set_form_spin(s) { COMP_SPIN = (s > 0) ? s : 1.0; }
+function reset_form_spin() { COMP_SPIN = 1.0; }
+// FRAGMENTING-BINARY flag: set per fit when the system carries co-primary core
+// fragments (a real binary/multiple). Gates the centrifugal Davis Dam in disc_radius
+// so it fires ONLY for fragmenting binaries (Alpha Cen → Proxima at R_c), not for any
+// high-spin disc (Saturn's moons, an artifact-spin single star). Defaults false.
+let COMP_FRAGMENTING = false;
+function set_fragmenting(b) { COMP_FRAGMENTING = b; }
+function reset_fragmenting() { COMP_FRAGMENTING = false; }
 function reset_mdot() { COMP_MDOT = -1.0; }
 const F_LODDERS_ICE = 3.5;
 const GAS_FRACTION = 0.95;

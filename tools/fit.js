@@ -37,8 +37,7 @@ const EXOPLANETS = ctx.window.EXOPLANETS;
 const bestFit = ctx.bestFit;
 const LATE_DELIVERY_PCT = 0.5 * (0.02 / 0.107) * 100; // 9.35%
 
-const SKIP = new Set(['sol_progenitor', 'crab_progenitor',
-  'mars']); // thought experiments + legacy kinetic-inputs entries (earth now a budget+kinetic entry)
+const SKIP = new Set(['sol_progenitor', 'crab_progenitor']); // thought experiments
 
 const args = process.argv.slice(2);
 const onlyId = args.includes('--system') ? args[args.indexOf('--system') + 1] : null;
@@ -69,11 +68,11 @@ const bruteFit = ctx.bruteFit;
 // target; deriving R_disc and f_disc from physics is the next pass. The
 // composition context is set here and ALWAYS reset, so the legacy catalog
 // is untouched.
-function budgetFit(planets, budget, lambda, parent, primaryMass, kinetic) {
+function budgetFit(planets, budget, lambda, parent, primaryMass) {
   // Thin wrapper over the COMPILED budgetFit (js/fit.js) so the CLI and the web
   // UI share one implementation. Re-expose the budget diagnostics as _budget
   // for the table/summary renderers.
-  const r = ctx.budgetFit(planets, budget, lambda, parent, primaryMass, kinetic);
+  const r = ctx.budgetFit(planets, budget, lambda, parent, primaryMass);
   r._budget = {
     M: r.budget_M, Z: r.budget_Z, f_rock: r.budget_f_rock,
     inverted: r.budget_inverted, R_A: r.budget_R_A, lambda: r.budget_lambda,
@@ -94,7 +93,7 @@ function fitSystem(sys) {
         q: (strip_in.q === undefined) ? null : strip_in.q }
     : null;
   const r = sys.budget
-    ? budgetFit(planets, sys.budget, sys.spin, sys.parent, sys.star, sys.kinetic)
+    ? budgetFit(planets, sys.budget, sys.spin, sys.parent, sys.star)
     : doBrute
     ? bruteFit(planets, M_star, stripping, doVice)
     : bestFit(planets, M_star, sys.inputs.f_disc);
@@ -223,7 +222,14 @@ function printSlotTable(sys, r) {
     const pl = s.filled ? sys.planets.find(pp => pp.name === s.name) : null;
     const robs = pl ? (pl.r < 0.01 ? pl.r.toExponential(3) : pl.r.toFixed(3)) : '—';
     const da = pl ? ((pl.r - s.slot_r >= 0 ? '+' : '') + (pl.r - s.slot_r).toFixed(2)) : '—';
-    console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  r_form=${sr.padStart(9)}  r_obs=${robs.padStart(9)}  da=${da.padStart(6)}  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
+    // Keplerian orbital period [yr]: P = sqrt(r[AU]^3 / M*[M_sun]). Predicted (from the
+    // formation slot) / observed (from the observed orbit) — the migration ledger in
+    // period space; for an on-slot factory product the two coincide.
+    const fmtP = (p) => p <= 0 ? '—' : (p < 100 ? p.toFixed(2) : p.toExponential(2));
+    const Porb = (s.slot_r > 0 && Mshow > 0) ? Math.sqrt(Math.pow(s.slot_r, 3) / Mshow) : 0;
+    const Pobs = (pl && pl.r > 0 && Mshow > 0) ? Math.sqrt(Math.pow(pl.r, 3) / Mshow) : 0;
+    const Ps = fmtP(Porb) + (Pobs > 0 ? '/' + fmtP(Pobs) : '');
+    console.log(`   ${name.padEnd(14)} ${lbl.padStart(7)}  r_form=${sr.padStart(9)}  r_obs=${robs.padStart(9)}  da=${da.padStart(6)}  P=${Ps.padStart(13)}yr  tf=${s.t_form.toFixed(2).padStart(6)}  pred=${pred.padStart(10)}  obs=${obs.padStart(10)}  dm=${dm.padStart(8)}  | ${s.interpretation}`);
   }
 }
 

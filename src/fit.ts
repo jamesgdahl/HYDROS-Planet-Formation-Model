@@ -58,71 +58,21 @@ function assign_planets_to_slots(planets: Planet[], M_star: number,
   const sites = cascade_sites(M_star, spin, observed.length, omega, f_disc);
   const site_pred = sites.map(s => slot_predicted_mass(s.r, M_star, spin, f_disc, undefined, omega));
 
-  // Rocky inventory at each site (rock + ice). Used as match target for
-  // stripped iron-core planets.
-  const slot_rocky_inventory = sites.map(s =>
-    rock_allocation(s.r, M_star, spin, f_disc, omega)
-    + ice_allocation(s.r, M_star, spin, f_disc));
   const slot_pred = site_pred;
   const slots_r = sites.map(s => s.r);
 
+  // POSITION-FIRST assignment (no-migration hypothesis): planets form on their
+  // slots and stay there, so each is assigned to its NEAREST slot by position
+  // (log-radius distance). Mass deltas vs the slot's allocation are NOT relocation
+  // triggers — they are REPORTED downstream as events: late delivery / impact loss
+  // (observed < predicted), or a planet whose mass exceeds the slot's gas-capture
+  // ceiling (a gravitational-instability giant, e.g. HR 8799 b — massive AT a wide
+  // orbit, which gas capture cannot build). Position trumps mass; migration is not
+  // invoked to reconcile a mass mismatch. (Interstitial half-slots keep their Hill
+  // gate — that's a dynamical admissibility test, not a mass match.)
   const pair_score = (p: Planet, n: number): number => {
-    // Interstitial sites are open only to bodies below the Hill gate.
     if (sites[n].interstitial && !half_site_allowed(p, M_star)) return 1e9;
-    const r_dist = Math.abs(Math.log(p.r) - Math.log(slots_r[n]));
-    let penalty = 0.0;
-    const stripped = is_stripped(p, M_star);
-    let mass_for_match: number, slot_target: number;
-    if (stripped) {
-      mass_for_match = effective_mass_for_assignment(p, M_star);
-      slot_target = slot_rocky_inventory[n];
-    } else {
-      mass_for_match = p.observed || 0;
-      slot_target = slot_pred[n];
-    }
-    if (slot_target > mass_for_match) penalty += OVERPRED_PENALTY;
-    // STELLAR BODIES ARE ALLOCATION-MATCHED, not position-greedy: a
-    // star's mass IS its seat allocation (no gas bisection above it),
-    // and evicted companions sit nowhere near their seats. Mass match
-    // dominates; position barely informs.
-    if ((p.observed || 0) >= M_STELLAR_BOUNDARY && slot_target > 0) {
-      return 0.1 * r_dist
-        + 5.0 * Math.abs(Math.log(mass_for_match / slot_target));
-    }
-    // In-situ trust zone: a planet sitting essentially ON a site
-    // (within ~6% in radius) is not exiled for a mass mismatch ---
-    // position is primary and mass deltas are interpretable events
-    // (late delivery, impact loss). Dam-edge sites in particular have
-    // truncation-shaved allocations while dam-adjacent planets collect
-    // the edge pile-up (TRAPPIST-1 g at site 0.5: 1% positional match,
-    // 23x the shaved allocation). The envelope mass-ceiling penalty
-    // below still applies --- that one is physics, not narrative.
-    const IN_SITU_TRUST = 0.06;
-    if (slot_target > 0 && mass_for_match > slot_target * UNDERPRED_RATIO
-        && r_dist >= IN_SITU_TRUST) {
-      penalty += UNDERPRED_PENALTY;
-    }
-    // Mass-ceiling violation (envelope-dominated bodies only): a gas
-    // giant cannot exceed its slot's allocation ceiling — t_form
-    // bisection only SHRINKS the envelope from the primordial maximum.
-    // Penalty scales with the violation so a 4x overshoot cannot be
-    // bought back by position proximity (55 Cnc b at slot 4: 255 vs
-    // 63 M⊕ — it belongs at slot 2). Small rocky planets are exempt:
-    // late delivery legitimately puts observed above prediction
-    // (HD 20794 f at +310%).
-    const CEILING_EXEMPT_MASS = 50.0;  // M⊕ — below this, late delivery applies
-    const CEILING_TOLERANCE = 1.5;
-    if (slot_target > 0 && mass_for_match > CEILING_EXEMPT_MASS
-        && mass_for_match > slot_target * CEILING_TOLERANCE) {
-      penalty += UNDERPRED_PENALTY
-        * (Math.log(mass_for_match / slot_target) - Math.log(CEILING_TOLERANCE));
-    }
-    if (mass_for_match > GAS_OBS_THRESHOLD
-        && slots_r[n] < p.r
-        && r_dist > GAS_DECISIVE_DIST) {
-      penalty += GAS_INNER_PENALTY;
-    }
-    return r_dist + penalty;
+    return Math.abs(Math.log(p.r) - Math.log(slots_r[n]));
   };
 
   const n_sites = sites.length;
@@ -213,13 +163,6 @@ interface SlotAwareFitOpts {
   // VICE inner-jaw rotation: owns R_A, the backstop intercept, and the
   // wind term. Defaults to spin (the jaw-lock).
   omega?: number;
-  // KINETIC regime (impact-generated natal disc, e.g. Earth/Luna):
-  // the disc is condensed silicate vapor, not nebula gas. The nebula
-  // composition machinery does not apply — allocation is fully
-  // condensable (the Z·F_ROCK·ETA_ROCK metallicity chain is undone),
-  // there is no ice, no pebble flux, no H/He capture, and the primary
-  // is a planet, not a protostar (fallback replaces consumption).
-  kinetic?: boolean;
 }
 
 function slot_aware_fit(planets: Planet[], M_star: number,
@@ -229,6 +172,9 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   const auto_compress = (opts.auto_compress !== false);
   const bisect_tol = opts.bisect_tolerance || 1e-5;
   const max_iter = opts.max_iterations || 100;
+  // Primordial spin factor for the accretion clock (≡1 at Sol). formation_time reads
+  // this; it scales the Myr accretion time off Sol to the orbital-period cascade.
+  set_form_spin((spin && spin > 0) ? spin : 1.0);
 
   // All observed bodies participate in the cascade — consistent with
   // the framework's predicted-stellar-companion patterns (HD 60532, etc.).
@@ -478,26 +424,6 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       predicted: total, observed, err_pct, implied_dM, stripped,
       in_void, primordial, interpretation,
     });
-  }
-
-  // KINETIC-regime transform: an impact disc is condensed rock vapor.
-  // Undo the nebula metallicity chain (the disc IS condensables), and
-  // zero the nebula-only channels (ice, pebbles, H/He).
-  if (opts.kinetic) {
-    const KIN = 1 / (COMP_Z * COMP_F_ROCK * ETA_ROCK);
-    for (const s of results) {
-      if (s.external) continue;
-      s.rock = s.rock * KIN;
-      s.ice = 0; s.pebble = 0; s.h_he = 0;
-      s.core = s.rock;
-      s.predicted = s.rock;
-      s.primordial = { rock: s.rock, ice: 0, pebble: 0, h_he: 0,
-                       core: s.rock, total: s.rock };
-      if (s.filled && s.observed > 0) {
-        s.err_pct = (s.predicted - s.observed) / s.observed * 100;
-        s.implied_dM = s.observed - s.predicted;
-      }
-    }
   }
 
   // Gravitational stripping transform (flagged systems only): edit
@@ -1405,7 +1331,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // allocations, visible. For stars the Hayashi photosphere normally
   // swallows this zone (consumption is checked first and wins); the
   // Roche parameter bites when the primary is compact during
-  // formation: gas giants and the kinetic (impact-disc) regime, where
+  // formation: gas giants and impact discs, where
   // Luna's slots 2+ fall inside Earth's 2.9 R⊕ limit. ρ_s = rock
   // (3000 kg/m³); satellites of ice-zone primaries are dirtier but
   // the cube root forgives.
@@ -2229,7 +2155,7 @@ function core_barycentre(primaryMass: number | undefined | null, planets: Planet
 }
 function budgetFit(planets: Planet[], budget: Budget,
                    lambda?: number | null, parent?: BudgetParent | null,
-                   primaryMass?: number | null, kinetic?: boolean): BudgetFitResult {
+                   primaryMass?: number | null): BudgetFitResult {
   // Re-reference every body to the core barycentre: the dams are emitted from it and
   // products orbit it, so positions are measured from the barycentre, not the primary.
   const r_bary = core_barycentre(primaryMass, planets);
@@ -2257,7 +2183,6 @@ function budgetFit(planets: Planet[], budget: Budget,
   const f_rock = f_rock_from_budget(budget);
   let inverted = is_inverted_budget(M);   // refined to the magnetopause regime in the physics-dam path
   set_composition(Z, f_rock);
-  set_kinetic(!!kinetic);   // impact-vapor disc: rock to the slots, water to the core (mantle)
   try {
     // Interior fit population: slot products only — core components (co-primary
     // fragments) and KBOs (factory products) don't anchor the cascade.
@@ -2289,6 +2214,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     let spin: number;
     if (usePhysicsDam) {
       const co = planets.filter(p => p.core && (p.observed || 0) > 0);
+      set_fragmenting(co.length > 0);   // co-primaries ⇒ fragmenting binary ⇒ centrifugal dam
       const M_core_earth = (primaryMass as number) * M_SUN_EARTH
         + co.reduce((a, p) => a + (p.observed || 0), 0);
       // DERIVED nebula density (no calibration constant). The disc mass is the nebula
@@ -2368,11 +2294,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       // formation clock → allocate. A bare system and a populated one get the IDENTICAL
       // disc geometry, snow line and slot masses; the planets only fill what physics laid.
       f = f_disc_derived;
-      // KINETIC (impact-vapor disc, e.g. Earth-Theia): the disc is heated by the IMPACT,
-      // not stellar light, so it is hot throughout — the snow line sits beyond the dams and
-      // NOTHING icy condenses (the Moon is dry rock; Theia's water vaporizes onto Earth). A
-      // huge snow line forces the all-rock allocation.
-      set_snow_line(kinetic ? 1e9 : snow_of(f));
+      set_snow_line(snow_of(f));
       set_mdot(Mdot_of(f));
       const om_slot = omega;
       fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot });
@@ -2513,5 +2435,5 @@ function budgetFit(planets: Planet[], budget: Budget,
         return { budget_field_G: B_G, budget_R_A_mag: R_A_m, budget_R_body_AU: R_body_AU, budget_regime: regime };
       })(),
     };
-  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_kinetic(); reset_dam_inputs(); }
+  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); }
 }

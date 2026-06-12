@@ -33,14 +33,15 @@ window.EXOPLANETS = [
     "id": "alphacen",
     "name": "Alpha Centauri (A+B core)",
     "ly": 4.367,
+    "comment": "Triple: A (primary) + B (close co-primary core fragment at a_bin=23.5 AU) + Proxima (WIDE stellar fragment). The core fragmented — β = E_rot/|E_grav| = BETA_SOL·λ² = 0.274 at λ=5.7, the bar-mode (Bate 2011) limit — and the excess angular momentum that tore the core in two flung the wide fragment out to the CENTRIFUGAL radius R_c = R_wind·λ² ≈ 9200 AU = Proxima's SEMI-MAJOR axis (~8700 AU; the oft-quoted 13,000 is its current near-apastron distance, e=0.5). So spin λ=5.7 is DERIVED from fragmentation, not fit (the old 1267 was a stale back-solve). Proxima sits in situ on the Davis Dam (slot 0). Its mass (0.122 M☉) is under-predicted ~2× (pred ~0.062) by the gas-capture disc allocation — a stellar-mass fragment needs the GI/direct-collapse channel (pending), the same gap as HR 8799's giants. (Memory: binary-two-waveform-proxima.)",
     "budget": {"rock":3224.75,"ice":15091.8,"hydrogen":734546.1},
     "star": 1.0788,
     "feh": 0.24,
     "cto": 0.47,
-    "spin": 1266.7703,
+    "spin": 5.7,
     "planets": [
       {"name":"Alpha Centauri B","r":23.52,"observed":302770,"core":true},
-      {"name":"Proxima Centauri","r":12950,"observed":40625}
+      {"name":"Proxima Centauri","r":8700,"observed":40625}
     ]
   },
   {
@@ -50,8 +51,9 @@ window.EXOPLANETS = [
     "budget": {"rock":171.47,"ice":607.941,"hydrogen":45526.72},
     "star": 0.122,
     "feh": 0.08,
+    "comment": "Inverted M-dwarf, TRAPPIST-like (λ≈0.1: magnetosphere past the Davis dam, slow/sedate). Spin is F_UNCONSTRAINED — only 3 planets, so it floats freely (0.08–10 all give ~0% residual); the old λ=10.19 was an unphysical super-breakup artifact the degenerate fit grabbed. An inversion scan shows the planets fit the CURRENT mass (0.122 M☉), NOT a brown-dwarf past: 14–84 M_Jup masses fail at any spin (Prox-c at 1.55 AU needs today's dam reach). Per the infall-gates-planet-formation principle, planets form post-infall at the FINAL stellar mass — so current-mass dams are correct; Proxima's planets are a fast (~Myr) post-assembly event, not a fossil of the slow ~Gyr stellar accretion.",
     "cto": 0.55,
-    "spin": 10.1895,
+    "spin": 0.1,
     "stripping": {"M_pert":0.9092,"q":21},
     "planets": [
       {"name":"Prox-d","r":0.029,"observed":0.26},
@@ -86,29 +88,6 @@ window.EXOPLANETS = [
     "planets": [
       {"name":"Titan","r":0.0081678,"observed":0.022519},
       {"name":"Iapetus","r":0.0238026,"observed":0.0003024}
-    ]
-  },
-  {
-    "id": "earth",
-    "name": "Earth (Theia impact)",
-    "ly": 0,
-    "comment": "Theia impact. Total budget 1.063 M_E (per the Sol sim's Earth-formation allocation), of which the core (post-impact Earth) retains ~1.0 and ~0.063 is the debris M_d (lost+Moon). The debris is Theia's fragment, 34.5% water (Theia ~1.700 rock : 0.895 ice) — a DENSE cloud (Mars-sized impactor). Spin = the real post-impact 5-h day: λ≈2 (the PRIMORDIAL Sun is ~10 h at λ=1, NOT the current slow Sun). No fusion → no wind → the Davis Dam collapses tiny (cloud stays concentrated = dense), inverted, factory in the R_A cavity. KINETIC: hot disc → dry rock Moon, the debris' 34.5% water (~0.022 M_E) → Earth's mantle. No special rules, universal dam laws, f_disc derived. FORMATION OUTPUT = a moonlet SWARM (innermost ~4.3 R_E, above Roche, in the R_A cavity). The often-quoted '3.83 R_E formation radius' is a tidal back-extrapolation that ASSUMES a single Moon evolving alone — invalid for a swarm (mutual resonances, inner-massive sweep-up, mass changing during coalescence), so it is NOT a hard target. The single observed Moon is the swarm's POST-FORMATION coalescent (Ida-Canup-Stewart), downstream and not computed here. Robust constraints the model DOES meet: above Roche, in the cavity, dry, water in the mantle.",
-    "budget": {"rock":1.0412,"ice":0.0217,"hydrogen":0.0001},
-    "star": 0.0000030035,
-    "spin": 2.0,
-    "kinetic": true,
-    "planets": [
-      {"name":"Luna","r":0.0001632,"observed":0.0123}
-    ]
-  },
-  {
-    "id": "mars",
-    "name": "Mars (Borealis impact)",
-    "ly": 0,
-    "inputs": {"M_star":2.8308e-7,"spin":0.0029474,"f_disc":0.000001,"kinetic":true},
-    "planets": [
-      {"name":"Phobos","r":0.00009154,"observed":1.7848e-9},
-      {"name":"Deimos","r":0.00015679,"observed":2.472e-10}
     ]
   },
   {
@@ -402,6 +381,7 @@ window.EXOPLANETS = [
     "feh": -0.47,
     "cto": 0.54,
     "spin": 1.2122,
+    "comment": "Direct-imaged four-giant resonant chain, in-situ (non-migrated) — and it fits at 0.0003% WITHOUT any ISU pin: the forward cascade anchors it on its own. The planets ARE the first four antinodes of a Maas-dominated Alfvén-Maas cascade. λ=1.21, R_disc(Maas)=66.7 AU ≈ HR8799-b, R_A(Alfvén)=0.26 AU (258× dam ratio ⇒ wA≈0.004, essentially a pure Davis-dam standing wave). Slots 0-3 reproduce b/c/d/e at 68/38/24/14 AU to 2-6%; observed period ratios match the parameter-free cascade ratio (1/ρ)^1.5=2.242 (e→d=2.24 exact). All four run away to gas giants (h_he≈2200 M⊕). Cleanest cascade validation in the catalogue.",
     "planets": [
       {"name":"HR8799-e","r":14,"observed":2225},
       {"name":"HR8799-d","r":24,"observed":2225},

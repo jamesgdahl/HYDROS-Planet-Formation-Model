@@ -125,6 +125,7 @@
         <th>Slot</th>
         <th>r<sub>form</sub></th>
         <th>Δr (AU)</th>
+        <th title="Keplerian orbital period at the slot: P[yr] = √(r³/M★)">P (yr)</th>
         <th>t<sub>form</sub> / vintage</th>
         <th>Rock</th>
         <th>Ice</th>
@@ -288,9 +289,6 @@ function setInputs(inp) {
   if (inp.feh != null && isFinite(inp.feh)) document.getElementById("feh").value = inp.feh;
   if (inp.cto != null && isFinite(inp.cto)) document.getElementById("cto").value = inp.cto;
   window.CURRENT_PARENT = inp.parent || null;
-  // Kinetic regime (impact-vapor natal disc, e.g. Earth/Theia):
-  // carried as a preset flag, threaded into slot_aware_fit.
-  window.CURRENT_KINETIC = !!inp.kinetic;
   // Measured stellar luminosity (L_sun), when the preset carries it:
   // real stars scatter around the M-L estimate habitable_zone falls
   // back on (ACen B: true 0.50 vs estimate 0.41).
@@ -439,7 +437,6 @@ function loadPreset(name) {
     cto: preset.cto,
     stripping: preset.stripping,
     L: preset.L,
-    kinetic: preset.kinetic,
   });
   setPlanets(preset.planets);
   calculate();
@@ -486,7 +483,7 @@ function calculate() {
   // slot_aware_fit below reproduces the budget fit exactly; expose CURRENT_BUDGET
   // for the diagnostics panel + the sign-modulation / hydrogen-conservation pass.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
-  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star, inp.kinetic);
+  const rB = budgetFit(planets.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star);
   set_composition(rB.budget_Z, rB.budget_f_rock);
   const obsB = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
@@ -500,9 +497,14 @@ function calculate() {
   const spin_geom = rB.spin;        // geometry spin that anchors the Davis Dam
   const omega = (rB.omega_rot != null) ? rB.omega_rot : rB.spin;  // archaic λ → R_A
 
-  // Derived properties. R_disc is f_disc-aware: in the inverted regime the
-  // disc weight plunges the Davis Dam below R_A (the density only inverts).
-  const R_disc = disc_radius(M_star, spin_geom, omega, f_disc);
+  // Derived properties. Use the fit's ANCHORED Davis Dam (the same R_disc that
+  // placed the slots) so the waveform, the displayed dam, and the planets are all
+  // consistent — the standalone disc_radius() diverges from it after the
+  // decoupled-dams refactor (e.g. Upsilon And 63 AU vs the fit's 5.7), which left
+  // the wave detached from the planets. Fall back to disc_radius() if absent.
+  const R_disc = (rB.fit && isFinite(rB.fit.R_disc) && rB.fit.R_disc > 0)
+    ? rB.fit.R_disc
+    : disc_radius(M_star, spin_geom, omega, f_disc);
   const R_A = alfven_radius(M_star, omega);
   const C = R_A / R_disc;
   const r_snow = snow_line(M_star, f_disc);
@@ -583,20 +585,9 @@ function calculate() {
   // (f_disc bisection → factory/cascade → sign-modulated transfer → hydrogen
   // conservation → barycentre → primary star → N-body destabilization), so this is
   // byte-for-byte what the CLI / non-html best-fit produces. Re-running slot_aware_fit
-  // here (the old path) diverged from it. The ONLY exception is kinetic impact-vapor
-  // discs (Luna/Phobos), which need slot_aware_fit's kinetic flag that budgetFit lacks.
-  let fit;
-  if (window.CURRENT_KINETIC) {
-    const fitOpts = { auto_compress: false, omega, kinetic: true };
-    if (strip_active) fitOpts.stripping = strip;
-    fit = slot_aware_fit(planets, M_star, spin_geom, f_disc, fitOpts);
-    const immuneNames = new Set(planets.filter(p => p.immutable).map(p => p.name));
-    apply_sign_modulation(fit.slots, C, R_disc, R_A, M_star, f_disc, immuneNames);
-    window.CURRENT_H = apply_hydrogen_conservation(fit.slots, f_disc * m_star_earth(M_star));
-  } else {
-    fit = rB.fit;
-    window.CURRENT_H = { captured: rB.budget_h_captured, dispersed: rB.budget_h_dispersed, exhausted: rB.budget_h_exhausted };
-  }
+  // here (the old path) diverged from it.
+  let fit = rB.fit;
+  window.CURRENT_H = { captured: rB.budget_h_captured, dispersed: rB.budget_h_dispersed, exhausted: rB.budget_h_exhausted };
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
   // forensics receiver, e.g. Earth; or tide-ledger receiver, e.g.
@@ -708,6 +699,7 @@ function calculate() {
       <td>${s.core_component ? 'core' : s.in_void ? 'int' : s.exterior ? '—' : s.slot_n}</td>
       <td>${fmt(r_form, 3)}</td>
       <td>${isFinite(dr_au) ? (dr_au >= 0 ? '+' : '') + fmt(dr_au, 3) : '—'}</td>
+      <td>${r_form > 0 && M_star > 0 ? fmt(Math.sqrt(r_form * r_form * r_form / M_star), 2) + (s.filled && r_now > 0 && Math.abs(r_now - r_form) > 1e-9 ? ' / ' + fmt(Math.sqrt(r_now * r_now * r_now / M_star), 2) : '') : '—'}</td>
       <td>${s.t_form > 0 ? fmtTime(s.t_form) : '—'}</td>
       <td>${fmtM(s.rock)}</td>
       <td>${fmtM(s.ice)}</td>
@@ -723,7 +715,7 @@ function calculate() {
   const tfoot = document.getElementById("result-total");
   tfoot.innerHTML = `
     <tr>
-      <th>TOTAL</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+      <th>TOTAL</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
       <th>${fmtM(total_pred, 2)}</th>
       <th>${fmtM(total_obs, 2)}</th>
       <th></th><th></th>
@@ -787,9 +779,27 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
   if (ampRatio == null || !isFinite(ampRatio) || ampRatio < 0) ampRatio = C;
   const wA = ampRatio >= 1 ? 1 : ampRatio;   // dominant → 100%
   const wM = ampRatio >= 1 ? 1 / ampRatio : 1;
-  const maas   = r => wM * Math.cos(alpha * Math.log(R_disc / r));  // Davis reverberation (inward)
-  const alfven = r => wA * Math.cos(alpha * Math.log(r / R_A));     // Alfvén radiation (outward)
-  const sup    = r => maas(r) + alfven(r);             // NET (signed) superposition
+  const maas = r => wM * Math.cos(alpha * Math.log(R_disc / r));    // Davis reverberation (inward)
+  // One Alfvén waveform PER CORE element (each fragment's magnetosphere), centred on the
+  // core's barycentre-relative position d_i and anchored at its own R_A_i (from its mass).
+  // A single star (one core at d=0) is the familiar wA·cos(α·ln(r/R_A)); a binary
+  // superimposes A's and B's combs. Net = the shared Maas (Davis-dam) wave + Σ Alfvén_i.
+  const cb = window.CURRENT_BUDGET || {};
+  const om_wf = (cb.omega_rot != null) ? cb.omega_rot : (cb.spin || 1);
+  const cores = fit.slots.filter(s => s.core_component && (s.observed || 0) > 0);
+  let coreWaves;
+  if (cores.length <= 1) {
+    coreWaves = [{ name: (cores[0] && cores[0].name) || 'core', d: 0, RA: R_A }];
+  } else {
+    coreWaves = cores.map(c => ({
+      name: c.name, d: Math.abs(c.slot_r),
+      RA: alfven_radius((c.observed || 0) / M_SUN_TO_EARTH, om_wf)
+    })).filter(cw => isFinite(cw.RA) && cw.RA > 0);
+    if (!coreWaves.length) coreWaves = [{ name: 'core', d: 0, RA: R_A }];
+  }
+  const alfvenOf = cw => r => wA * Math.cos(alpha * Math.log(Math.max(Math.abs(r - cw.d), 1e-9) / cw.RA));
+  const alfven = r => coreWaves.reduce((a, cw) => a + alfvenOf(cw)(r), 0);  // total Alfvén (Σ cores)
+  const sup = r => maas(r) + alfven(r);                // NET (signed) superposition
 
   const rs = slots.map(s => s.slot_r);
   const rmin = Math.min(...rs) * 0.82, rmax = Math.max(...rs) * 1.18;
@@ -865,6 +875,10 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
     dots += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rr.toFixed(1)}" fill="${st.c}" stroke="${half ? '#fff' : '#111'}" stroke-width="${half ? 1 : 0.7}" style="pointer-events:none"/>`;
   }
 
+  // one polyline per core's Alfvén comb (dashed when there are several)
+  const alfvenPolys = coreWaves.map(cw =>
+    `<polyline points="${poly(alfvenOf(cw))}" fill="none" stroke="#e6695a" stroke-width="1" opacity="${coreWaves.length > 1 ? 0.5 : 0.6}"${coreWaves.length > 1 ? ' stroke-dasharray="4,2"' : ''} style="pointer-events:none"><title>Alfvén — ${escapeHtml(cw.name)} (R_A=${cw.RA.toFixed(3)} AU at ${cw.d.toFixed(1)} AU)</title></polyline>`
+  ).join('');
   const sw = (c, t) => `<span style="color:${c}">●</span> ${t}`;
   el.innerHTML =
     `<h3 style="margin:6px 0">Alfvén–Maas Superposition <span style="font-weight:normal;font-size:0.8em;color:#999">(exploratory — amplitudes not yet calibrated)</span></h3>`
@@ -882,11 +896,11 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
     + `<line x1="${ML}" y1="${MT + plotH}" x2="${ML + plotW}" y2="${MT + plotH}" stroke="#888" style="pointer-events:none"/>`
     + ticks + snow
     + `<polyline points="${poly(maas)}" fill="none" stroke="#5aa9e6" stroke-width="1" opacity="0.6" style="pointer-events:none"/>`
-    + `<polyline points="${poly(alfven)}" fill="none" stroke="#e6695a" stroke-width="1" opacity="0.6" style="pointer-events:none"/>`
+    + alfvenPolys
     + `<polyline points="${poly(sup)}" fill="none" stroke="#b07cff" stroke-width="2" style="pointer-events:none"/>`
     + dots
     + `<text x="${ML}" y="15" font-size="11" fill="#5aa9e6" style="pointer-events:none">— Maas (Davis, w=${wM.toFixed(2)})</text>`
-    + `<text x="${ML + 165}" y="15" font-size="11" fill="#e6695a" style="pointer-events:none">— Alfvén (w=${wA.toFixed(2)})</text>`
+    + `<text x="${ML + 165}" y="15" font-size="11" fill="#e6695a" style="pointer-events:none">— Alfvén${coreWaves.length > 1 ? ' ×' + coreWaves.length + ' cores' : ''} (w=${wA.toFixed(2)})</text>`
     + `<text x="${ML + 310}" y="15" font-size="11" fill="#b07cff" style="pointer-events:none">— net superposition</text>`
     + `<text x="16" y="${(MT + plotH / 2).toFixed(1)}" font-size="10" fill="#aaa" transform="rotate(-90 16 ${(MT + plotH / 2).toFixed(1)})" text-anchor="middle" style="pointer-events:none">net amplitude</text>`
     + `<text x="${(ML + plotW / 2).toFixed(1)}" y="${H - 6}" font-size="10" fill="#aaa" text-anchor="middle" style="pointer-events:none">AU (log scale)</text>`
@@ -1044,7 +1058,7 @@ function fillPredictedSlots() {
   // use the slot-aware assignment so migrated planets occupy their FORMATION
   // slot rather than the slot nearest their current AU.
   reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot();
-  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star, inp.kinetic);
+  const rB = budgetFit(existing.map(p => ({ ...p })), inp.budget, inp.spin, inp.parent, inp.star);
   set_composition(rB.budget_Z, rB.budget_f_rock);
   const obsB = existing.filter(p => (p.observed || 0) > 0);
   const outermostB = obsB.reduce((m, p) => Math.max(m, p.r), 0);
@@ -1355,7 +1369,7 @@ function findBestFit() {
   //    so the search space is [0, breakup_spin]; log-scan it then refine to the λ
   //    that minimises the planet-mass RMS.
   const inp = getInputs();
-  const budget = inp.budget, parent = inp.parent, star = inp.star, kinetic = inp.kinetic;
+  const budget = inp.budget, parent = inp.parent, star = inp.star;
   const pl = getPlanets().concat(getKBOs()).concat(getCoreComponents());
   const obs = pl.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
   const M = mass_from_budget(budget);
@@ -1363,7 +1377,7 @@ function findBestFit() {
   // anomalies (Mercury/Mars late-delivery, scattered remnants) are model OUTPUT, not
   // fit error, so they must not steer the spin search.
   const evalLam = (lam) => {
-    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent, star, kinetic);
+    const rr = budgetFit(pl.map(p => ({ ...p })), budget, lam, parent, star);
     const tgt = new Set(rr.target_names);
     let sse = 0, n = 0;
     for (const s of rr.fit.slots) {
@@ -1449,7 +1463,6 @@ function saveCurrentAsPreset() {
     cto: inp.cto,
     parent: inp.parent || null,
     stripping: inp.stripping || undefined,
-    kinetic: window.CURRENT_KINETIC || undefined,
     L: window.CURRENT_L || undefined,
     planets: planets,
     notes: "User-saved system."

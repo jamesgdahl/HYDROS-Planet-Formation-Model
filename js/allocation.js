@@ -167,5 +167,17 @@ function hydrogen_capture(core_mass, t_form_myr, spin, r, M_star, f_disc, omega)
     const window = Math.exp(-k * t_form_myr);
     const wind_term = (spin / WIND_SPIN_REF) * Math.pow(WIND_R_REF / Math.max(r, 0.01), 2);
     const wind_suppression = 1.0 / (1.0 + wind_term);
-    return GAS_CAPTURE_EFF * M_gas_disc * window * wind_suppression;
+    const captured = GAS_CAPTURE_EFF * M_gas_disc * wind_suppression;
+    // IGNITER: a body that crosses the hydrogen-burning threshold (M_STELLAR_BOUNDARY ≈
+    // 0.08 M☉) becomes a self-gravitating STAR — it ignites EARLY (at the threshold) and
+    // keeps accreting H for the system's whole lifetime, NOT cut off when the nebular
+    // gas-window closes. So the exp(−k·t_form) window does NOT apply above ignition: an
+    // igniter accretes until its full mass (the reservoir is exhausted at t_form), then
+    // stops. Proxima — a slow wide-dam accretor — lit early and FINISHED gathering H at
+    // t_form ≈ 4.77 Gyr, i.e. ~hundreds of Myr ago, since Alpha Cen (~5.3 Gyr) is older
+    // than t_form. Below ignition (planets), the window applies: accretion stops at disc
+    // dispersal.
+    if (core_mass + captured >= M_STELLAR_BOUNDARY)
+        return captured;
+    return captured * window;
 }
