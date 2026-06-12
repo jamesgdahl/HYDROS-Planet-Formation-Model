@@ -2211,9 +2211,17 @@ function budgetFit(planets: Planet[], budget: Budget,
   // 2.4·a_max]: stable inside the TIGHTEST pair's circum-element region and outside
   // the WIDEST pair's circum-system region; everything between is swept. N=2 reduces
   // to the binary [0.3·a_bin, 2.4·a_bin].
-  const co_seps = planets.filter(p => p.core && (p.observed || 0) > 0).map(p => p.r);
-  const a_min = co_seps.length ? Math.min(...co_seps) : 0;
-  const a_max = co_seps.length ? Math.max(...co_seps) : 0;
+  // Destabilization uses the binary's ORBITAL EXTREMES, not its semimajor axis —
+  // "destabilized is destabilized": the P-type (circumbinary) clear-out reaches the widest
+  // separation (APASTRON a(1+e)); the S-type (circum-element) stable edge is set by the
+  // closest approach (PERIASTRON a(1-e)). Circular pairs (e=0) reduce to a. Alpha Cen
+  // (e≈0.52) ⇒ swept 3.4→86 AU, matching the full Holman-Wiegert eccentric polynomial
+  // (vs 7→56 with bare a). e defaults to 0, so single stars / circular binaries are unchanged.
+  const co_cores = planets.filter(p => p.core && (p.observed || 0) > 0);
+  const apo = co_cores.map(p => p.r * (1 + (p.e || 0)));    // widest reach (P-type limiter)
+  const peri = co_cores.map(p => p.r * (1 - (p.e || 0)));   // closest approach (S-type limiter)
+  const a_min = peri.length ? Math.min(...peri) : 0;
+  const a_max = apo.length ? Math.max(...apo) : 0;
   const hw_in = a_max > 0 ? BINARY_HW_INNER * a_min : 0;
   const hw_out = a_max > 0 ? BINARY_HW_OUTER * a_max : 0;
   if (r_bary !== 0) planets = planets.map(p => {
@@ -2434,7 +2442,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     // destroyed. Radii are barycentre-relative; core elements are exempt (they ARE
     // the perturbers).
     if (hw_out > 0) {
-      const nco = co_seps.length + 1;   // co-primaries + primary
+      const nco = co_cores.length + 1;   // co-primaries + primary
       for (const s of fit.slots) {
         if (s.core_component || s.external) continue;
         if (s.slot_r > hw_in && s.slot_r < hw_out) {

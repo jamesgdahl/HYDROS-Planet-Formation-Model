@@ -27,6 +27,11 @@ interface Planet {
    *  orbit. Excluded from the cascade fit (predicted := observed). Alpha Cen B
    *  is the exemplar — a rotational-fragmentation co-primary. */
   core?: boolean;
+  /** Orbital eccentricity (co-primary cores). The binary destabilization uses the
+   *  worst-case extremes — "destabilized is destabilized": the P-type circumbinary
+   *  clear-out reaches the APASTRON a(1+e), the S-type circum-element stable edge is set
+   *  by the PERIASTRON a(1-e). Default 0 (circular) ⇒ both reduce to the stored a. */
+  e?: number;
 }
 
 interface SystemInputs {
