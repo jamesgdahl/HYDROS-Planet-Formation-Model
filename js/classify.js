@@ -39,6 +39,55 @@ function is_stripped(planet, M_star) {
     // are protected by being cooler (further out), not by mass.
     return equilibrium_temperature(planet.r, M_star) > T_STRIP_K;
 }
+// Spectral / composition class from a body's mass budget (M⊕). Ignition thresholds are
+// PHYSICAL birth-mass limits; letter classes are PRIMORDIAL identities (×1.14 per unit, so a
+// slot of X units is the star the literature quotes at X M_sun after uniform T-Tauri loss).
+// Module-level so the post-conservation re-classification can re-derive a slot's class from
+// its CAPPED mass — otherwise a far-dam slot that wanted a stellar gas envelope but got little
+// keeps a stale "O-class star" label even at a few hundred M⊕.
+const M_BROWN_DWARF = 4131.0; // 13 M_J (deuterium ignition)
+const M_STELLAR_IGNITE = 25400.0; // 0.08 M_sun (hydrogen ignition)
+const M_K_DWARF = 170829.0; // 0.45 units
+const M_G_DWARF = 303696.0; // 0.80 units
+const M_F_DWARF = 394805.0; // 1.04 units
+const M_A_DWARF = 531468.0; // 1.40 units
+const M_B_DWARF = 797202.0; // 2.10 units
+const M_O_DWARF = 6073920.0; // 16 units
+const ICE_GIANT_ICE_FRAC = 0.30;
+function composition_class(core_v, ice_v, h_he_v, total_v) {
+    if (total_v >= M_O_DWARF)
+        return "O-class star";
+    if (total_v >= M_B_DWARF)
+        return "B-class star";
+    if (total_v >= M_A_DWARF)
+        return "A-class star";
+    if (total_v >= M_F_DWARF)
+        return "F-class star";
+    if (total_v >= M_G_DWARF)
+        return "G-class star";
+    if (total_v >= M_K_DWARF)
+        return "K-class star";
+    if (total_v >= M_STELLAR_IGNITE)
+        return "M-class star";
+    if (total_v >= M_BROWN_DWARF)
+        return "brown dwarf";
+    if (core_v > THRESHOLD_GAS && h_he_v > core_v)
+        return "gas giant";
+    if (core_v > THRESHOLD_GAS && core_v > 0 && ice_v / core_v >= ICE_GIANT_ICE_FRAC)
+        return "ice giant";
+    if (core_v > THRESHOLD_GAS)
+        return "rock giant";
+    if (core_v > 0 && ice_v / core_v >= ICE_GIANT_ICE_FRAC)
+        return "icy";
+    return "rocky";
+}
+// The recognized class tokens (the leading phrase of an interpretation) — used to swap a
+// stale class prefix after the H-cap without mangling cause-of-death interpretations.
+const COMPOSITION_CLASS_TOKENS = new Set([
+    "O-class star", "B-class star", "A-class star", "F-class star", "G-class star",
+    "K-class star", "M-class star", "brown dwarf", "gas giant", "ice giant", "rock giant",
+    "icy", "rocky",
+]);
 function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
     // Composition classes (used for filled & lost slots):
     //   O-class star    - ≥ 16 M_sun (blue giant)
@@ -53,53 +102,7 @@ function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
     //   ice giant       - ice/core ≥ 30%
     //   rock giant      - core > gas threshold, no envelope, no ice
     //   rocky           - sub-threshold core
-    const ICE_GIANT_ICE_FRAC = 0.30;
-    // Ignition thresholds are PHYSICAL (burning happens at birth mass):
-    const M_BROWN_DWARF = 4131.0; // 13 M_J (deuterium ignition)
-    const M_STELLAR = 25400.0; // 0.08 M_sun (hydrogen ignition)
-    // Letter classes are PRIMORDIAL IDENTITIES: a slot of X primordial
-    // units is the star the literature quotes at X M_sun after uniform
-    // T Tauri loss, so class thresholds scale by 1.14 (one birth unit =
-    // 379,558 M_E). Sol is born, lives, and is classified G; Alpha Cen
-    // B (0.80 units) classifies K, matching its observed K1V.
-    const M_K_DWARF = 170829.0; // 0.45 units
-    const M_G_DWARF = 303696.0; // 0.80 units
-    const M_F_DWARF = 394805.0; // 1.04 units
-    const M_A_DWARF = 531468.0; // 1.40 units
-    const M_B_DWARF = 797202.0; // 2.10 units
-    const M_O_DWARF = 6073920.0; // 16 units
-    function _classify(core_v, ice_v, h_he_v, total_v) {
-        if (total_v >= M_O_DWARF)
-            return "O-class star";
-        if (total_v >= M_B_DWARF)
-            return "B-class star";
-        if (total_v >= M_A_DWARF)
-            return "A-class star";
-        if (total_v >= M_F_DWARF)
-            return "F-class star";
-        if (total_v >= M_G_DWARF)
-            return "G-class star";
-        if (total_v >= M_K_DWARF)
-            return "K-class star";
-        if (total_v >= M_STELLAR)
-            return "M-class star";
-        if (total_v >= M_BROWN_DWARF)
-            return "brown dwarf";
-        if (core_v > THRESHOLD_GAS && h_he_v > core_v)
-            return "gas giant";
-        if (core_v > THRESHOLD_GAS && core_v > 0 && ice_v / core_v >= ICE_GIANT_ICE_FRAC)
-            return "ice giant";
-        if (core_v > THRESHOLD_GAS)
-            return "rock giant";
-        // Sub-gas-threshold bodies: distinguish ICE-rich (e.g. inverted-regime
-        // phase-2 products past the viscous snow line, or normal outer cascade
-        // bodies) from rocky ones — previously every small body fell through to
-        // "rocky" regardless of ice content.
-        if (core_v > 0 && ice_v / core_v >= ICE_GIANT_ICE_FRAC)
-            return "icy";
-        return "rocky";
-    }
-    const primordial_comp = _classify(primordial.core || 0, primordial.ice || 0, primordial.h_he || 0, primordial.total || 0);
+    const primordial_comp = composition_class(primordial.core || 0, primordial.ice || 0, primordial.h_he || 0, primordial.total || 0);
     if (!slot.filled) {
         // Default: missing slot without directly attributable cause of death
         // is simply unobserved. We don't infer destruction from migration
@@ -116,7 +119,7 @@ function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
     // Otherwise a non-immutable gas-giant over-prediction can mislabel a
     // sub-BD planet as a brown dwarf.
     const observed_total = slot.observed > 0 ? slot.observed : total_bs;
-    const comp = _classify(core_bs, ice_bs, h_he_bs, observed_total);
+    const comp = composition_class(core_bs, ice_bs, h_he_bs, observed_total);
     // Stellar-class bodies and brown dwarfs skip cascade mass-delta tags
     // (no "scattered/lost" or "late delivery" applies to these scales).
     const is_stellar_class = comp.endsWith("-class star") || comp === "brown dwarf";

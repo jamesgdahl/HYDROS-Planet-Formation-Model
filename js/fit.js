@@ -2534,6 +2534,21 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             ? primaryMass : M;
         const H_reservoir = f * m_star_earth(M_disc_host);
         const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
+        // RE-CLASSIFY after the H-cap: classify_slot ran in the cascade with the PRE-cap mass, so a
+        // far-dam slot that wanted a stellar gas envelope but lost it to the dam-slot kept a stale
+        // "O-class star" prefix even at a few hundred M⊕. Re-derive the leading class token from the
+        // capped primordial (unfilled slots are classed by primordial; filled by observed, untouched);
+        // keep the cause-of-death suffix.
+        for (const s of fit.slots) {
+            if (s.filled || s.core_component || s.external || !s.primordial)
+                continue;
+            const prefix = s.interpretation.split(' (')[0];
+            if (!COMPOSITION_CLASS_TOKENS.has(prefix))
+                continue;
+            const cls = composition_class(s.primordial.core || 0, s.primordial.ice || 0, s.primordial.h_he || 0, s.primordial.total || 0);
+            if (cls !== prefix)
+                s.interpretation = cls + s.interpretation.slice(prefix.length);
+        }
         const tgt = sel(fit);
         const tot = tgt.reduce((a, s) => a + s.observed, 0);
         const resid = tot > 0
