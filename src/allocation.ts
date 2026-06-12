@@ -140,45 +140,36 @@ function pebble_allocation_weight(r: number, M_star: number, f_disc: number): nu
   return Math.pow(delta, -0.5);
 }
 
+// H/He ENVELOPE — the gas-rich-gorging WINDOW model (the WANT; the shared-budget cap is applied
+// system-wide by apply_hydrogen_allocation). Two epochs, one disc-lifetime clock:
+//   τ = R_disc³/M·GAS_TRICKLE_COEF — the disc lifetime. The gas drains inward to the star by
+//   GRAVITY (v ∝ g ∝ M/r² ⇒ drain time ∝ R³/M), so a FAR dam drains cubically slower and its
+//   disc is long-lived. Sol R_disc≈30 ⇒ τ≈3.5 Myr; HR 8799 dam≈117 ⇒ τ≈160 Myr.
+//   EPOCH 1 (gas-rich): a runaway core gorges the replenished disc for its window (τ − t_form);
+//     early formers (Jupiter) gorge longest. SHORT-lived disc ⇒ lopsided windows ⇒ steep profile
+//     (Jupiter ≫ Saturn, ice giants miss it). LONG-lived disc ⇒ everyone gorges ⇒ flat (HR 8799).
+//   EPOCH 2 (clearing): the residual drains to the star; post-window cores (ice giants) skim a
+//     small slice of the inward through-flow (the pileup). Inner ≳ outer (∝(R_disc/r)^q).
+// DAM-WIND SUPPRESSION: the SAME stellar wind that sets the Davis Dam (ram ∝ W/r², W = COMP_FLUX
+//   = M⋆^3.54) only partially strips the gas's angular momentum (GAS_WIND_K = its efficiency), so
+//   it suppresses capture most where strongest — the INNER giants. Jupiter (close) is zapped most;
+//   the outer/far giants are spared because 1/r² beats their (larger) W — which is why HR 8799's
+//   distant planets keep their gas. Replaces the abandoned gap-limited / global-ε models.
 function hydrogen_capture(core_mass: number, t_form_myr: number, spin: number,
                           r: number, M_star: number, f_disc: number,
                           omega?: number): number {
-  const om = (omega === undefined) ? spin : omega;  // inner-jaw rotation (wind + dam)
-  // Runaway gate: the core must out-pull the stellar wind AND beat the KH clock.
+  const om = (omega === undefined) ? spin : omega;
   if (core_mass < gas_threshold_mass(r, M_star, f_disc)) return 0;
   const M_gas_disc = f_disc * m_star_earth(M_star);
-  // DAM-TRICKLE CLOCK (replaces the exp(−k·t) window). H/He piles up at the Davis Dam
-  // (R_disc, the pressure max) and drains INWARD onto the star. The inward drift is GRAVITY-
-  // driven: v ∝ g ∝ M/r², so the drain time τ = ∫dr/v ∝ R_disc³/M — gravity falling off as
-  // 1/r² makes a FAR dam drain CUBICALLY slower. GAS_TRICKLE_COEF anchors Sol (R_disc≈30 AU →
-  // ~3.5 Myr disc lifetime; cliff between Saturn 3.1 and Uranus 6.5 Myr). HR 8799 (R_disc≈67 AU)
-  // → ~30 Myr, so its slow-forming wide giants stay PRE-cliff (the disc persists, gas available);
-  // a 9000 AU dam (Alpha Cen) → effectively never drains, so a wide igniter (Proxima) drinks for
-  // eons. (The "dispersed" gas isn't lost — it trickles onto the star; the heliosphere is far
-  // too rarefied to hold it.)
   const r_disc = disc_radius(M_star, spin, om, f_disc);
-  const tau = Math.pow(r_disc, 3) / Math.max(M_star, 1e-9) * GAS_TRICKLE_COEF; // Myr
-  // RUNAWAY feast: a core reaching runaway BEFORE the cliff seizes the draining disc; the
-  // available gas declines to zero AT the cliff (t=τ). Earlier runaway ⇒ longer feast
-  // (Jupiter ≫ Saturn). Past the cliff there is no runaway — the disc has drained to the star.
-  const x = (tau > 0) ? t_form_myr / tau : Infinity;
-  const feast = (x < 1) ? (1 - x * x) : 0;
-  const wind_term = (om / WIND_SPIN_REF) * Math.pow(WIND_R_REF / Math.max(r, 0.01), 2);
-  const wind_suppression = 1.0 / (1.0 + wind_term);
-  // DAVIS-DAM PILEUP (POST-cliff ice-giant channel): gas trapped at the dam trickles INWARD,
-  // so the inner ice giant catches the through-flow while the one sitting AT the dam (the launch
-  // point) gets a touch less — Uranus ≳ Neptune, ∝(R_disc/r)^q (increasing inward). Gated to
-  // post-cliff (x≥1) so the pre-cliff runaway giants don't double-dip. Ungated by the (magnetic)
-  // Alfvén Dam since H/He is diamagnetic. ~2.5 M⊕ comparable for Sol's ice giants.
-  const pileup = (x >= 1)
-    ? GAS_PILEUP_EFF * M_gas_disc
-        * Math.pow(Math.max(r_disc, 1e-9) / Math.max(r, 1e-9), GAS_PILEUP_Q) * wind_suppression
-    : 0;
-  const runaway = GAS_CAPTURE_EFF * M_gas_disc * wind_suppression;
-  // IGNITER: a body crossing the H-burning threshold becomes a star — it keeps accreting the
-  // inflowing supply over the whole (long) trickle, NOT cut by the cliff (feast≈1 anyway for a
-  // wide dam). Below ignition (planets), runaway is gated by the trickle-cliff feast; the dam
-  // pileup is added on top (the ice-giant channel).
-  if (core_mass + runaway >= M_STELLAR_BOUNDARY) return runaway + pileup;
-  return runaway * feast + pileup;
+  const tau = Math.pow(r_disc, 3) / Math.max(M_star, 1e-9) * GAS_TRICKLE_COEF; // disc lifetime, Myr
+  const window = Math.max(0, tau - t_form_myr);                                // Epoch-1 gorging window
+  // Dam-wind ram suppression (∝ W/r², W = M⋆^3.54 ≡ COMP_FLUX, the dam-setting wind):
+  const W = (COMP_FLUX > 0) ? COMP_FLUX : Math.pow(Math.max(M_star, 1e-9), 3.54);
+  const wind_suppression = 1.0 / (1.0 + GAS_WIND_K * W / Math.max(r * r, 1e-6));
+  const gorge = GAS_CAPTURE_RATE * window * wind_suppression;                  // Epoch-1 want
+  // Epoch-2 clearing trickle (the ice-giant envelope; negligible vs a gorging giant):
+  const pileup = GAS_PILEUP_EFF * M_gas_disc
+    * Math.pow(Math.max(r_disc, 1e-9) / Math.max(r, 1e-9), GAS_PILEUP_Q) * wind_suppression;
+  return gorge + pileup;  // the WANT; shared budget cap applied in apply_hydrogen_allocation
 }

@@ -333,7 +333,7 @@ function formation_time(r: number, core: number, M_star: number, f_disc: number)
   // forms fastest, the slow outer disc slowest. Distinct from orbital_period() below
   // (the raw period in yr); this is the Myr accretion clock that gates gas capture.
   if (COMP_MDOT > 0 && core > 0 && COMP_R_DISC > 0 && r > 0) {
-    return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF) * COMP_SPIN;
+    return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF) / COMP_SPIN;
   }
   return 0.10 * r / slope(M_star, f_disc);   // fallback: non-budget legacy systems
 }

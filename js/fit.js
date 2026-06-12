@@ -2192,26 +2192,39 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
 // term). NB: this is NOT planet destruction — in a multi-star system the
 // companions gravitationally obliterate the planet slots (the scattering/purge
 // diagnostics handle that separately). Conserves total H: captured+dispersed=reservoir.
-function apply_hydrogen_conservation(slots, reservoir) {
-    const giants = slots
-        .filter(s => s.filled && !s.external && !s.exterior && (s.predicted - s.core) > 1e-9)
-        .sort((a, b) => (a.t_form || 0) - (b.t_form || 0)); // earliest-forming first
-    let remaining = Math.max(0, reservoir);
-    let captured = 0, exhausted = false;
+// Budget-share the gas-rich-gorging WANTS (s.predicted−s.core from hydrogen_capture) against the
+// finite disc reservoir. Two regimes fall out, no per-system knob:
+//   WINDOW-limited (Σwant ≤ budget): every giant keeps its full want — Sol's short-lived disc lets
+//     the planets eat only ~10%, the rest drains to the star (the "90% to Sol" emerges).
+//   BUDGET-limited (Σwant > budget): share PROPORTIONALLY to want (∝ window) — HR 8799's long-lived
+//     disc lets the giants consume nearly all of it; flat profile, latest/shortest-window the runt.
+// The gas INTERIOR to the innermost giant has no planet to catch it ⇒ clears to the star (reduces
+// the planet-available budget); for a compact disc this barely binds (window-limited anyway).
+function apply_hydrogen_conservation(slots, reservoir, r_disc) {
+    const giants = slots.filter(s => s.filled && !s.external && !s.exterior && (s.predicted - s.core) > 1e-9);
+    const total_res = Math.max(0, reservoir);
+    if (!giants.length)
+        return { captured: 0, dispersed: total_res, exhausted: false };
+    const r_in = 0.05;
+    const r_inner = giants.reduce((m, s) => Math.min(m, s.slot_r), Infinity);
+    const Rd = Math.max(r_disc, r_inner, r_in);
+    const interior = (Rd > r_in)
+        ? Math.min(0.95, Math.max(0, (Math.sqrt(Math.max(r_inner, r_in)) - Math.sqrt(r_in)) / (Math.sqrt(Rd) - Math.sqrt(r_in))))
+        : 0;
+    const budget = total_res * (1 - interior); // gas exterior to the innermost giant
+    const total_want = giants.reduce((a, s) => a + (s.predicted - s.core), 0);
+    const scale = (total_want > budget && total_want > 0) ? budget / total_want : 1.0;
+    let captured = 0;
     for (const s of giants) {
-        const want = s.predicted - s.core;
-        const got = Math.min(want, remaining);
-        if (got < want - 1e-6)
-            exhausted = true;
-        remaining -= got;
-        captured += got;
+        const got = (s.predicted - s.core) * scale;
         s.predicted = s.core + got;
+        captured += got;
         if (s.observed > 0) {
             s.err_pct = (s.predicted - s.observed) / s.observed * 100;
             s.implied_dM = s.observed - s.predicted;
         }
     }
-    return { captured, dispersed: remaining, exhausted };
+    return { captured, dispersed: total_res - captured, exhausted: scale < 1.0 };
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2451,7 +2464,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         // un-captured remainder is dispersed (onto the star / flung out). `exhausted`
         // ⇒ the giants want more gas than the disc holds: raise the budget / spin.
         const H_reservoir = f * m_star_earth(M);
-        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
+        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir, R_disc_final);
         const tgt = sel(fit);
         const tot = tgt.reduce((a, s) => a + s.observed, 0);
         const resid = tot > 0

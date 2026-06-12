@@ -124,19 +124,33 @@ $$M_{\text{ice}}(r) = \sigma_{\text{AAF}} (r - r_{\text{snow}}) \cdot 3.5 \cdot 
 Pebbles drift inward from the snow line; gas-eligible cores capture shares weighted by inverse-sqrt distance from snow line:
 $$M_{\text{peb},i} = M_{\text{peb,total}} \cdot \frac{w_i}{\sum_j w_j}, \quad w_i = \frac{1}{\sqrt{r_i - r_{\text{snow}}}}$$
 
-### H/He envelope (core ≥ 3.0 M⊕)
+### H/He envelope — gas-rich gorging window (core ≥ gas threshold)
 
-Tanigawa-Ikoma 2007 gas accretion: `dM_gas/dt ∝ M_core²` during runaway phase. Integrating with exponentially-decaying disc gas:
+The envelope is set by a **gas-rich-gorging window gated by the disc lifetime**, with one wind doing both the timing and the inner→outer redistribution. This replaces the older `A_0·M_core²·exp(−k·t)` law.
 
-$$M_{\text{H/He}} = A_0 \cdot M_{\text{core}}^2 \cdot \exp(-k \cdot t_{\text{form}}) \cdot w_{\text{wind}}$$
+**Disc lifetime (gravity-driven drain).** Disc gas drains inward onto the star by gravity (drift v ∝ g ∝ M/r²), so the drain time scales cubically with the dam radius:
 
-with
+$$\tau = \frac{R_{\text{disc}}^3}{M_\star}\cdot \text{GAS\_TRICKLE\_COEF}$$
 
-$$k = 0.691 \cdot \max\!\left(1, (M_{\text{disc,Sol}}/M_{\text{disc,sys}})^2\right)$$
+A far dam drains cubically slower — its disc is long-lived. Sol (R_disc≈30 AU) → τ≈3.5 Myr; HR 8799 (debris-disc dam ≈117 AU) → τ≈160 Myr. COEF anchors Sol.
 
-$$w_{\text{wind}}(r) = \frac{1}{1 + (\Omega/30)(0.5/r)^2}$$
+**Two epochs:**
 
-**A_0 = 4.39 (units 1/M⊕) and k = 0.691 are calibrated against Sol's Jupiter (slot 3) and Neptune (slot 0, ISU)** at their formation-slot radii — both fit observed mass exactly at the cascade-default `t_form = 0.10·r/σ_AAF`. (The older A_0 = 4.45 used Jupiter's displaced 5.203 AU rather than its 5.981 AU slot; the on-slot calibration corrects this.) With this calibration, Saturn's −35% deficit and Uranus's −59% deficit emerge as visible diagnostics of dynamical envelope-stripping events.
+- **Gas-rich (Epoch 1).** A runaway core gorges the (infall-replenished) disc for its window `τ − t_form`; early formers gorge longest. A *short-lived* disc (compact Sol) ⇒ lopsided windows ⇒ **steep** profile (Jupiter ≫ Saturn; ice giants form after the disc clears, window 0, and miss the feast). A *long-lived* disc (far dam, HR 8799) ⇒ everyone gorges ⇒ **flat** profile (comparable giants, latest-former the runt).
+
+$$M_{\text{gorge}} = \text{GAS\_CAPTURE\_RATE}\cdot \max(0,\;\tau - t_{\text{form}})\cdot w_{\text{wind}}(r)$$
+
+- **Clearing (Epoch 2).** The residual drains to the star; post-window cores (ice giants) skim a small slice of the inward through-flow — the dam pileup, inner ≳ outer (∝ (R_disc/r)^q).
+
+**Dam-wind suppression.** The *same* stellar wind that sets the Davis Dam (ram ∝ W/r², W = M⋆^3.54 ≡ COMP_FLUX) only partially strips the gas's angular momentum, so it suppresses capture most where strongest — the inner giants:
+
+$$w_{\text{wind}}(r) = \frac{1}{1 + \text{GAS\_WIND\_K}\cdot W / r^2}$$
+
+Jupiter (close) is zapped most; outer/far giants are spared because 1/r² beats their larger W — which is why HR 8799's distant planets keep their gas.
+
+**Shared budget.** Gorging wants are shared against the finite disc reservoir (f_disc·M⋆). *Window-limited* systems (Sol: Σwant ≪ budget) keep only ~10% — the rest drains to the star (the observed "90% to Sol"). *Budget-limited* systems (HR 8799: Σwant ≫ budget) share it proportionally to window; gas interior to the innermost giant clears to the star.
+
+**Calibration & validation.** GAS_CAPTURE_RATE and GAS_WIND_K are calibrated once on Sol's Jupiter; everything else (τ, windows, suppression, the planet/star split) is emergent from geometry. The single law then reproduces — no mechanism switch — both **Sol** (Jupiter 316, ice giants ≈ exact) *and* **HR 8799** (four comparable giants, latest the runt), with the steep-vs-flat dichotomy falling out of the disc lifetime τ alone. Saturn reads ~12% low because the observed value is post-impact (primordial ~100 M⊕, observed 95 after the slot-4 strike).
 
 ## T_eq stripping (silicate vaporization)
 

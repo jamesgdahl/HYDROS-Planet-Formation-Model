@@ -218,8 +218,15 @@ const THRESHOLD_GAS = 3.0;
 // ε = 0.2864 is Sol-anchored ONCE on Jupiter's in-situ envelope (physical
 // gas-capture-fraction range 0.1–0.3); k carries its gas-poor steepening.
 // TAU_KH0_MYR = Ikoma, Nakazawa & Emori (2000) KH-contraction prefactor 10^8 yr.
-const GAS_CAPTURE_EFF = 0.0999;  // runaway feast fraction, Sol-anchored so Jupiter lands exactly
-const GAS_WINDOW_K = 0.691;      // legacy (old exp window); retained but unused by hydrogen_capture
+const GAS_CAPTURE_EFF = 0.0999;  // legacy (old global runaway fraction; unused by the window model)
+const GAS_WINDOW_K = 0.691;      // legacy (old exp window; unused by hydrogen_capture)
+// WINDOW-GORGING capture rate [M⊕/Myr]: a runaway giant accretes gas at this rate over its gas-rich
+// window (τ − t_form). Calibrated on Sol's Jupiter (H/He ≈ 304 M⊕, window ≈ 1.9 Myr ⇒ ~177).
+const GAS_CAPTURE_RATE = 170.0;
+// DAM-WIND suppression strength = the wind's partial angular-momentum-stripping efficiency.
+// wind_suppression = 1/(1 + GAS_WIND_K·W/r²), W = M⋆^3.54 (= COMP_FLUX, the dam-setting wind).
+// Suppresses inner capture most (Jupiter zapped, outer/far giants spared since 1/r² beats W).
+const GAS_WIND_K = 2.0;
 // DAM-TRICKLE gas clock: τ[Myr] = (R_disc³ / M) · GAS_TRICKLE_COEF. The Davis-Dam H/He pileup
 // drains INWARD onto the star by GRAVITY-driven drift, v ∝ g ∝ M/r², so the drain time
 // τ = ∫dr/v ∝ R_disc³/M — gravity ∝ 1/r² makes a far dam drain CUBICALLY slower. COEF anchors
