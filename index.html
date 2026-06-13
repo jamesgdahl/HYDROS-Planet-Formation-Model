@@ -635,8 +635,8 @@ function calculate() {
     const inHZ = !s.exterior && !s.external && r_now >= hz[0] && r_now <= hz[1];
     let shortType;
     if (s.destroyed) shortType = 'destroyed';
-    else if (/collision remnant/.test(s.interpretation)) shortType = 'Core Remnant';
-    else if (baseClass === 'rocky' && inHZ) shortType = deliveryNames.has(s.name) ? 'Terrestrial' : 'Venusian';
+    else if (/collision remnant/.test(s.interpretation)) shortType = 'core remnant';
+    else if (baseClass === 'rocky' && inHZ) shortType = deliveryNames.has(s.name) ? 'terrestrial' : 'venusian';
     else shortType = baseClass;
     const tipText = (wetHZ ? '🌊 habitable zone + volatile delivery — ' : '') + interp;
     const escAttr = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
