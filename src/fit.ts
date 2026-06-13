@@ -422,10 +422,10 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // outer and inner slots. Adjacent slots → low energy → high retention
   // (clean merger). Distant slots → high energy → low retention (iron-
   // enriched survivor, mantle stripped).
-  const IMPACT_MASS_TOLERANCE = 0.20;
+  const COLLISION_SURVIVOR_MAX = 0.15;  // survivor observed < this × combined ⇒ a collision happened
   for (let i = 0; i < results.length - 1; i++) {
     const outer = results[i], inner = results[i + 1];
-    if (!outer.filled || inner.filled) continue;
+    if (!outer.filled || inner.filled) continue;   // survivor is the FILLED (bigger) body; impactor an empty slot
     if (outer.observed <= 0) continue;
     const rocky_combined =
       outer.primordial.rock + outer.primordial.ice + outer.primordial.pebble +
@@ -446,17 +446,31 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     const v_orbit_r = (r: number) => (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / r);
     const dv = Math.abs(v_orbit_r(inner.slot_r) - v_orbit_r(outer.slot_r));
     const v_esc = 11.186 * Math.pow(rocky_combined, 1.0 / 3.0);
-    const retention_model = v_esc > 0
-      ? Math.max(0.05, 0.969 - 0.605 * dv / v_esc)
-      : 0.05;
-    const expected = retention_model * rocky_combined;
-    const merge_err = Math.abs(expected - outer.observed) / outer.observed;
-    if (merge_err < IMPACT_MASS_TOLERANCE) {
-      const retention_obs = outer.observed / rocky_combined;
-      inner.interpretation = `impacted ${outer.name}`;
-      const suffix = retention_obs < 0.5 ? ", iron-enriched" : "";
-      outer.interpretation = `merger (absorbed slot ${inner.slot_n}${suffix})`;
-    }
+    const catastrophic = dv > v_esc;
+    // Fire only for a genuine CATASTROPHIC collision (Δv > escape velocity — the bodies cross
+    // and shatter, not gently merge) whose observed survivor is a small remnant of the combined
+    // pair. Widely-spaced or low-velocity systems (sub-cascade moons, outer-factory dregs) have
+    // Δv ≪ v_esc and never fire — so a tiny outer moon isn't mistaken for a collision survivor.
+    if (!catastrophic) continue;
+    if (!(outer.observed < COLLISION_SURVIVOR_MAX * rocky_combined)) continue;
+    const retention = v_esc > 0 ? Math.max(0.05, 0.969 - 0.605 * dv / v_esc) : 0.05;
+    // The catastrophic hit strips both mantles to the retained remnant, AND the impactor's dense
+    // IRON CORE sinks in and is absorbed by the survivor (Mercury keeps its core + slot-9's core).
+    const inner_core = IRON_FRACTION * (inner.primordial.rock + inner.primordial.pebble);
+    const expected = retention * rocky_combined + inner_core;
+    // THE RETAINED REMNANT IS THE PREDICTION (not the pre-collision slot allocation). A
+    // catastrophic hit (Δv > v_esc) strips the mantle to an iron-rich core — Mercury. Flagged
+    // remnant: reported with its real error but kept OUT of the f_disc bisection (collision
+    // output, not a disc-mass calibration point). The bigger body is the survivor.
+    const klass = outer.interpretation.split(' (')[0];
+    outer.predicted = expected;
+    outer.rock = expected; outer.ice = 0; outer.pebble = 0; outer.h_he = 0; outer.core = expected;
+    outer.remnant = true;
+    outer.err_pct = outer.observed > 0 ? (expected - outer.observed) / outer.observed * 100 : 0;
+    outer.implied_dM = outer.observed > 0 ? outer.observed - expected : 0;
+    outer.interpretation = `${klass} (collision remnant: the predicted slot-${inner.slot_n} body collided with ${outer.name} at Δv ≈ ${dv.toFixed(1)} km/s — ${catastrophic ? 'catastrophic, mantle stripped to an iron-rich core' : 'merger'}; ${(retention * 100).toFixed(0)}% retained → ${expected.toFixed(3)} M⊕)`;
+    inner.destroyed = true;
+    inner.interpretation = `destroyed (collided with ${outer.name} at Δv ≈ ${dv.toFixed(1)} km/s — ${catastrophic ? 'catastrophic impact, mantle stripped' : 'merged in'})`;
   }
 
   // Mutual-eviction detection: adjacent MISSING slots both predicting
@@ -653,26 +667,31 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     const boundary_valid = rb_hi > 0;
     for (const g of group) {
       const target = g.target;
-      const base = target.interpretation.split(' (')[0];
-      const m_survivor_min = target.predicted * SURVIVOR_MASS_FRAC_MIN;
-      const m_survivor_max = target.predicted * SURVIVOR_MASS_FRAC_MAX;
-      const is_settled_slot = (g === settled);
-      if (!target.filled) {
-        if (is_settled_slot && boundary_valid) {
-          target.interpretation = `${base} (planet scattered outward by ${perturberName}; sibling survivor predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${rb_lo.toFixed(2)}-${rb_hi.toFixed(2)} AU, the zone edge's swept band)`;
-        } else if (!boundary_valid) {
-          target.interpretation = `${base} (planet + siblings scattered outward by ${perturberName}, fully dispersed)`;
-        } else {
-          target.interpretation = `${base} (planet scattered outward by ${perturberName}; sibling planetesimals inward as impactors)`;
-        }
-      } else if (target.observed > 0
-                 && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
+      const klass = target.interpretation.split(' (')[0];
+      // THE SURVIVING REMNANT IS THE PREDICTION (settled slot). The slot's consolidated planet
+      // was flung outward by the perturber; only the inward sibling survives, and THAT is what
+      // the model predicts: mass = the 5-10% survivor-range midpoint (7.5% of the slot
+      // allocation), location = the centre of the swept inward-scatter band. Flagged remnant so
+      // it carries its real error but stays OUT of the f_disc bisection (scatter output, not a
+      // disc-mass calibration point). Other members of the group keep no planet — destroyed.
+      if (g === settled && boundary_valid) {
+        const m_survivor = target.predicted * (SURVIVOR_MASS_FRAC_MIN + SURVIVOR_MASS_FRAC_MAX) / 2;
+        const scale = target.predicted > 0 ? m_survivor / target.predicted : 0;
+        target.rock *= scale; target.ice *= scale; target.pebble *= scale; target.h_he *= scale;
+        target.core = target.rock + target.ice + target.pebble;
+        target.predicted = m_survivor;
+        target.slot_r = r_boundary;
+        target.remnant = true;
+        target.err_pct = target.observed > 0 ? (target.predicted - target.observed) / target.observed * 100 : 0;
+        target.implied_dM = target.observed > 0 ? target.observed - target.predicted : 0;
+        target.interpretation = `${klass} (scatter remnant: the slot's planet was flung outward by ${perturberName}; the surviving inward sibling — ${m_survivor.toFixed(3)} M⊕, settled at the swept-band centre ~${r_boundary.toFixed(2)} AU — is what survived)`;
+      } else if (!target.filled) {
+        target.predicted = 0; target.rock = 0; target.ice = 0; target.pebble = 0; target.core = 0; target.h_he = 0;
+        target.destroyed = true;
+        target.interpretation = `destroyed (the slot's planet was scattered outward by ${perturberName}; no body survived at this orbit)`;
+      } else if (target.observed > 0 && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
         const pct = Math.round(target.observed / target.predicted * 100);
-        if (is_settled_slot && boundary_valid) {
-          target.interpretation = `${base} (sibling survivor ~${pct}% of slot — its planet scattered outward by ${perturberName}; sibling predicted ${m_survivor_min.toFixed(2)}-${m_survivor_max.toFixed(2)} M⊕ at ~${rb_lo.toFixed(2)}-${rb_hi.toFixed(2)} AU, the zone edge's swept band)`;
-        } else {
-          target.interpretation = `${base} (zone dispersed by ${perturberName}, only ~${pct}% remains)`;
-        }
+        target.interpretation = `${klass} (zone dispersed by ${perturberName}, only ~${pct}% remains)`;
       }
     }
   }
@@ -1221,6 +1240,24 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       s.interpretation += " [inside the fluid Roche limit ("
         + d_roche_AU.toFixed(5) + " AU) — rigid-body survivor,"
         + " ring shepherd, or later arrival]";
+    }
+  }
+
+  // DESTROYED slots: an unfilled INTERIOR cascade slot — a planet the chain predicted, with
+  // nothing observed there, inside the outermost surviving planet — did not survive (merged,
+  // scattered, or consumed). It is "destroyed", not merely "unobserved" (the exterior /
+  // undiscovered cohort is handled in budgetFit, never reaches here). Cause-specific detectors
+  // above (scatter / devour / merger) have already set their own flags + narrative; this only
+  // catches the residual gaps still labelled "(not observed)".
+  const max_obs_r = results.reduce((m, s) =>
+    (s.filled && !s.external && !s.exterior && s.r_used > m) ? s.r_used : m, 0);
+  for (const s of results) {
+    if (s.filled || s.external || s.exterior || s.core_component) continue;
+    if (!(s.slot_r > 0) || s.slot_r >= max_obs_r) continue;
+    s.destroyed = true;
+    if (/\(not observed\)$/.test(s.interpretation)) {
+      s.interpretation = s.interpretation.replace(/\(not observed\)$/,
+        '(destroyed — a planet was predicted here but none survived: merged, scattered, or consumed)');
     }
   }
 

@@ -127,7 +127,7 @@
         <th>Predicted</th>
         <th>Observed</th>
         <th>Δm %</th>
-        <th>Interpretation</th>
+        <th>Type</th>
       </tr>
     </thead>
     <tbody id="result-rows"></tbody>
@@ -627,6 +627,12 @@ function calculate() {
       interp += ` — 🌊 HABITABLE ZONE + volatile delivery (delivery receipt in the impact ledger)`;
     }
 
+    // Short TYPE label for the table (rocky / gas giant / ice giant / destroyed / …); the full
+    // narrative — what happened to the body — moves into the hover tooltip so the cell stays terse.
+    const shortType = s.destroyed ? 'destroyed' : (s.interpretation.split(' (')[0] || s.interpretation);
+    const tipText = (wetHZ ? '🌊 habitable zone + volatile delivery — ' : '') + interp;
+    const escAttr = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
     const tr = document.createElement("tr");
     if (wetHZ) {
       tr.classList.add('row-habitable');
@@ -645,7 +651,7 @@ function calculate() {
       <td>${fmtM(predicted)}</td>
       <td>${isFinite(observed) ? fmtM(observed) : '—'}</td>
       <td class="${isFinite(dm_pct) ? errClass(dm_pct) : ''}">${isFinite(dm_pct) ? (dm_pct >= 0 ? '+' : '') + fmt(dm_pct, 1) + '%' : '—'}</td>
-      <td>${interp}</td>
+      <td title="${escAttr(tipText)}" style="cursor:help;text-decoration:underline dotted #999">${shortType}</td>
     `;
     tbody.appendChild(tr);
   }

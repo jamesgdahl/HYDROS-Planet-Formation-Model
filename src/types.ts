@@ -95,6 +95,9 @@ interface FitSlot {
   // ~5-10% of the slot's predicted parent. Mass delta and delivered
   // position are scatter OUTPUT — excluded from fit residuals/score.
   remnant?: boolean;
+  // Predicted planet that did NOT survive: its zone was scattered out / consumed,
+  // leaving no body at this orbit. Display says "destroyed", not "unobserved".
+  destroyed?: boolean;
   // Occupied half-step site (inverted regime). slot_n is half-integer.
   interstitial?: boolean;
   // Dam-exterior cohort member (the Kuiper mechanism): body beyond
