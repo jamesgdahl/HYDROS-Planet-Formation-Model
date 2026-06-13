@@ -135,23 +135,6 @@ const INV_ICE_DESCENT = 0.40;
 // isolation-mass planet, the next seeding a feeding-zone out. Sets BOTH the count and the mass
 // (M_iso ∝ C^1.5; spacing a_{n+1}=a_n(1+C·(M/3M*)^⅓)). TRAPPIST's resonant chain ⇒ C ≈ 15.
 const ISO_HILL_C = 15.0;
-// Inverted pile-up rock enrichment: the magnetic slots gather FERROMAGNETIC rock
-// preferentially, so the pile's rock fraction exceeds the bulk f_rock by this
-// factor (capped at 0.95). Calibrated so TRAPPIST's inner rock chain (b,c,d) bulks
-// up to the observed ~1.3 M⊕ while the icy outer chain stays ice-dominated.
-const INV_ROCK_ENRICH = 2.3;
-// Pile-up rock SATURATION: each slot fills to at most this fraction of the rock
-// budget before isolating (the magnetic slot + pressure pile-up concentrate solids
-// efficiently). The budget is consumed inner-first, so the inner slots fill flat and
-// the budget runs dry mid-chain — the flat b,c then the d-cliff exhaustion gap.
-const ROCK_SLOT_CAP = 0.44;
-// Inverted ICE consumption: ice is eaten by the marching factory inner-icy-first, with a
-// per-slot appetite GROWING as the feeding zone (∝ r^ICE_FEED_EXP). So the inner icy slots
-// consume the budget (e<f<g) and the OUTERMOST gets only the dregs — the ice cliff (h).
-// Calibrated against TRAPPIST's icy chain (e,f,g rise, h drop). Replaces the old cold-trap
-// crest weighting, which had no depletion so the outer slot hoarded the ice.
-const ICE_SLOT_CAP = 0.16;
-const ICE_FEED_EXP = 1.4;
 // Davis-dam nebula density: D = (budget − core) / NEBULA_SOL, the leftover disc mass
 // that piles up outside the dam, resisting the combined stellar wind. f_disc-INDEPENDENT
 // (it's the budget minus the stars, not the captured fraction). M_SUN_EARTH is the

@@ -898,63 +898,22 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       // Alfvén-repelled nebula; the ice allocation's PHASE-3 branch gives these
       // a real ICE composition and a PREDICTED mass. (Memory: inverted-regime-model.)
       const r_snow_k = snow_line(M_star, f_disc);   // pile-up density-gradient snow line (parked)
-      // PHASE-3 nebula is a CONSERVED pile (no slots beyond R_A): the marching
-      // dam sweeps it up inner-first, so the closest KBO to R_A collects most
-      // of the nebula and outer ones are thinning tails — "the nebula used most
-      // of its matter to produce the first product."
-      // PILE-UP ACCRETION (the second accretion regime). The snow line gates ICE
-      // ONLY — rock condenses EVERYWHERE, ice only BEYOND R_snow. So the ROCK budget
-      // is distributed across ALL bodies; the ICE budget only across those beyond the
-      // line. Inside the line = rock-only; beyond = rock + ice (not ice-only). Within
-      // each pile the mass follows the density gradient (Σ_pile ∝ R^−γ, feeding zone
-      // ∝ R² ⇒ weight ∝ R^(2−γ), descending outward). Conserves the disc solids;
-      // f_disc closes the total to the observed chain.
-      const disc_solid = f_disc * m_star_earth(M_star) * COMP_Z;
-      // Inverted slots gather FERROMAGNETIC rock preferentially → the pile is rock-
-      // ENRICHED vs the bulk f_rock (ties to the ferromagnetic-descent split).
-      const rock_frac = Math.min(0.95, COMP_F_ROCK * INV_ROCK_ENRICH);
-      const rock_budget = disc_solid * rock_frac;
-      const ice_budget = disc_solid * (1 - rock_frac);
-      // ROCK descends OUTWARD from the inner pile, consumed inner-first to a flat cap
-      // (the b≈c plateau, d cliff). ICE is consumed the SAME way but with a per-slot
-      // appetite that GROWS with the feeding zone (∝ r^ICE_FEED_EXP): the inner icy slots
-      // (e<f<g) eat the ice budget and the OUTERMOST gets only the dregs — the ice cliff
-      // (h). (Stevenson & Lunine cold-trap feeds the ice; the marching factory's depletion
-      // is what tapers it — the old crest weighting had no depletion so the outer slot hoarded.)
-      const outside = kbo_bodies.filter(p => p.r > r_snow_k);
-      const rock_share: Record<string, number> = {};
-      const ice_share: Record<string, number> = {};
-      // ROCK fills the slots inner-first to a SATURATION CAPACITY. Pile-up rock
-      // accretion is more efficient than a uniform disc — slot zero's magnetic pull
-      // AND the pressure pile-up both concentrate solids — so the innermost slots
-      // each saturate at ROCK_SLOT_CAP × (rock budget) and the budget is consumed
-      // inward-out: the first slots fill flat (b≈c), then it runs dry mid-slot (the
-      // d cliff), and the remaining slots get nothing (rock exhausted).
-      const rock_cap = ROCK_SLOT_CAP * rock_budget;
-      let rock_left = rock_budget;
-      for (const p of [...kbo_bodies].sort((a, b) => a.r - b.r)) {
-        const take = Math.min(rock_cap, rock_left);
-        rock_share[p.name] = take;
-        rock_left -= take;
-      }
-      let ice_left = ice_budget;                                       // ice consumed inner-icy-first
-      for (const p of [...outside].sort((a, b) => a.r - b.r)) {
-        const appetite = ICE_SLOT_CAP * ice_budget * Math.pow(p.r / Math.max(r_snow_k, 1e-9), ICE_FEED_EXP);
-        const take = Math.min(appetite, ice_left);
-        ice_share[p.name] = take;
-        ice_left -= take;
-      }
-      // VINTAGE: the Davis Dam marches OUTWARD through the pile over the disc
-      // lifetime, minting each product in turn — so each body's formation epoch is
-      // the disc dispersal time × the fraction of the solid budget already swept up
-      // inward of it. Inner bodies are the early vintage, outer the late vintage.
+      // VINTAGE: the Davis Dam marches OUTWARD through the pile over the disc lifetime, minting
+      // each product in turn — so each body's formation epoch is the disc dispersal time × the
+      // fraction of the (factory) solid budget already swept up inward of it. Inner bodies are
+      // the early vintage, outer the late. The mass itself is factory_product (one factory).
       const disp_t = gas_dispersal_time(M_star, f_disc);
       const sorted_in = [...kbo_bodies].sort((a, b) => a.r - b.r);
-      const total_solid = sorted_in.reduce((s, p) => s + (rock_share[p.name] || 0) + (ice_share[p.name] || 0), 0) || 1;
+      const fp_solid: Record<string, number> = {};
+      for (const p of sorted_in) {
+        const fp = factory_product(p.r, M_star, omega, f_disc);
+        fp_solid[p.name] = fp.rock + fp.ice;
+      }
+      const total_solid = sorted_in.reduce((s, p) => s + fp_solid[p.name], 0) || 1;
       const vintage: Record<string, number> = {};
       let cum_solid = 0;
       for (const p of sorted_in) {
-        cum_solid += (rock_share[p.name] || 0) + (ice_share[p.name] || 0);
+        cum_solid += fp_solid[p.name];
         vintage[p.name] = disp_t * cum_solid / total_solid;
       }
       for (const p of kbo_bodies) {
