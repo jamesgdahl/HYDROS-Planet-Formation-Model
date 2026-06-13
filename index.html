@@ -153,6 +153,7 @@
 <script src="js/budget.js"></script>
 <script src="js/fit.js"></script>
 <script src="js/impactors.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 "use strict";
 
@@ -767,119 +768,165 @@ function renderWaveform(fit, R_disc, R_A, r_snow, ampRatio) {
   const alfven = r => coreWaves.reduce((a, cw) => a + alfvenOf(cw)(r), 0);  // total Alfvén (Σ cores)
   const sup = r => maas(r) + alfven(r);                // NET (signed) superposition
 
+  // ---- Chart.js render (the custom SVG couldn't handle the waveform's symlog dynamic range
+  //      and the multi-wave overlay) ----
+  if (typeof Chart === 'undefined') {
+    el.innerHTML = '<div style="color:#c66;padding:8px">Chart.js failed to load (needs network access).</div>';
+    return;
+  }
   const rs = slots.map(s => s.slot_r);
   const rmin = Math.min(...rs) * 0.82, rmax = Math.max(...rs) * 1.18;
-  const W = 880, H = 360, ML = 56, MR = 18, MT = 26, MB = 46;
-  const plotW = W - ML - MR, plotH = H - MT - MB;
-  const umin = Math.log(rmin), umax = Math.log(rmax);
-  const X = r => ML + (Math.log(r) - umin) / (umax - umin) * plotW;
-  const aLim = Math.max(1.05, wM + wA * coreWaves.length) * 1.05;   // fits the net (Maas + Σ Alfvén)
-  // SYMLOG Y: the amplitude decays steeply inward, so on a linear axis the inner antinodes
-  // collapse onto the zero line. Signed-log (linear within ±symlin, log beyond) keeps them
-  // visible while resolving the sign flips. a=0 → centre line; ±aLim → top/bottom.
+  const aLim = Math.max(1.05, wM + wA * coreWaves.length) * 1.05;
+  // SYMLOG y: the amplitude decays steeply inward, so a linear axis collapses the inner
+  // antinodes onto zero; signed-log keeps them visible and resolves the sign flips.
   const symlin = aLim * 0.005;
-  const symMax = Math.log(1 + aLim / symlin);
-  const Y = a => MT + (1 - (Math.sign(a) * Math.log(1 + Math.abs(a) / symlin)) / symMax) / 2 * plotH;
+  const symlog = a => Math.sign(a) * Math.log(1 + Math.abs(a) / symlin);
+  const invsym = y => Math.sign(y) * symlin * (Math.exp(Math.abs(y)) - 1);
+  const symMax = symlog(aLim);
 
-  const N = 500;
-  const poly = fn => {
-    const pts = [];
-    for (let i = 0; i <= N; i++) {
-      const r = Math.exp(umin + (i / N) * (umax - umin));
-      pts.push(X(r).toFixed(1) + "," + Y(fn(r)).toFixed(1));
-    }
-    return pts.join(" ");
+  const NS = 400, lu = Math.log(rmin), hu = Math.log(rmax);
+  const sample = fn => {
+    const out = [];
+    for (let i = 0; i <= NS; i++) { const r = Math.exp(lu + (i / NS) * (hu - lu)); out.push({ x: r, y: symlog(fn(r)) }); }
+    return out;
   };
 
-  let ticks = "";
-  for (let i = 0; i <= 6; i++) {
-    const r = Math.exp(umin + (i / 6) * (umax - umin)), x = X(r);
-    const lbl = r >= 10 ? r.toFixed(0) : r >= 1 ? r.toFixed(1) : r >= 0.1 ? r.toFixed(2) : r.toPrecision(2);
-    ticks += `<line x1="${x.toFixed(1)}" y1="${MT + plotH}" x2="${x.toFixed(1)}" y2="${MT + plotH + 4}" stroke="#888"/>`
-           + `<text x="${x.toFixed(1)}" y="${MT + plotH + 16}" font-size="10" text-anchor="middle" fill="#aaa">${lbl}</text>`;
-  }
-
-  let snow = "";
-  if (r_snow > rmin && r_snow < rmax) {
-    const xs = X(r_snow);
-    snow = `<line x1="${xs.toFixed(1)}" y1="${MT}" x2="${xs.toFixed(1)}" y2="${MT + plotH}" stroke="#3cb371" stroke-width="1.4" stroke-dasharray="5,3"/>`
-         + `<text x="${(xs + 4).toFixed(1)}" y="${MT + 12}" font-size="10" fill="#3cb371">snow line ${r_snow.toFixed(2)} AU</text>`;
-  }
-
-  // total interior system mass — dots scale by mass fraction
-  const total_mass = slots.reduce((a, s) =>
-    a + ((s.filled && !s.exterior && !s.external && s.observed > 0) ? s.observed : 0), 0) || 1;
-
-  // sup grid → zero crossings → each planet owns the lobe (zero-to-zero)
-  // around its antinode; that whole area is its tooltip hover zone.
-  const G = 600, gr = [], gv = [];
-  for (let i = 0; i <= G; i++) { const r = Math.exp(umin + (i / G) * (umax - umin)); gr.push(r); gv.push(sup(r)); }
-  const zci = [0];
-  for (let i = 1; i <= G; i++) if (gv[i - 1] === 0 || gv[i - 1] * gv[i] < 0) zci.push(i);
-  if (zci[zci.length - 1] !== G) zci.push(G);
-  const zeroY = Y(0);
-  const lobePath = (i0, i1) => {
-    let p = `M${X(gr[i0]).toFixed(1)},${zeroY.toFixed(1)}`;
-    for (let i = i0; i <= i1; i++) p += `L${X(gr[i]).toFixed(1)},${Y(gv[i]).toFixed(1)}`;
-    return p + `L${X(gr[i1]).toFixed(1)},${zeroY.toFixed(1)}Z`;
+  // PREDICTED (formation) vs OBSERVED markers. The PREDICTED point rides the wave at its
+  // formation slot (slot_r), sized by its ORIGINAL formation mass (primordial.total), at 50%
+  // opacity. The OBSERVED point is the SAME wave-height shifted to the observed AU (offset in X
+  // only — it does NOT track the wave), sized by the observed mass, at full opacity. A faint
+  // connector shows the migration + mass change (Theia 2.6 M⊕ → nothing; Mars 1.345 → 0.107).
+  // Sizes share the formation-total denominator, so a shrunken observed dot = mass lost.
+  const total_form = slots.reduce((a, s) => a + ((s.primordial && s.primordial.total > 0) ? s.primordial.total : 0), 0) || 1;
+  const hexRgba = (hex, al) => {
+    const h = hex.replace('#', ''); const n = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    return `rgba(${parseInt(n.slice(0, 2), 16)},${parseInt(n.slice(2, 4), 16)},${parseInt(n.slice(4, 6), 16)},${al})`;
   };
-
-  let lobes = "", dots = "";
+  const radOf = m => Math.max(2.5, 3 + 15 * Math.sqrt(Math.max(m, 0) / total_form));
+  const massStr = m => m <= 0 ? 'nothing' : (m < 0.01 ? (m * 1000).toPrecision(3) + ' mE' : m.toFixed(3) + ' M⊕');
+  const predPts = [], obsPts = [], migr = [];
   for (const s of slots) {
-    const u = (Math.log(s.slot_r) - umin) / (umax - umin);
-    const gi = Math.max(0, Math.min(G, Math.round(u * G)));
-    let i0 = 0, i1 = G;
-    for (let z = 0; z < zci.length - 1; z++)
-      if (zci[z] <= gi && gi <= zci[z + 1]) { i0 = zci[z]; i1 = zci[z + 1]; break; }
-    // Marker sits at the planet's ACTUAL observed orbit (observed_r), not the formation
-    // slot — so the dot shows where the planet really is; its offset from the antinode is
-    // the post-formation displacement. Empty slots fall back to slot_r.
-    const pr = (s.filled && isFinite(s.observed_r) && s.observed_r > 0) ? s.observed_r : s.slot_r;
-    const v = sup(pr), cx = X(pr), cy = Y(v);
-    const half = !Number.isInteger(s.slot_n);
     const st = s._chart || { c: s.filled ? '#e0b000' : '#666', t: s.filled ? 'planet' : 'empty slot' };
-    const nm = s.filled ? s.name : `(slot ${s.slot_n})`;
-    const frac = (s.filled && s.observed > 0) ? s.observed / total_mass : 0;
-    const massTxt = (s.filled && s.observed > 0)
-      ? (s.observed < 0.01 ? (s.observed * 1000).toPrecision(3) + ' mE' : s.observed.toFixed(3) + ' M⊕')
-        + ` (${(frac * 100).toFixed(1)}% of system)`
-      : '—';
-    const tip = `${nm} | slot ${s.slot_n} | ${s.slot_r.toFixed(s.slot_r < 0.1 ? 4 : 3)} AU | ${st.t} | mass ${massTxt} | net amp ${v.toFixed(2)}${s.interpretation ? ' | ' + s.interpretation : ''}`;
-    lobes += `<path d="${lobePath(i0, i1)}" fill="${s.filled ? st.c : '#888'}" fill-opacity="${s.filled ? 0.22 : 0.05}" style="cursor:pointer"><title>${escapeHtml(tip)}</title></path>`;
-    const rr = s.filled ? Math.max(2.5, 3 + 16 * Math.sqrt(frac)) : 2.5;
-    dots += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rr.toFixed(1)}" fill="${st.c}" stroke="${half ? '#fff' : '#111'}" stroke-width="${half ? 1 : 0.7}" style="pointer-events:none"/>`;
+    // PRE-scatter formation: form_r (the antinode it formed on, before any scatter reassigned
+    // slot_r) and primordial.total (the pre-scatter formation mass).
+    const formR = (isFinite(s.form_r) && s.form_r > 0) ? s.form_r : s.slot_r;
+    const formM = (s.primordial && s.primordial.total > 0) ? s.primordial.total : (s.predicted || 0);
+    const yw = symlog(sup(formR));
+    const name = s.filled ? s.name : '(slot ' + s.slot_n + ')';
+    const obsM = (s.filled && s.observed > 0) ? s.observed : 0;
+    predPts.push({
+      x: formR, y: yw, _c: hexRgba(st.c, 0.5), _rad: radOf(formM),
+      _tip: [name + ' — predicted ' + st.t, 'formation slot ' + formR.toFixed(formR < 0.1 ? 4 : 3) + ' AU',
+             'formation mass ' + massStr(formM) + (obsM > 0 ? ' → observed ' + massStr(obsM) : ' → nothing')
+            ].concat(s.interpretation ? [s.interpretation] : [])
+    });
+    if (obsM > 0) {
+      const ox = (isFinite(s.observed_r) && s.observed_r > 0) ? s.observed_r : formR;
+      obsPts.push({
+        x: ox, y: yw, _c: hexRgba(st.c, 1.0), _rad: radOf(obsM),
+        _tip: [name + ' — observed', 'observed ' + ox.toFixed(ox < 0.1 ? 4 : 3) + ' AU', 'observed mass ' + massStr(obsM),
+               'formation ' + massStr(formM) + ' → observed ' + massStr(obsM)]
+      });
+      migr.push({ x: formR, y: yw }, { x: ox, y: yw }, { x: null, y: null });
+    }
   }
 
-  // one polyline per core's Alfvén comb (dashed when there are several)
-  const alfvenPolys = coreWaves.map(cw =>
-    `<polyline points="${poly(alfvenOf(cw))}" fill="none" stroke="#e6695a" stroke-width="1" opacity="${coreWaves.length > 1 ? 0.5 : 0.6}"${coreWaves.length > 1 ? ' stroke-dasharray="4,2"' : ''} style="pointer-events:none"><title>Alfvén — ${escapeHtml(cw.name)} (R_A=${cw.RA.toFixed(3)} AU at ${cw.d.toFixed(1)} AU)</title></polyline>`
-  ).join('');
-  const sw = (c, t) => `<span style="color:${c}">●</span> ${t}`;
+  const vline = (r, color, dash, label) => ({
+    label, data: [{ x: r, y: -symMax }, { x: r, y: symMax }],
+    borderColor: color, borderWidth: 1.3, borderDash: dash, pointRadius: 0, fill: false, tension: 0, order: 6
+  });
+
+  const datasets = [
+    { label: 'net superposition', data: sample(sup), borderColor: '#b07cff', borderWidth: 2, pointRadius: 0, fill: false, tension: 0.25, order: 1 },
+    { label: `Maas · Davis (w=${wM.toFixed(2)})`, data: sample(maas), borderColor: '#5aa9e6', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.25, order: 2 }
+  ];
+  coreWaves.forEach(cw => datasets.push({
+    label: coreWaves.length > 1 ? `Alfvén · ${cw.name}` : `Alfvén (w=${wA.toFixed(2)})`,
+    data: sample(alfvenOf(cw)), borderColor: '#e6695a', borderWidth: 1,
+    borderDash: coreWaves.length > 1 ? [4, 2] : [], pointRadius: 0, fill: false, tension: 0.25, order: 3
+  }));
+  if (r_snow > rmin && r_snow < rmax) datasets.push(vline(r_snow, '#3cb371', [5, 3], `snow line ${r_snow.toFixed(2)} AU`));
+  datasets.push({
+    label: 'migration', data: migr, showLine: true, spanGaps: false,
+    borderColor: 'rgba(176,124,255,0.4)', borderWidth: 1, borderDash: [2, 2], pointRadius: 0, fill: false, order: 4
+  });
+  datasets.push({
+    label: 'predicted (formation)', data: predPts, showLine: false, order: 0,
+    pointBackgroundColor: predPts.map(p => p._c), pointBorderColor: 'rgba(255,255,255,0.25)', pointBorderWidth: 0.6,
+    pointRadius: predPts.map(p => p._rad), pointHoverRadius: predPts.map(p => p._rad + 2)
+  });
+  datasets.push({
+    label: 'observed', data: obsPts, showLine: false, order: 0,
+    pointBackgroundColor: obsPts.map(p => p._c), pointBorderColor: '#111', pointBorderWidth: 0.8,
+    pointRadius: obsPts.map(p => p._rad), pointHoverRadius: obsPts.map(p => p._rad + 2)
+  });
+
   el.innerHTML =
     `<h3 style="margin:6px 0">Alfvén–Maas Superposition <span style="font-weight:normal;font-size:0.8em;color:#999">(exploratory — amplitudes not yet calibrated)</span></h3>`
-    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">Alfvén ×multiplier (default 1 = physical dam_weights see-saw: wA=${(C>=1?1:C).toExponential(1)}, wM=${(C>=1?(1/C):1).toFixed(2)}, C=R_A/R_disc=${C.toExponential(1)}; raise to explore): `
+    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">Alfvén ×multiplier (1 = physical dam-weights see-saw: wA=${(C >= 1 ? 1 : C).toExponential(1)}, wM=${(C >= 1 ? (1 / C) : 1).toFixed(2)}, C=R_A/R_disc=${C.toExponential(1)}): `
     + `<input type="number" step="0.05" min="0" value="${(+ampRatio).toFixed(3)}" style="width:6rem;padding:0.2rem" onchange="renderWaveform(window._wf.fit, window._wf.R_disc, window._wf.R_A, window._wf.r_snow, parseFloat(this.value))"></div>`
-    + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px;line-height:1.7">`
-      + sw('#9aa0a6', 'core remnant') + ' &nbsp; ' + sw('#d8c49a', 'rocky HZ') + ' &nbsp; ' + sw('#3b7be0', 'HZ + delivery')
-      + ' &nbsp; ' + sw('#c1502e', 'rocky outside HZ') + ' &nbsp; ' + sw('#e0922e', 'gas giant')
-      + ' &nbsp; ' + sw('#a9dcec', 'ice/pebble') + ' &nbsp; ' + sw('#3a6ea5', 'rocky + ice')
-      + ` &nbsp;·&nbsp; size ∝ √(mass/total) &nbsp;·&nbsp; hover a shaded lobe for details</div>`
-    + `<svg viewBox="0 0 ${W} ${H}" width="100%" style="background:#15151c;border:1px solid #333;border-radius:4px">`
-    + lobes
-    + `<line x1="${ML}" y1="${zeroY.toFixed(1)}" x2="${ML + plotW}" y2="${zeroY.toFixed(1)}" stroke="#555" style="pointer-events:none"/>`
-    + `<line x1="${ML}" y1="${MT}" x2="${ML}" y2="${MT + plotH}" stroke="#888" style="pointer-events:none"/>`
-    + `<line x1="${ML}" y1="${MT + plotH}" x2="${ML + plotW}" y2="${MT + plotH}" stroke="#888" style="pointer-events:none"/>`
-    + ticks + snow
-    + `<polyline points="${poly(maas)}" fill="none" stroke="#5aa9e6" stroke-width="1" opacity="0.6" style="pointer-events:none"/>`
-    + alfvenPolys
-    + `<polyline points="${poly(sup)}" fill="none" stroke="#b07cff" stroke-width="2" style="pointer-events:none"/>`
-    + dots
-    + `<text x="${ML}" y="15" font-size="11" fill="#5aa9e6" style="pointer-events:none">— Maas (Davis, w=${wM.toFixed(2)})</text>`
-    + `<text x="${ML + 165}" y="15" font-size="11" fill="#e6695a" style="pointer-events:none">— Alfvén${coreWaves.length > 1 ? ' ×' + coreWaves.length + ' cores' : ''} (w=${wA.toFixed(2)})</text>`
-    + `<text x="${ML + 310}" y="15" font-size="11" fill="#b07cff" style="pointer-events:none">— net superposition</text>`
-    + `<text x="16" y="${(MT + plotH / 2).toFixed(1)}" font-size="10" fill="#aaa" transform="rotate(-90 16 ${(MT + plotH / 2).toFixed(1)})" text-anchor="middle" style="pointer-events:none">net amplitude (symlog)</text>`
-    + `<text x="${(ML + plotW / 2).toFixed(1)}" y="${H - 6}" font-size="10" fill="#aaa" text-anchor="middle" style="pointer-events:none">AU (log scale)</text>`
-    + `</svg>`;
+    + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px">●<span style="opacity:0.5">faint</span> predicted (formation slot, size ∝ original mass) &nbsp; ● solid observed (current AU, size ∝ observed mass) &nbsp; ┈ migration; hover for the mass story</div>`
+    + `<div style="position:relative;height:360px;background:#15151c;border:1px solid #333;border-radius:4px;padding:4px"><canvas id="wf-canvas"></canvas></div>`;
+
+  // Habitable-zone band: a faint green gradient, solid across the HZ and fading to zero through
+  // the marginally-habitable margins (recent-Venus inner, early-Mars outer) on either side.
+  let hz0 = null, hz1 = null;
+  try { if (cb.budget_M > 0) { const hzw = habitable_zone(cb.budget_M, window.CURRENT_L); hz0 = hzw[0]; hz1 = hzw[1]; } } catch (e) { }
+  const hzBand = (hz0 > 0 && hz1 > hz0) ? {
+    id: 'hzBand',
+    beforeDatasetsDraw(chart) {
+      const xs = chart.scales.x, ca = chart.chartArea;
+      const mIn = hz0 * 0.8, mOut = hz1 * 1.25;   // fade edges into the marginal zones
+      const xi = xs.getPixelForValue(mIn), x0 = xs.getPixelForValue(hz0), x1 = xs.getPixelForValue(hz1), xo = xs.getPixelForValue(mOut);
+      if (!(xo > xi)) return;
+      const f = px => Math.max(0, Math.min(1, (px - xi) / (xo - xi)));
+      const g = chart.ctx.createLinearGradient(xi, 0, xo, 0);
+      g.addColorStop(0, 'rgba(60,179,113,0)');
+      g.addColorStop(f(x0), 'rgba(60,179,113,0.13)');
+      g.addColorStop(f(x1), 'rgba(60,179,113,0.13)');
+      g.addColorStop(1, 'rgba(60,179,113,0)');
+      const L = Math.max(xi, ca.left), R = Math.min(xo, ca.right);
+      chart.ctx.save(); chart.ctx.fillStyle = g; chart.ctx.fillRect(L, ca.top, R - L, ca.bottom - ca.top); chart.ctx.restore();
+    }
+  } : null;
+
+  if (window._wfChart) { window._wfChart.destroy(); window._wfChart = null; }
+  window._wfChart = new Chart(document.getElementById('wf-canvas').getContext('2d'), {
+    type: 'line',
+    data: { datasets },
+    plugins: hzBand ? [hzBand] : [],
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'nearest', intersect: true },
+      scales: {
+        x: {
+          type: 'logarithmic', min: rmin, max: rmax,
+          title: { display: true, text: 'AU (log scale)', color: '#aaa' },
+          ticks: { color: '#aaa' }, grid: { color: '#26262e' }
+        },
+        y: {
+          type: 'linear', min: -symMax, max: symMax,
+          title: { display: true, text: 'net amplitude (symlog)', color: '#aaa' },
+          grid: { color: gc => (gc.tick && Math.abs(gc.tick.value) < 1e-9) ? '#555' : '#26262e' },
+          afterBuildTicks: ax => { ax.ticks = [-1, -0.5, -0.1, 0, 0.1, 0.5, 1].filter(a => Math.abs(a) <= aLim).map(a => ({ value: symlog(a) })); },
+          ticks: { color: '#aaa', callback: v => { const a = invsym(v); return Math.abs(a) < 1e-9 ? '0' : (Math.abs(a) < 1 ? a.toFixed(2) : a.toFixed(1)); } }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#ccc', boxWidth: 16, font: { size: 11 },
+          filter: it => !['migration', 'predicted (formation)', 'observed'].includes(it.text) } },
+        tooltip: {
+          filter: item => item.dataset.label !== 'migration',
+          callbacks: {
+            title: items => items.length ? 'AU ' + (+items[0].parsed.x).toPrecision(3) : '',
+            label: c => (c.dataset.label === 'predicted (formation)' || c.dataset.label === 'observed')
+              ? c.raw._tip : (c.dataset.label + ': ' + invsym(c.parsed.y).toFixed(3))
+          }
+        }
+      }
+    }
+  });
+
 }
 
 // Fill predicted slots: generate Hill-cascade chain + outer R_disc anchors,

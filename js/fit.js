@@ -676,6 +676,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
                 target.h_he *= scale;
                 target.core = target.rock + target.ice + target.pebble;
                 target.predicted = m_survivor;
+                target.form_r = target.slot_r; // preserve the PRE-scatter formation slot (the chart's predicted marker rides this antinode); slot_r becomes the settled location
                 target.slot_r = r_boundary;
                 target.remnant = true;
                 target.err_pct = target.observed > 0 ? (target.predicted - target.observed) / target.observed * 100 : 0;

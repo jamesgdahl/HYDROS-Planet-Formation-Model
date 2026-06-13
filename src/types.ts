@@ -98,6 +98,9 @@ interface FitSlot {
   // Predicted planet that did NOT survive: its zone was scattered out / consumed,
   // leaving no body at this orbit. Display says "destroyed", not "unobserved".
   destroyed?: boolean;
+  // Pre-scatter FORMATION slot, preserved when slot_r is reassigned to a scatter remnant's
+  // settled location — the waveform's predicted marker rides this (the antinode it formed on).
+  form_r?: number;
   // Occupied half-step site (inverted regime). slot_n is half-integer.
   interstitial?: boolean;
   // Dam-exterior cohort member (the Kuiper mechanism): body beyond
