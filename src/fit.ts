@@ -118,38 +118,6 @@ function assign_planets_to_slots(planets: Planet[], M_star: number,
   return out;
 }
 
-// Gravitational stripping (close stellar encounter editing).
-// A flyby at periapsis q by a perturber of mass M_pert truncates the
-// disc at the Breslau radius
-//   r_t = 0.28 · q · (M_pert/M_star)^(-0.32)
-// and edits the cascade in three zones (calibrated on the two flagged
-// systems, Proxima Centauri and HD 20794):
-//   destroyed (r > r_t):       slot inventory removed — predicted
-//                              planet mass zero; debris source
-//   stirred (0.5 r_t .. r_t):  graduated loss, up to STRIP_L0 at r_t
-//                              (HD 20794 g at -57%); loss feeds debris
-//   enriched (r < 0.5 r_t):    debris rains inward; the filled bodies
-//                              sweep it up in order (outermost first,
-//                              capture probability STRIP_SWEEP each),
-//                              total captured = STRIP_F_IN of the
-//                              freed inventory (Proxima needed
-//                              10-15%; HD 20794's ledger shows ~18%)
-interface StrippingConfig {
-  M_pert: number;          // perturber mass, M_sun
-  q: number | null;        // periapsis AU; null = bisect in bruteFit
-}
-const STRIP_RT_C = 0.28;
-const STRIP_RT_EXP = -0.32;  // Breslau et al. 2014
-const STRIP_STIR_IN = 0.5;   // stirred zone inner edge, fraction of r_t
-const STRIP_L0 = 0.6;        // max stirred-zone loss fraction (at r_t)
-const STRIP_F_IN = 0.15;     // fraction of freed inventory captured inward
-const STRIP_SWEEP = 0.8;     // per-body sweep-up capture probability
-
-function stripping_radius(M_star: number, cfg: StrippingConfig): number {
-  return STRIP_RT_C * (cfg.q as number)
-    * Math.pow(cfg.M_pert / M_star, STRIP_RT_EXP);
-}
-
 interface SlotAwareFitOpts {
   auto_compress?: boolean;
   bisect_tolerance?: number;
@@ -159,7 +127,6 @@ interface SlotAwareFitOpts {
   // to its post-meal total (which would be an invalid formation).
   devour_credit?: Record<string, number>;
   max_iterations?: number;
-  stripping?: StrippingConfig;   // requires q resolved (non-null)
   // VICE inner-jaw rotation: owns R_A, the backstop intercept, and the
   // wind term. Defaults to spin (the jaw-lock).
   omega?: number;
@@ -448,102 +415,6 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       predicted: total, observed, err_pct, implied_dM, stripped,
       in_void, primordial, interpretation,
     });
-  }
-
-  // Gravitational stripping transform (flagged systems only): edit
-  // the baseline predictions in the encounter's three zones, then
-  // recompute residual bookkeeping. Runs BEFORE the dynamical
-  // detectors (they should see the post-encounter state) and before
-  // protostellar consumption (innermost slots are far below r_stir).
-  let stripping_freed = 0;  // freed encounter inventory (void rows read it)
-  if (opts.stripping && opts.stripping.q !== null
-      && opts.stripping.q !== undefined) {
-    const r_t = stripping_radius(M_star, opts.stripping);
-    const r_stir = STRIP_STIR_IN * r_t;
-    let freed = 0;
-    for (const s of results) {
-      if (s.external || s.remnant) continue;
-      if (s.slot_r > r_t) {
-        if (!s.filled) {
-          freed += s.predicted;
-          s.predicted = 0;
-          s.rock = 0; s.ice = 0; s.pebble = 0; s.core = 0; s.h_he = 0;
-          s.interpretation = "stripped by stellar encounter (exterior to"
-            + " r_t = " + r_t.toFixed(2) + " AU; inventory removed)";
-        } else {
-          s.interpretation += " [exterior to encounter truncation r_t = "
-            + r_t.toFixed(2) + " AU — survival requires post-encounter"
-            + " arrival or a wide periapsis]";
-        }
-      } else if (s.slot_r > r_stir) {
-        const L = STRIP_L0 * (s.slot_r - r_stir) / (r_t - r_stir);
-        const loss = s.predicted * L;
-        freed += loss;
-        const keep = 1 - L;
-        s.predicted *= keep;
-        s.rock *= keep; s.ice *= keep; s.pebble *= keep;
-        s.core *= keep; s.h_he *= keep;
-        if (!s.filled) {
-          s.interpretation += " (encounter-stirred: "
-            + (L * 100).toFixed(0) + "% lost)";
-        }
-      }
-    }
-    // Asymmetric-split fragment: the freed inventory follows the
-    // 5%/95% inward/outward rule (the same split that delivers Theia
-    // and the Mars survivor in Sol), and the inward share can arrive
-    // as a single coherent fragment flung far below its source. A
-    // small filled body near/under the Alfvén dam, far inside its
-    // assigned site, whose mass sits at the inward share of the freed
-    // total (4-10%) IS that fragment — its mass and position are
-    // encounter output, not fit error (remnant semantics).
-    // HD 20794 b: 2.7 M⊕ = 4.6% of the 58 M⊕ freed inventory, parked
-    // at 0.121 AU = 0.89 R_A, at 0.23x its nearest site.
-    const R_A_here = alfven_radius(M_star, omega);
-    for (const s of results) {
-      if (!s.filled || s.external || s.remnant) continue;
-      const m = s.observed;
-      if (m <= 0 || freed <= 0) continue;
-      const frac = m / freed;
-      const p_obj = planet_by_slot[s.slot_n];
-      const r_obs = p_obj ? p_obj.r : s.r_used;
-      if (r_obs < 1.2 * R_A_here && r_obs < 0.4 * s.slot_r
-          && frac >= 0.04 && frac <= 0.10) {
-        s.remnant = true;
-        s.predicted = m;
-        s.err_pct = 0;
-        s.implied_dM = 0;
-        s.interpretation = "encounter fragment: ~"
-          + (frac * 100).toFixed(1) + "% of the stripped inventory ("
-          + freed.toFixed(1) + " M⊕) — the inward share of the 5%/95%"
-          + " split, flung under the dam to " + r_obs + " AU";
-      }
-    }
-
-    // Debris rains inward; filled bodies inside r_stir sweep it up in
-    // order, outermost first.
-    const gainers = results
-      .filter(s => !s.external && !s.remnant && s.filled
-        && s.slot_r <= r_stir)
-      .sort((a, b) => b.slot_r - a.slot_r);
-    if (gainers.length > 0 && freed > 0) {
-      const shares = gainers.map((_, i) =>
-        STRIP_SWEEP * Math.pow(1 - STRIP_SWEEP, i));
-      const tot = shares.reduce((a, b) => a + b, 0);
-      const budget = STRIP_F_IN * freed;
-      gainers.forEach((s, i) => {
-        const dm = budget * shares[i] / tot;
-        s.predicted += dm; s.rock += dm; s.core += dm;
-      });
-    }
-    for (const s of results) {
-      if (s.external || s.remnant) continue;
-      s.err_pct = s.observed > 0
-        ? ((s.predicted - s.observed) / s.observed * 100) : 0;
-      s.implied_dM = (s.filled && s.observed > 0)
-        ? (s.observed - s.predicted) : 0;
-    }
-    stripping_freed = freed;
   }
 
   // Impact-merger detection — retention scales with impact energy,
@@ -971,10 +842,6 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
       interpretation: is_core
         ? `core component (co-primary): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation SIBLING STAR, not a slot product. Its mass exceeds the disc reservoir, and seating it demands a spin far past breakup (λ_break ≈ ${lam_break.toFixed(1)}): the core spun up beyond cohesion and tore in two (the binary channel). With the main star, both masses drive the dams + barycentre.`
-        : (is_small && stripping_freed > 0
-          && m_obs / stripping_freed >= 0.04
-          && m_obs / stripping_freed <= 0.12)
-        ? `interior to Alfven Dam (encounter fragment: ~${(m_obs / stripping_freed * 100).toFixed(1)}% of the ${stripping_freed.toFixed(1)} M⊕ encounter-stripped inventory — the inward share of the 5%/95% split, flung under the dam)`
         : is_small
         ? `interior to Alfven Dam (Martian-type scatter remnant: ~5-10% of a ${(m_obs / SURVIVOR_MASS_FRAC_MAX).toFixed(0)}-${(m_obs / SURVIVOR_MASS_FRAC_MIN).toFixed(0)} M⊕ parent, stripped and flung under the dam; parent slot indeterminate)`
         : "interior to Alfven Dam (void: no slot at observed r — delivered inward by scattering or migration; formation slot indeterminate)",
@@ -1490,8 +1357,6 @@ function bestFit(planets: Planet[], M_star: number, f_disc_initial: number,
 // ============================================================
 interface BruteFitResult extends BestFitResult {
   score: number;
-  stripping_q?: number | null;   // fitted (or given) encounter periapsis
-  stripping_rt?: number | null;  // Breslau truncation radius at that q
 }
 
 // Predict the INVERTED regime from OBSERVABLES alone (no input flag).
@@ -1523,7 +1388,6 @@ function inverted_signature(planets: Planet[], M_star: number):
 }
 
 function bruteFit(planets: Planet[], M_star: number,
-                  stripping?: StrippingConfig | null,
                   vice?: boolean): BruteFitResult {
   const BIG = 1e6;
   const K_PENALTY = 1.5;
@@ -1544,18 +1408,16 @@ function bruteFit(planets: Planet[], M_star: number,
   // Canonical f_disc bisection at a fixed spin: drive the target-sum
   // objective sum(predicted - observed) → 0 over all filled slots.
   let devour_credit: Record<string, number> | null = null;
-  const fit_opts = (q: number | null, omega?: number): SlotAwareFitOpts => {
+  const fit_opts = (omega?: number): SlotAwareFitOpts => {
     const o: SlotAwareFitOpts = { auto_compress: false };
-    if (stripping && q !== null) o.stripping = { M_pert: stripping.M_pert, q };
     if (omega !== undefined) o.omega = omega;
     if (devour_credit) o.devour_credit = devour_credit;
     return o;
   };
-  const bisectF = (spin: number, q: number | null = null,
-                   omega?: number):
+  const bisectF = (spin: number, omega?: number):
       { f: number; fit: FitResult; residual: number } => {
     let f = 0.01;
-    let fit = slot_aware_fit(planets, M_star, spin, f, fit_opts(q, omega));
+    let fit = slot_aware_fit(planets, M_star, spin, f, fit_opts(omega));
     const totalTarget = sel(fit).reduce((a, s) => a + s.observed, 0);
     if (totalTarget <= 0) return { f, fit, residual: 0 };
     let lo = 0.0005, hi = F_DISC_MAX;
@@ -1564,7 +1426,7 @@ function bruteFit(planets: Planet[], M_star: number,
     let e = Infinity;
     for (let i = 0; i < 60; i++) {
       const fm = Math.sqrt(lo * hi);
-      const f2 = slot_aware_fit(planets, M_star, spin, fm, fit_opts(q, omega));
+      const f2 = slot_aware_fit(planets, M_star, spin, fm, fit_opts(omega));
       e = sel(f2).reduce((a, s) => a + (objMass(s) - s.observed), 0);
       f = fm; fit = f2;
       if (Math.abs(e) < tol) break;
@@ -1737,14 +1599,12 @@ function bruteFit(planets: Planet[], M_star: number,
   const topCands: { score: number; spin: number; k: number;
                     penalty_base: number }[] = [];
   let best: { score: number; spin: number; f: number; k: number;
-              fit: FitResult; residual: number;
-              q: number | null; omega: number | null;
+              fit: FitResult; residual: number; omega: number | null;
               penalty_base?: number } | null = null;
-  let q_pin: number | null = null;  // fixed-point pass-2 periapsis
   const VOID_PENALTY = 5.0;    // per planet relegated to the deep Alfven void
   const REMNANT_PENALTY = 2.0; // per void orphan bound to a parent slot
-  // VICE mode: geometry (spin = the density dial, anchor k, stripping q)
-  // is selected by the LOCKED scan exactly as in the default mode; omega
+  // VICE mode: geometry (spin = the density dial, anchor k) is selected
+  // by the LOCKED scan exactly as in the default mode; omega
   // (inner jaw: R_A, intercept, wind) then refines WITHIN the winning
   // geometry over a breakup-bounded grid. This keeps every validated
   // geometry (Beta Pic 28.4 AU dam, Sol ladder, ...) while letting the
@@ -1773,10 +1633,8 @@ function bruteFit(planets: Planet[], M_star: number,
     // count SITES (integer + inverted half-steps), not just integer slots —
     // the inverted regime fills two interleaved factory ladders.
     if (cascade_sites(M_star, spin, n_eff, omega).length < n_eff) return null;
-    // Resolve the stripping periapsis: given q used directly; null q
-    // golden-sectioned (in log space) to minimize the mean PER-PLANET
-    // |log(pred/obs)| — exactly the quantity the consensus f-bisection
-    // cannot see, which is what encounter editing must close.
+    // VICE per-planet score: the mean PER-PLANET |log(pred/obs)| — the quantity
+    // the consensus f-bisection (which only zeroes the SUM) cannot see.
     const perPlanetJ = (f2: FitResult): number => {
       const rows = f2.slots.filter(s => s.filled && !s.external
         && !s.remnant && s.observed > 0 && s.predicted > 0);
@@ -1784,43 +1642,8 @@ function bruteFit(planets: Planet[], M_star: number,
       return rows.reduce((a, s) =>
         a + Math.abs(Math.log(s.predicted / s.observed)), 0) / rows.length;
     };
-    let f: number, fit: FitResult, residual: number;
-    let q_used: number | null = null, J = 0;
-    if (!stripping) {
-      ({ f, fit, residual } = bisectF(spin, null, omega));
-      if (vice) J = perPlanetJ(fit);
-    } else if (stripping.q !== null && stripping.q !== undefined) {
-      q_used = stripping.q;
-      ({ f, fit, residual } = bisectF(spin, q_used, omega));
-      J = perPlanetJ(fit);
-    } else if (q_pin !== null) {
-      // Fixed-point second pass: all candidates compete at the first
-      // pass's winning periapsis.
-      q_used = q_pin;
-      ({ f, fit, residual } = bisectF(spin, q_used, omega));
-      J = perPlanetJ(fit);
-    } else {
-      const GR = 0.6180339887;
-      let lo_q = Math.log(1.0), hi_q = Math.log(300.0);
-      const evalQ = (lq: number) => {
-        const r = bisectF(spin, Math.exp(lq), omega);
-        return { ...r, J: perPlanetJ(r.fit) };
-      };
-      let x1 = hi_q - GR * (hi_q - lo_q), x2 = lo_q + GR * (hi_q - lo_q);
-      let e1 = evalQ(x1), e2 = evalQ(x2);
-      for (let i = 0; i < 22; i++) {
-        if (e1.J <= e2.J) {
-          hi_q = x2; x2 = x1; e2 = e1;
-          x1 = hi_q - GR * (hi_q - lo_q); e1 = evalQ(x1);
-        } else {
-          lo_q = x1; x1 = x2; e1 = e2;
-          x2 = lo_q + GR * (hi_q - lo_q); e2 = evalQ(x2);
-        }
-      }
-      const win = e1.J <= e2.J ? { lq: x1, e: e1 } : { lq: x2, e: e2 };
-      q_used = Math.exp(win.lq);
-      f = win.e.f; fit = win.e.fit; residual = win.e.residual; J = win.e.J;
-    }
+    const { f, fit, residual } = bisectF(spin, omega);
+    const J = vice ? perPlanetJ(fit) : 0;
     // Void accounting AFTER the fit: an orphan bound to a parent slot
     // as a Martian-type remnant is an explained body (cheap), not a
     // void relegation (expensive) — geometries that can name the
@@ -1830,9 +1653,9 @@ function bruteFit(planets: Planet[], M_star: number,
     const pen = penalty + VOID_PENALTY * n_void_rows + REMNANT_PENALTY * n_remn;
     // Residual term: candidates whose f-bisection cannot reach the mass
     // target are penalized in proportion (10 × fractional residual), so
-    // position alone cannot carry an unfittable configuration. For
-    // stripped systems the per-planet term joins the score: encounter
-    // editing exists to close individual masses, not just the sum.
+    // position alone cannot carry an unfittable configuration. In VICE
+    // mode the per-planet term J joins the score (close individual masses,
+    // not just the sum).
     // Gross mass non-closure is rejection-grade: the books must close
     // at percent level. (Without this, a 46%-residual fit can outrank
     // an honest last-resort void fit purely on structure.)
@@ -1850,7 +1673,7 @@ function bruteFit(planets: Planet[], M_star: number,
                     + 0.08 * Math.abs(Math.log10(Math.max(1e-4, f) / 0.01));
     const score = scoreFit(fit, pen) + 10 * residual + 2 * J
       + (residual > 0.05 ? BIG : 0) + parsimony;
-    return { score, spin, f, k, fit, residual, q: q_used,
+    return { score, spin, f, k, fit, residual,
              omega: (omega === undefined) ? null : omega, penalty_base: penalty };
   };
   const consider = (spin: number, k: number, penalty: number) => {
@@ -1936,17 +1759,6 @@ function bruteFit(planets: Planet[], M_star: number,
     }
   };
   runStages();
-  // Stripping fixed-point pass: per-candidate golden-section finds
-  // LOCAL q optima on a rugged (anchor, q) landscape — pin the winning
-  // q and let every anchor family compete at it, so the result is
-  // idempotent under q round-tripping (fit(q=null) agrees with
-  // fit(q=q*)).
-  if (stripping && (stripping.q === null || stripping.q === undefined)
-      && best !== null && (best as { q: number | null }).q !== null) {
-    q_pin = (best as { q: number | null }).q;
-    best = null;
-    runStages();
-  }
 
   // VICE omega refinement: breakup-bounded inner-jaw grid evaluated at
   // the locked winner's geometry (spin, k, and its base penalty).
@@ -1977,12 +1789,11 @@ function bruteFit(planets: Planet[], M_star: number,
     // the inverted-regime spin that the outermost-anchor would give.
     const spin = auto_spin_from_outermost(obs_disc, M_star, 0);
     const { f, fit, residual } = bisectF(spin);
-    best = { score: Infinity, spin, f, k: 0, fit, residual, q: null,
+    best = { score: Infinity, spin, f, k: 0, fit, residual,
              omega: null, penalty_base: 0 };
   }
   let b = best as { score: number; spin: number; f: number; k: number;
-                    fit: FitResult; residual: number; q: number | null;
-                    omega: number | null };
+                    fit: FitResult; residual: number; omega: number | null };
   // SECOND PASS — devour-aware refit. If the chosen fit contains
   // wrecking migrants with meals, the migrants' formation seats must
   // be refit to (observed - retained): a migrant fit to its post-meal
@@ -2004,7 +1815,7 @@ function bruteFit(planets: Planet[], M_star: number,
     // return a fit that was never scored (the B-class-eating-planet
     // failure mode). Hold the winner's f; only the credits change.
     const fit2 = slot_aware_fit(planets, M_star, b.spin, b.f,
-      fit_opts(b.q, b.omega ?? undefined));
+      fit_opts(b.omega ?? undefined));
     const tgt2 = sel(fit2);
     const tot2 = tgt2.reduce((a, s) => a + s.observed, 0);
     const res2 = tot2 > 0
@@ -2039,10 +1850,6 @@ function bruteFit(planets: Planet[], M_star: number,
     target_residual: b.residual,
     target_names: sel(b.fit).map(s => s.name),
     fit: b.fit, score: b.score,
-    stripping_q: b.q,
-    stripping_rt: (stripping && b.q !== null)
-      ? stripping_radius(M_star, { M_pert: stripping.M_pert, q: b.q })
-      : null,
   };
 }
 
@@ -2531,7 +2338,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       omega_rot: (omega !== undefined) ? omega : null,
       f_disc: f, anchor_slot: 0, iterations: 1, converged: true,
       target_residual: resid, target_names: tgt.map(s => s.name), fit,
-      score: 0, stripping_q: null, stripping_rt: null,
+      score: 0,
       budget_M: M, budget_Z: Z, budget_f_rock: f_rock, budget_inverted: inverted,
       budget_R_A: alfven_radius(M, om_eff), budget_lambda: om_eff,
       budget_Mdot: Mdot, budget_snow: inverted ? Math.max(pile_snow_line(M, f, alfven_radius(M, 1.0), 1.0), irradiation_snow_line(M)) : mulders_snow_line(M, Mdot), budget_C: C,

@@ -355,8 +355,6 @@ const ALBEDO = 0.1;
 const SIGMA_SB = 5.670374419e-8;
 const L_SUN_W = 3.828e26;
 const AU_M = 1.495978707e11;
-const STRIP_OBS_MAX = 15.0;     // M_E — large planets retain envelope
-                                // via escape velocity inside strip zone
 
 // Late-delivery threshold: half of (Borealis impactor mass / Mars mass)
 // = 0.5 * (0.02 / 0.107) ≈ 0.0935 (9.35% fractional mass gain).

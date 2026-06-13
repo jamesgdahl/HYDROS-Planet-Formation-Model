@@ -48,17 +48,11 @@
     <label title="Conserved H/He budget — total hydrogen/helium mass, in Earth masses (Sol ≈ 374245 M⊕, ~99% ends up in the star). The disc's f_disc share feeds the gas envelopes; the rest closes onto the star.">H/He budget (M⊕)<input id="b_hydrogen" type="number" step="any" value="374244.62"></label>
     <label title="Primordial spin λ (Sol 1.0) — inherited angular momentum. Sets the Alfvén Dam R_A and (via the dam) the regime; the Davis Dam / disc radius is derived to anchor the outermost body.">Spin λ (Sol 1.0) <input id="spin" type="number" step="0.1" value="1.0"></label>
     <label title="OBSERVED PRIMORDIAL mass of the central body in Sol-primordial units (Sol=1 ≡ 1.14 current M☉). For a sub-cascade it's the central planet. The budget PREDICTS this as the reservoir minus the bodies it shed; predicted-vs-observed shows in the derived panel.">Observed stellar mass (Sol=1, primordial)<input id="obs_star" type="number" step="any" value="1.0"></label>
-    <label title="Close stellar encounter edited this cascade (truncation, stirring, inward debris). Toggle on to reveal the encounter parameters."><input id="strip_on" type="checkbox" style="width:auto;"> Gravitational stripping</label>
   </div>
   <div class="input-grid" style="margin-top:0.5rem;align-items:end;">
     <label title="[Fe/H] iron metallicity (dex, solar = 0). Sets Z = Z☉·10^[Fe/H] — the total metal (rock+ice) budget.">[Fe/H] (dex)<input id="feh" type="number" step="0.05" value="0.0"></label>
     <label title="C/O number ratio (solar ≈ 0.55). The WATER indicator: higher C/O → less free oxygen → less ice, more rock; above ~0.8 the disc is essentially dry.">C/O ratio<input id="cto" type="number" step="0.05" value="0.55"></label>
     <button type="button" id="derive-budget" title="Reconstruct the rock/ice/H budget from the observed stellar mass + [Fe/H] + C/O, then recompute.">⟸ Derive budget from [Fe/H], C/O &amp; mass</button>
-  </div>
-  <div class="input-grid" id="encounter-inputs" style="display:none;margin-top:0.5rem;">
-    <label>Perturber mass M_pert (Sol-primordial units)<input id="strip_mpert" type="number" step="0.05" value="0.44"></label>
-    <label>Encounter periapsis q (AU; blank = best-fit)<input id="strip_q" type="number" step="0.5"></label>
-    <label title="Bound companion: semi-major axis of the perturber's orbit. When set, the encounter is a RECURRING tide (standing tide-dam, conveyor erosion, water ledger) rather than a one-shot flyby.">Companion a_bin (AU; blank = one-shot flyby)<input id="strip_abin" type="number" step="1"></label>
   </div>
 </fieldset>
 
@@ -141,7 +135,6 @@
   </table>
 <div id="waveform" style="margin-top:14px"></div>
 <div id="forensics" style="margin-top:14px"></div>
-<div id="tides" style="margin-top:14px"></div>
 </fieldset>
 
 <fieldset>
@@ -160,7 +153,6 @@
 <script src="js/budget.js"></script>
 <script src="js/fit.js"></script>
 <script src="js/impactors.js"></script>
-<script src="js/tides.js"></script>
 <script>
 "use strict";
 
@@ -260,17 +252,6 @@ function getInputs() {
     // the preset, kept across manual edits. Null ⇒ self-fed primary.
     parent: window.CURRENT_PARENT || null,
   };
-  if (document.getElementById("strip_on").checked) {
-    const qv = document.getElementById("strip_q").value;
-    inp.stripping = {
-      M_pert: parseFloat(document.getElementById("strip_mpert").value) || 0.5,
-      q: qv === "" ? null : parseFloat(qv),
-    };
-    const av = document.getElementById("strip_abin").value;
-    if (av !== "" && isFinite(parseFloat(av))) {
-      inp.stripping.a_bin = parseFloat(av);
-    }
-  }
   return inp;
 }
 
@@ -293,21 +274,6 @@ function setInputs(inp) {
   // real stars scatter around the M-L estimate habitable_zone falls
   // back on (ACen B: true 0.50 vs estimate 0.41).
   window.CURRENT_L = (inp.L && inp.L > 0) ? inp.L : null;
-  const on = !!inp.stripping;
-  document.getElementById("strip_on").checked = on;
-  document.getElementById("encounter-inputs").style.display = on ? "" : "none";
-  if (on) {
-    document.getElementById("strip_mpert").value = inp.stripping.M_pert ?? 0.5;
-    document.getElementById("strip_q").value =
-      (inp.stripping.q === null || inp.stripping.q === undefined)
-        ? "" : inp.stripping.q;
-    document.getElementById("strip_abin").value =
-      (inp.stripping.a_bin === null || inp.stripping.a_bin === undefined)
-        ? "" : inp.stripping.a_bin;
-  } else {
-    document.getElementById("strip_q").value = "";
-    document.getElementById("strip_abin").value = "";
-  }
 }
 
 function getPlanets() {
@@ -435,7 +401,6 @@ function loadPreset(name) {
     star: preset.star,
     feh: preset.feh,
     cto: preset.cto,
-    stripping: preset.stripping,
     L: preset.L,
   });
   setPlanets(preset.planets);
@@ -525,20 +490,6 @@ function calculate() {
   // defaults to 11 (inverted regime where R_A > R_disc).
   const n_possible = cascade_slot_positions(M_star, spin_geom, 0, omega, f_disc).length;
 
-  // Gravitational stripping display + fit option. A blank q means the
-  // factor has not been fitted yet (press best-fit); the transform is
-  // skipped until q is known.
-  const strip = inp.stripping || null;
-  const strip_active = !!(strip && strip.q !== null && strip.q !== undefined
-    && isFinite(strip.q));
-  const strip_rt = strip_active ? stripping_radius(M_star, strip) : null;
-  const stripLine = strip
-    ? `<br><span class="label">Gravitational stripping:</span> <span class="value">${
-        strip_active
-          ? `M_pert=${fmt(strip.M_pert, 2)} M☉, q=${fmt(strip.q, 1)} AU → truncation r_t=${fmt(strip_rt, 2)} AU (stirred zone ${fmt(strip_rt * 0.5, 2)}–${fmt(strip_rt, 2)} AU)`
-          : `flagged — q unfitted (press best-fit to bisect the stripping factor)`
-      }</span>`
-    : "";
 
   const D_neb = rB.nebula_density;   // derived diagnostic (from the geometry spin)
   // v6 budget diagnostics: show the derived composition + the archaic-spin
@@ -578,7 +529,7 @@ function calculate() {
     <span class="label">Mass slope:</span> <span class="value">${fmt(sl, 4)} M⊕/AU</span> &nbsp;
     <span class="label">Backstop base mass:</span> <span class="value">${fmt(a, 3)} M⊕</span> &nbsp;
     <span class="label">Gas dispersal time:</span> <span class="value">${fmt(t_disc, 2)} Myr</span><br>
-    <span class="label">Cascade slots:</span> <span class="value">${n_possible}</span>${stripLine}
+    <span class="label">Cascade slots:</span> <span class="value">${n_possible}</span>
   `;
 
   // Render budgetFit's OWN fully-processed fit — it already ran the whole pipeline
@@ -590,18 +541,13 @@ function calculate() {
   window.CURRENT_H = { captured: rB.budget_h_captured, dispersed: rB.budget_h_dispersed, exhausted: rB.budget_h_exhausted };
   // Volatile-delivery receipts feed the habitability flag: a seat in
   // the habitable zone AND named in a delivery ledger (impact
-  // forensics receiver, e.g. Earth; or tide-ledger receiver, e.g.
-  // ACen B slot 6) gets the green row — occupancy + delivery is the
+  // forensics receiver, e.g. Earth) gets the green row — occupancy + delivery is the
   // habitability claim, occupancy alone is not.
   const deliveryNames = new Set();
-  let tideRx = [];
   try {
     const dn = renderForensics(fit, planets, M_star, f_disc);
     if (dn) dn.forEach(n => deliveryNames.add(n));
   } catch (e) { console.warn('forensics:', e); }
-  try {
-    tideRx = renderTides(fit, M_star, spin_geom, f_disc, strip_active ? strip : null) || [];
-  } catch (e) { console.warn('tides:', e); }
   const hz = habitable_zone(M_star, window.CURRENT_L);
 
   const tbody = document.getElementById("result-rows");
@@ -669,24 +615,16 @@ function calculate() {
     const dm_pct = (s.filled && observed > 0 && !s.exterior)
       ? 100 * dm / predicted : NaN;
 
-    // THE GREEN ROW: habitable-zone orbit + a volatile-delivery
-    // receipt. Tide-ledger receivers carry an ocean bracket; past
-    // ~20 oceans the seat is an ocean world (surface km-deep), still
-    // delivered but no longer Earth-like.
-    const rx = (!s.exterior && !s.external)
-      ? tideRx.find(x => x.slot_n === s.slot_n && x.oceans_hi >= 1) : null;
+    // THE GREEN ROW: habitable-zone orbit + a volatile-delivery receipt.
     const wetHZ = !s.exterior && !s.external
       && r_now >= hz[0] && r_now <= hz[1]
-      && (deliveryNames.has(s.name) || rx);
+      && deliveryNames.has(s.name);
     // waveform-chart styling: colour by type, sized by mass downstream
     s._chart = planetStyle(s,
       !s.exterior && !s.external && r_now >= hz[0] && r_now <= hz[1],
-      deliveryNames.has(s.name) || !!rx);
+      deliveryNames.has(s.name));
     if (wetHZ) {
-      const oc = rx
-        ? `${rx.oceans_lo.toFixed(0)}–${rx.oceans_hi.toFixed(0)} oceans${rx.oceans_lo > 20 ? ' — ocean world' : rx.oceans_hi > 20 ? ' — possibly an ocean world' : ''}`
-        : 'delivery receipt in the impact ledger';
-      interp += ` — 🌊 HABITABLE ZONE + volatile delivery (${oc})`;
+      interp += ` — 🌊 HABITABLE ZONE + volatile delivery (delivery receipt in the impact ledger)`;
     }
 
     const tr = document.createElement("tr");
@@ -1023,56 +961,6 @@ function renderForensics(fit, planets, M_star, f_disc) {
   return F.zones.flatMap(z => z.receivers.map(rc => rc.name));
 }
 
-// The tide ledger panel: what a BOUND companion's recurring tide does
-// to the cascade — standing tide-dam (with the independent
-// Holman-Wiegert N-body cross-check), conveyor erosion of boundary
-// seats, the Sol-calibrated inward/outward split, and the water
-// ledger in ocean units. Renders only when stripping carries a_bin
-// (a bound perturber); a blank a_bin is a one-shot flyby and stays
-// with the stripping transform alone. Physics: js/tides.js.
-function renderTides(fit, M_star, spin, f_disc, strip) {
-  const el = document.getElementById("tides");
-  if (!strip || !strip.a_bin || !(strip.q > 0)) { el.innerHTML = ""; return []; }
-  const seats = tide_seats(M_star, spin, f_disc, fit ? fit.slots : null);
-  if (!seats.length) { el.innerHTML = ""; return []; }
-  const L = tide_ledger(seats, M_star, strip.M_pert, strip.q, strip.a_bin);
-  let h = '<h3 style="margin:6px 0">Tide ledger (standing companion tide)</h3>';
-  h += `<div>M_pert ${fmt(strip.M_pert, 2)} M☉ at a_bin ${fmt(strip.a_bin, 1)} AU, q ${fmt(strip.q, 1)} AU`
-    + (L.e_bin !== null ? ` (e ${L.e_bin.toFixed(2)})` : '') + ' — '
-    + `tide-dam r_t = <b>${L.r_t.toFixed(2)} AU</b>`
-    + (L.a_crit !== null
-      ? `; Holman–Wiegert a_crit = <b>${L.a_crit.toFixed(2)} AU</b>${L.hw_valid ? '' : ' <i>(outside fit range — indicative)</i>'} ← independent N-body cross-check`
-      : '')
-    + `</div><div><b>${L.verdict}</b></div>`;
-  h += '<ul style="margin:2px 0 2px 18px">';
-  for (const x of L.rows) {
-    const tag = x.zone === 'DESTROYED' ? '<b>destroyed</b> (outside the wall: never assembled)'
-      : x.zone === 'CONVEYOR' ? `<b>conveyor</b> (Breslau-stable per pass, HW-unstable secularly: feedstock, ~${(x.L * 100).toFixed(0)}% processed over Gyr)`
-      : x.zone === 'STIRRED' ? `stirred (~${(x.L * 100).toFixed(0)}% eroded)`
-      : 'safe';
-    h += `<li>${x.name || 'seat ' + x.slot_n} — ${x.r.toFixed(2)} AU, ${fmtM(x.mass)} M⊕, ${x.icy ? 'icy' : 'dry'}: ${tag}</li>`;
-  }
-  h += '</ul>';
-  h += `<div><b>Erosion budget</b>: icy ${fmtM(L.eroded_icy)} M⊕, dry ${fmtM(L.eroded_dry)} M⊕`
-    + (L.destroyed > 0 ? ` (+ ${fmtM(L.destroyed)} M⊕ outside the wall, never assembled)` : '')
-    + `; inward share (Sol-calibrated 5–10%): <b>${fmtM(L.inward_lo)}–${fmtM(L.inward_hi)} M⊕</b> of icy material crosses the inner system; `
-    + `outward ~${fmtM(L.outward)} M⊕ ejected by the recurring stellar periapsis or handed to the companion's own space (cross-system veneer)</div>`;
-  if (L.receivers.length) {
-    const hz = habitable_zone(M_star, window.CURRENT_L);
-    h += '<div style="margin-top:6px"><b>Water ledger</b> (Öpik arrival + retention line; per-seat principal-receiver brackets, not additive):</div><ul style="margin:2px 0 2px 18px">';
-    for (const rc of L.receivers) {
-      const inHZ = rc.r >= hz[0] && rc.r <= hz[1];
-      const world = rc.oceans_lo > 20 ? ' — ocean world (surface km-deep)'
-        : rc.oceans_hi > 20 ? ' — possibly an ocean world' : '';
-      h += `<li${inHZ ? ' style="background:#e3f6e3"' : ''}>${rc.name || 'seat ' + rc.slot_n} (${rc.r.toFixed(2)} AU): Δv ${rc.dv.toFixed(1)} km/s, ret ${rc.ret.toFixed(2)} → retained ${fmtM(rc.retained_lo)}–${fmtM(rc.retained_hi)} M⊕ = <b>${rc.oceans_lo.toFixed(0)}–${rc.oceans_hi.toFixed(0)} oceans</b>${inHZ ? ' — <b>🌊 HABITABLE ZONE</b>' + world : ''}</li>`;
-    }
-    h += '</ul>';
-  } else {
-    h += '<div style="margin-top:6px"><b>Water ledger</b>: no icy feedstock erodes — bone-dry forecast stands</div>';
-  }
-  el.innerHTML = h;
-  return L.receivers;   // habitability flag: HZ seats with oceans
-}
 
 function fillPredictedSlots() {
   const inp = getInputs();
@@ -1485,7 +1373,6 @@ function saveCurrentAsPreset() {
     feh: inp.feh,
     cto: inp.cto,
     parent: inp.parent || null,
-    stripping: inp.stripping || undefined,
     L: window.CURRENT_L || undefined,
     planets: planets,
     notes: "User-saved system."
@@ -1534,10 +1421,6 @@ document.getElementById("derive-budget").onclick = () => {
   document.getElementById("b_ice").value = +b.ice.toPrecision(6);
   document.getElementById("b_hydrogen").value = +b.hydrogen.toPrecision(7);
   calculate();
-};
-// Encounter inputs are revealed only when gravitational stripping is toggled on.
-document.getElementById("strip_on").onchange = (e) => {
-  document.getElementById("encounter-inputs").style.display = e.target.checked ? "" : "none";
 };
 document.getElementById("save-preset").onclick = saveCurrentAsPreset;
 document.getElementById("delete-preset").onclick = deleteCurrentUserPreset;

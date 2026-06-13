@@ -54,7 +54,6 @@ window.EXOPLANETS = [
     "comment": "Inverted M-dwarf, TRAPPIST-like (λ≈0.1: magnetosphere past the Davis dam, slow/sedate). Spin is F_UNCONSTRAINED — only 3 planets, so it floats freely (0.08–10 all give ~0% residual); the old λ=10.19 was an unphysical super-breakup artifact the degenerate fit grabbed. An inversion scan shows the planets fit the CURRENT mass (0.122 M☉), NOT a brown-dwarf past: 14–84 M_Jup masses fail at any spin (Prox-c at 1.55 AU needs today's dam reach). Per the infall-gates-planet-formation principle, planets form post-infall at the FINAL stellar mass — so current-mass dams are correct; Proxima's planets are a fast (~Myr) post-assembly event, not a fossil of the slow ~Gyr stellar accretion.",
     "cto": 0.55,
     "spin": 0.1,
-    "stripping": {"M_pert":0.9092,"q":21},
     "planets": [
       {"name":"Prox-d","r":0.029,"observed":0.26},
       {"name":"Prox-b","r":0.0485,"observed":1.27},
@@ -163,7 +162,6 @@ window.EXOPLANETS = [
     "feh": -0.42,
     "cto": 0.55,
     "spin": 0.5012,
-    "stripping": {"M_pert":0.499999,"q":15.8},
     "planets": [
       {"name":"HD 20794 b","r":0.1207,"observed":2.7},
       {"name":"HD 20794 d","r":0.3499,"observed":4.8},
