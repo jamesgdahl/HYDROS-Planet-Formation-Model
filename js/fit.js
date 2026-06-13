@@ -683,14 +683,12 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
                 target.interpretation = `${klass} (scatter remnant: the slot's planet was flung outward by ${perturberName}; the surviving inward sibling — ${m_survivor.toFixed(3)} M⊕, settled at the swept-band centre ~${r_boundary.toFixed(2)} AU — is what survived)`;
             }
             else if (!target.filled) {
-                target.predicted = 0;
-                target.rock = 0;
-                target.ice = 0;
-                target.pebble = 0;
-                target.core = 0;
-                target.h_he = 0;
+                // Destroyed = no SURVIVING body at this orbit, NOT zero mass: the planet formed (keep
+                // its predicted allocation) and was scattered out — its mass disperses as inward
+                // impactors (the late-delivery / Theia-analog source) and outward ejecta. Zeroing it
+                // here would starve the impact-forensics ledger that delivers volatiles to the survivors.
                 target.destroyed = true;
-                target.interpretation = `destroyed (the slot's planet was scattered outward by ${perturberName}; no body survived at this orbit)`;
+                target.interpretation = `destroyed (the slot's planet was scattered outward by ${perturberName}; no body survived at this orbit — its mass dispersed as inward impactors and outward ejecta)`;
             }
             else if (target.observed > 0 && target.observed < target.predicted * SURVIVOR_FRACTION_MAX) {
                 const pct = Math.round(target.observed / target.predicted * 100);
