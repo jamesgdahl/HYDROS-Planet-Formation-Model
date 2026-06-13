@@ -1150,6 +1150,15 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     kbo_bodies.sort((a, b) => (b.observed || 0) - (a.observed || 0));
     for (const p of kbo_bodies) {
       const m_obs_k = p.observed || 0;
+      // ONE FACTORY: the KBO mass is PREDICTED by factory_product (the streaming-instability
+      // seed in the sparse outer zone) — no predicted:=observed shortcut. rock seeds it, ice
+      // mantles it past the snow line. The factory is evaluated at the FORMATION DAM (R_dam),
+      // not the body's current AU: KBOs mint at the marching dam face and scatter outward, so a
+      // present-day position (Pluto's 39.5 AU, Eris' 67.8) is post-history and uncertain — only
+      // the in-situ firstborn (Triton, at the dam) reads its birth stance directly. This is the
+      // system's CHARACTERISTIC product mass; the smaller catalogued dwarfs are the sub-
+      // characteristic size distribution at that stance (formation-only scope).
+      const fp_k = factory_product(R_dam, M_star, omega, f_disc);
       const onset = m_obs_k >= m_at_dam * 0.999;
       const R_birth = onset ? R_dam
         : R_dam * Math.pow(m_at_dam / m_obs_k, 0.25);
@@ -1177,19 +1186,20 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       // has drifted since. predicted := observed (exact by inversion);
       // the falsifiable content is the vintage chronology itself, the
       // census counts, and the undiscovered-cohort rows.
+      const core_k = fp_k.rock + fp_k.ice;
       results.push({
         slot_n: -Math.max(0.01, Math.log(R_birth / R_dam) / Math.log(1 / CASCADE_RATIO)),
         slot_r: R_birth, r_used: p.r,
         filled: true, name: p.name,
-        rock: 0, ice: 0, pebble: 0, core: 0,
+        rock: fp_k.rock, ice: fp_k.ice, pebble: 0, core: core_k,
         t_form: t_vintage, h_he: 0,
-        predicted: m_obs_k, observed: m_obs_k,
-        err_pct: 0,
-        implied_dM: 0,
+        predicted: core_k, observed: m_obs_k,
+        err_pct: m_obs_k > 0 ? (core_k - m_obs_k) / m_obs_k * 100 : 0,
+        implied_dM: m_obs_k > 0 ? m_obs_k - core_k : 0,
         stripped: false, in_void: false, exterior: true,
-        primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0,
-                      total: m_obs_k },
-        interpretation: `factory product (${era}) — minted at the dam's outer face when it stood at ${R_birth.toFixed(1)} AU (size-clock); ${where}`,
+        primordial: { rock: fp_k.rock, ice: fp_k.ice, pebble: 0, h_he: 0, core: core_k,
+                      total: core_k },
+        interpretation: `factory product (${era}) — streaming-instability seed predicted ${core_k < 0.01 ? (core_k * 1000).toPrecision(3) + ' mE' : core_k.toFixed(2) + ' M⊕'}; size-clock birth stance ${R_birth.toFixed(1)} AU; ${where}`,
       });
     }
     // PER-VINTAGE COUNT AUDIT: the census law (stance stock / product

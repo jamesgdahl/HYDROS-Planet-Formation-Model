@@ -296,6 +296,9 @@ const IRON_MELT_MASS_E = 0.3;      // M⊕ — iron core freezes below this (Mar
 const DYNAMO_SAT_EXP = 0.16;       // B ∝ (conductive mass)^this — saturated dynamo (R&C ~1/6)
 const EARTH_G_PER_ME = 5.972e27;   // grams per Earth mass
 const EARTH_CM_PER_RE = 6.371e8;   // cm per Earth radius
+const G_CGS = 6.674e-8;            // gravitational constant, cm³ g⁻¹ s⁻²
+const AU_CM = 1.495978707e13;      // cm per AU
+const M_SUN_G = 1.98892e33;        // grams per solar mass
 // Magnetosphere PROJECTION gate. The field projects beyond the body (an exterior
 // Alfvén Dam exists) only when its surface magnetic pressure B²/2μ₀ beats the
 // external FORMATION pressure (the dense disc/nebula it's embedded in — NOT the

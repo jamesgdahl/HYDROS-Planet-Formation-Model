@@ -34,19 +34,40 @@ function factory_product(r: number, M_star: number, omega: number, f_disc: numbe
   const R_A = alfven_radius(M_star, omega);
   const r_visc = viscous_snow_line(M_star, f_disc);
   const R_in = Math.max(Math.min(R_A, R_disc), 1e-9);            // inner dam
+  const R_outer = Math.max(R_A, R_disc);                         // outer dam (Davis in normal, Alfvén in inverted)
   const R_c = SOL_R_C * omega * omega / Math.max(M_star, 1e-9);  // centrifugal disc extent
+  const M_star_E = M_star * M_SUN_EARTH;                         // central mass in M⊕ (Hill dynamics)
+  // COMPOSITION SPLIT (same in both zones): ROCK is refractory and seeds every radius;
+  // ICE mantles it only past the viscous snow line. fr = rock fraction of the local solid.
+  const fr = (r > r_visc) ? COMP_F_ROCK : 1.0;
+
+  if (r > R_outer) {
+    // OUTER ZONE (beyond the outer dam): streaming-instability planetesimal SEEDS. Out here
+    // the disc dispersed before oligarchic growth could run, so the product never grew to
+    // isolation mass — it is the self-gravitating SI clump mass M_G = 4π⁵ G² Σ_p³ / Ω⁴
+    // (Youdin & Goodman 2005), set by the sparse, slow outer nebula. The nebula solid surface
+    // density follows the self-similar LBP profile (γ=1): Σ ∝ R⁻¹·e^(−R/R_c). This is the SAME
+    // factory minting planetesimals — they just stay seeds beyond the dam (Sol's KBOs, Saturn's
+    // outer-zone moons), instead of coagulating into the inter-dam isolation-mass planets.
+    const Sigma = m_star_earth(M_star) / (2 * Math.PI * R_c * r) * Math.exp(-r / R_c) * COMP_Z; // M⊕/AU²
+    const Sigma_cgs = Sigma * EARTH_G_PER_ME / (AU_CM * AU_CM);   // g/cm²
+    const r_cm = r * AU_CM;
+    const Omega2 = G_CGS * (M_star * M_SUN_G) / (r_cm * r_cm * r_cm);
+    const M_G_g = 4 * Math.pow(Math.PI, 5) * G_CGS * G_CGS * Math.pow(Sigma_cgs, 3) / (Omega2 * Omega2);
+    const M_G = M_G_g / EARTH_G_PER_ME;
+    return { total: M_G, rock: M_G * fr, ice: M_G * (1 - fr) };
+  }
+
+  // INTER-DAM ZONE: oligarchic isolation mass. The disc metals (f_disc·budget·Z) spread as
+  // Σ ∝ r⁻² over the capture region; coagulation runs to the local isolation mass.
   const R_out = Math.max(R_c, R_in * 1.0001);
   const lnD = Math.log(R_out / R_in);
   if (!(lnD > 0)) return { total: 0, rock: 0, ice: 0 };
-  const M_star_E = M_star * M_SUN_EARTH;                  // central mass in M⊕ (Hill dynamics)
   const solid = f_disc * m_star_earth(M_star) * COMP_Z;  // disc metals budget
   const S_base = solid / (2 * Math.PI * lnD) / (r * r);  // Σ_solid ∝ r⁻², normalized to disc metals
-  const S_rock = S_base * COMP_F_ROCK;                   // ROCK seed — refractory, at every radius
-  const S_ice = (r > r_visc) ? S_base * (1 - COMP_F_ROCK) : 0;  // ICE mantle — only past the snow line
-  const S_solid = S_rock + S_ice;
+  const S_solid = (r > r_visc) ? S_base : S_base * COMP_F_ROCK;  // rock-only inside snow, rock+ice past
   if (S_solid <= 0) return { total: 0, rock: 0, ice: 0 };
   const M_iso = Math.pow(2 * Math.PI * ISO_HILL_C * r * r * S_solid, 1.5) / Math.sqrt(3 * M_star_E);
-  const fr = S_rock / S_solid;
   return { total: M_iso, rock: M_iso * fr, ice: M_iso * (1 - fr) };
 }
 
