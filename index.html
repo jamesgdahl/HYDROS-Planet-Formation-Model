@@ -627,9 +627,17 @@ function calculate() {
       interp += ` — 🌊 HABITABLE ZONE + volatile delivery (delivery receipt in the impact ledger)`;
     }
 
-    // Short TYPE label for the table (rocky / gas giant / ice giant / destroyed / …); the full
-    // narrative — what happened to the body — moves into the hover tooltip so the cell stays terse.
-    const shortType = s.destroyed ? 'destroyed' : (s.interpretation.split(' (')[0] || s.interpretation);
+    // Short TYPE label for the table; the full narrative moves into the hover tooltip. A rocky
+    // body in the habitable zone is Terrestrial if it received late volatile delivery (Earth) or
+    // Venusian if it didn't (Venus); a catastrophic-collision survivor is a Core Remnant
+    // (Mercury); a predicted-but-lost slot is destroyed. Everything else is its composition class.
+    const baseClass = s.interpretation.split(' (')[0] || s.interpretation;
+    const inHZ = !s.exterior && !s.external && r_now >= hz[0] && r_now <= hz[1];
+    let shortType;
+    if (s.destroyed) shortType = 'destroyed';
+    else if (/collision remnant/.test(s.interpretation)) shortType = 'Core Remnant';
+    else if (baseClass === 'rocky' && inHZ) shortType = deliveryNames.has(s.name) ? 'Terrestrial' : 'Venusian';
+    else shortType = baseClass;
     const tipText = (wetHZ ? '🌊 habitable zone + volatile delivery — ' : '') + interp;
     const escAttr = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
