@@ -129,8 +129,8 @@ function classify_slot(slot: ClassifySlotInfo, primordial: Composition,
   const total_bs = core_bs + h_he_bs;
   // For BD/stellar threshold checks on filled slots, use OBSERVED mass
   // (what was actually measured) rather than pre-bisection predicted.
-  // Otherwise a non-immutable gas-giant over-prediction can mislabel a
-  // sub-BD planet as a brown dwarf.
+  // Otherwise a gas-giant over-prediction can mislabel a sub-BD planet
+  // as a brown dwarf.
   const observed_total = slot.observed > 0 ? slot.observed : total_bs;
   const comp = composition_class(core_bs, ice_bs, h_he_bs, observed_total);
   // Stellar-class bodies and brown dwarfs skip cascade mass-delta tags

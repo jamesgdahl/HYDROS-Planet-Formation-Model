@@ -8,8 +8,6 @@ interface Planet {
   r: number;
   /** Observed mass in Earth masses; 0/undefined = predicted-only row. */
   observed?: number;
-  /** ISU (in-situ unchanged): mass+position treated as absolute truth. */
-  immutable?: boolean;
   /** KBO-class only: slot number of the interior body that CAPTURED
    *  this factory product (Triton: 0 = Neptune, co-orbital at the
    *  gate). Display resolves the slot to its occupant's name. */
@@ -153,7 +151,7 @@ interface BestFitResult {
   /** Achieved bisection objective: |sum(predicted-observed)| over the
    *  target subset, as a fraction of the target's total observed mass. */
   target_residual: number;
-  /** Names of planets the bisection targeted (ISU subset, or all filled). */
+  /** Names of planets the bisection targeted (all filled slots). */
   target_names: string[];
   fit: FitResult;
 }

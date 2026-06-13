@@ -304,17 +304,8 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             && planet_by_slot[n]
             && planet_by_slot[n].r > R_disc_local * 1.5;
         const t_form_hi = is_outward_migrant ? MIGRATION_T_FORM_CAP : 50.0;
-        // ISU (immutable) handling:
-        //  - If ANY planet is ISU, only ISU planets bisect t_form; non-ISU
-        //    use cascade-default t_form so observed vs primordial surfaces
-        //    post-formation modifications (impact loss, late delivery).
-        //  - If NO planet is ISU, all gas-eligible bisect t_form (no
-        //    diagnostic mode — just consensus fit to observed).
-        const is_immutable_planet = s.filled
-            && planet_by_slot[n] && planet_by_slot[n].immutable;
-        const any_isu = Object.values(planet_by_slot).some(p => p && p.immutable);
-        const should_bisect_t_form = s.filled && observed > 0
-            && (is_immutable_planet || !any_isu);
+        // Every filled, observed slot bisects t_form to the consensus fit.
+        const should_bisect_t_form = s.filled && observed > 0;
         if (!gas_eligible) {
             // Sub-threshold rocky: total = core, t_form from cascade (potential core).
             t_form = formation_time(r, potential_core, M_star, f_disc);
@@ -1427,9 +1418,8 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
 // ============================================================
 //  bestFit — the calibration entry point shared by UI and CLI.
 //  One pass = anchor search (spin) followed by f_disc bisection
-//  (driving sum(predicted - observed) → 0 over the ISU subset, or
-//  over all filled slots when no ISU planets exist). Iterated to a
-//  fixed point so spin and f_disc are mutually consistent.
+//  (driving sum(predicted - observed) → 0 over all filled slots).
+//  Iterated to a fixed point so spin and f_disc are mutually consistent.
 // ============================================================
 function bestFit(planets, M_star, f_disc_initial, max_outer_iterations) {
     let f_disc = f_disc_initial;
@@ -1441,10 +1431,7 @@ function bestFit(planets, M_star, f_disc_initial, max_outer_iterations) {
     let target_residual = 0;
     let target_names = [];
     const max_outer = max_outer_iterations || 8;
-    const immutable_names = new Set(planets.filter(p => p.immutable).map(p => p.name));
-    const sel = (f) => (immutable_names.size > 0
-        ? f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior && immutable_names.has(s.name))
-        : f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior));
+    const sel = (f) => f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior);
     // Objective mass of a slot: formation prediction plus any devour
     // credit (the meals close the books against observed).
     const objMass = (s) => s.predicted + (s.devoured_credit || 0);
@@ -1530,10 +1517,7 @@ function bruteFit(planets, M_star, stripping, vice) {
     // cascade and never count toward the interior planet census.
     const obs_disc = planets.filter(p => !p.kbo && (p.observed || 0) > 0);
     const n_obs = obs_disc.length;
-    const immutable_names = new Set(planets.filter(p => p.immutable).map(p => p.name));
-    const sel = (f) => (immutable_names.size > 0
-        ? f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior && immutable_names.has(s.name))
-        : f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior));
+    const sel = (f) => f.slots.filter(s => s.filled && !s.external && !s.remnant && !s.exterior);
     // Objective mass of a slot: formation prediction plus any devour
     // credit (the meals close the books against observed).
     const objMass = (s) => s.predicted + (s.devoured_credit || 0);
@@ -1541,8 +1525,7 @@ function bruteFit(planets, M_star, stripping, vice) {
     for (const p of planets)
         by_name[p.name] = p;
     // Canonical f_disc bisection at a fixed spin: drive the target-sum
-    // objective sum(predicted - observed) → 0 (ISU subset, or all filled).
-    // When stripping is flagged, q is threaded into every fit evaluation.
+    // objective sum(predicted - observed) → 0 over all filled slots.
     let devour_credit = null;
     const fit_opts = (q, omega) => {
         const o = { auto_compress: false };
@@ -2140,21 +2123,13 @@ function bruteFit(planets, M_star, stripping, vice) {
 // Calibrated on the four Galileans.
 const SIGN_DRAIN_K = 17.6; // φ = drain fraction of a +slot's solids = K·C² (cap 0.6)
 const SIGN_LEAK_K = 6.4; // fraction a −slot passes further inward = K·C (cap 0.95)
-function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc, immune) {
+function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc) {
     const phi = Math.min(0.6, SIGN_DRAIN_K * C * C);
     const leak = Math.min(0.95, SIGN_LEAK_K * C);
     if (!(phi > 0) || !(R_disc > 0) || !(R_A > 0))
         return;
-    // ISU (in-situ-unchanged) bodies are EXEMPT — "unchanged" means their solids
-    // were never redistributed by the feeding-zone transfer, so it skips them.
-    // This is what lets the f_disc bisection target an ISU subset cleanly: the
-    // transfer can't drain an anchor-frozen ISU slot (e.g. Sol's dam Neptune,
-    // pinned to observed) that the bisection then can't restore — which would
-    // force f_disc to run away and balloon the gas giants. Non-ISU bodies (e.g.
-    // Jupiter's moons, where the transfer is what lands them) are still moved.
     const body = slots.filter(s => s.filled && !s.external && !s.exterior
-        && s.slot_r > 0 && s.core > 0
-        && !(immune && immune.has(s.name))).sort((a, b) => b.slot_r - a.slot_r); // outer→inner
+        && s.slot_r > 0 && s.core > 0).sort((a, b) => b.slot_r - a.slot_r); // outer→inner
     let acc = 0;
     let lastBump = null;
     for (const s of body) {
@@ -2449,11 +2424,9 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const Mdot_of = (fd) => accretion_rate(M, Z, f_rock, fd, R_disc_scale, B, C);
         const om_for_RA = (omega !== undefined) ? omega : spin;
         const R_A_used = alfven_radius(M, om_for_RA);
-        const immut = new Set(planets.filter(p => p.immutable).map(p => p.name));
         // Fit-quality selector: filled slot products (inverted → pile-up factory products).
         // Used for the residual readout, and (sub-cascade only) the f_disc bisection.
-        const sel = (fr) => fr.slots.filter(s => s.filled && !s.external && !s.remnant && (inverted || !s.exterior)
-            && (immut.size ? immut.has(s.name) : true));
+        const sel = (fr) => fr.slots.filter(s => s.filled && !s.external && !s.remnant && (inverted || !s.exterior));
         // TWO accretion regimes, two snow-line laws — both VISCOUS, so both SPIN-
         // INDEPENDENT (viscous heating dominates bolometric during accretion):
         //  • UNIFORM-DISC (normal regime): the smooth viscous disc → Mulders line (R_SL ∝ Ṁ^4/9).
@@ -2478,7 +2451,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot });
             // INVERTED in-situ: the observed bodies are the dense pile-up's in-situ factory
             // products. The self-similar reservoir under-counts that compressed pile, so close
-            // f_disc to the observed ISU total (snow line stays frozen from the derived reservoir).
+            // f_disc to the observed in-situ total (snow line stays frozen from the derived reservoir).
             // Normal/forward systems keep the pure derived f_disc — only the inverted dense pile
             // is closed to its products. (No effect when there are no observed targets.)
             if (inverted) {
@@ -2544,9 +2517,9 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const R_disc_final = R_disc_phys != null ? R_disc_phys : outermost;
         const dam_align = (R_disc_phys != null && R_disc_final > 0)
             ? (outermost - R_disc_final) / R_disc_final : 0;
-        // Sign-modulated solid transfer (post-process; conserves total, ISU-exempt):
+        // Sign-modulated solid transfer (post-process; conserves total):
         // + dips drain inward to − bumps, cascade scaled by C = R_A/R_disc.
-        apply_sign_modulation(fit.slots, R_A_used / R_disc_final, R_disc_final, R_A_used, M, f, immut);
+        apply_sign_modulation(fit.slots, R_A_used / R_disc_final, R_disc_final, R_A_used, M, f);
         // Conserved hydrogen draw-down: the gas envelopes draw from the finite disc
         // hydrogen reservoir (f_disc·M_star = the disc's share of b_hydrogen). The
         // un-captured remainder is dispersed (onto the star / flung out). `exhausted`
