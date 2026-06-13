@@ -131,6 +131,11 @@ const M_SUN_TO_EARTH = 332946.0 * M_PRIM_TO_MSUN;  // 379,558 M_E per M_prim
 const VISC_COEFF = 0.67;
 const INV_ROCK_DESCENT = 0.75;
 const INV_ICE_DESCENT = 0.40;
+// Inverted-regime oligarchic FACTORY: mutual-Hill-radius spacing of the isolation-mass products.
+// The marching dam mints planetesimals that coagulate within ISO_HILL_C Hill radii into one
+// isolation-mass planet, the next seeding a feeding-zone out. Sets BOTH the count and the mass
+// (M_iso ∝ C^1.5; spacing a_{n+1}=a_n(1+C·(M/3M*)^⅓)). TRAPPIST's resonant chain ⇒ C ≈ 15.
+const ISO_HILL_C = 15.0;
 // Inverted pile-up rock enrichment: the magnetic slots gather FERROMAGNETIC rock
 // preferentially, so the pile's rock fraction exceeds the bulk f_rock by this
 // factor (capped at 0.95). Calibrated so TRAPPIST's inner rock chain (b,c,d) bulks

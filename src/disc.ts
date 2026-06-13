@@ -188,20 +188,36 @@ function breakup_spin(M_star: number): number {
 function alfven_radius(M_star: number, spin: number): number {
   // UNIVERSAL ALFVÉN DAM (one law, all scales): the magnetic field's reach — NOT a pressure
   // balance (a magnetosphere can't be compressed by external pressure; that's the Davis Dam).
-  // R_A = R_body · (dynamo field)^⅓, the field from the conductor ladder (plasma / metallic-H
-  // / iron, set by composition) organized by spin, with the fully-convective α² boost for
-  // H-rich low-mass bodies. R_body (mass–radius) carries the scale. Sol (solar comp, spin 1)
-  // → 0.2 AU. Composition comes from the parked context (COMP_Z/F_ROCK, solar by default).
+  // R_A = R_dynamo_core · (dynamo field)^⅓, the field from the conductor ladder (plasma /
+  // metallic-H / iron, set by composition) organized by spin. The length scale is the
+  // CONDUCTING DYNAMO CORE, not the puffy optical radius: a gas giant's molecular-H₂ envelope
+  // doesn't conduct, so the field's reach is set by the deep dynamo core — far smaller than
+  // body_radius. (Using body_radius left Jupiter's R_A outside its own moons.) Sol (solar
+  // comp, spin 1) → 0.2 AU. Composition comes from the parked context (COMP_Z/F_ROCK).
   const M_E = M_star * M_SUN_TO_EARTH;
   const rock = M_E * COMP_Z * COMP_F_ROCK;
   const H = M_E * (1.0 - COMP_Z);
   const B_REL_SOL = Math.pow(M_SUN_TO_EARTH / M_SUN_EARTH, DYNAMO_SAT_EXP);
-  const B_rel = dynamo_field_rel(M_E, rock, H, spin) / B_REL_SOL;
-  const fullyConv = M_E < FULLY_CONV_MASS_E && COMP_Z < 0.5;
-  const B_RA = B_rel * (fullyConv ? DYNAMO_CONV_BOOST : 1.0);
+  // R_A is derived purely from composition (the calibrated conductor ladder:
+  // rock / metallic-H / plasma) organized by spin — there is no ad-hoc
+  // fully-convective multiplier. The old DYNAMO_CONV_BOOST (a 50×, [TO CALIBRATE]
+  // placeholder gated only by an upper mass bound) was removed: it inflated R_A
+  // ~3.7× and leaked the stellar boost onto every sub-0.35-M☉ body, gas giants
+  // included.
+  const B_RA = dynamo_field_rel(M_E, rock, H, spin) / B_REL_SOL;
   return SOL_R_A_FORMATION
-    * (body_radius_earth(M_E) / body_radius_earth(M_SUN_TO_EARTH))
+    * (dynamo_core_radius(M_E, rock) / body_radius_earth(M_SUN_TO_EARTH))
     * Math.pow(Math.max(B_RA, 1e-9), 1.0 / 3.0);
+}
+
+// Radius (R⊕) of the conducting DYNAMO CORE — the length scale of the Alfvén Dam.
+// A star conducts throughout (plasma), so its core is the whole body. A sub-stellar
+// body's field is generated in its deep conductive core (iron/rock seed + metallic-H
+// floor), NOT its molecular-H₂ envelope — so the optical radius hugely overstates the
+// field's reach. Earth-anchored terran mass–radius (R ∝ M^0.28) on the conductive seed.
+function dynamo_core_radius(M_E: number, M_rock_E: number): number {
+  if (M_E >= M_STELLAR_BOUNDARY) return body_radius_earth(M_E);  // stellar: plasma throughout
+  return M_rock_E > 0 ? Math.pow(M_rock_E, 0.28) : 1e-3;         // sub-stellar: deep conductive core
 }
 
 // === CONDUCTOR LADDER ===============================================

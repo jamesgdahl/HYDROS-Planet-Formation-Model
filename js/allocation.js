@@ -20,6 +20,37 @@ function outer_feed_truncation(r, r_disc) {
 // jaw-lock). R_A and the backstop intercept are stellar (rotation/
 // field) properties; R_disc, the regime classification, and the dam
 // pile-up are outer-jaw (density-dial) properties.
+// THE FACTORY — ONE mechanism for every factory (inverted systems, exterior KBOs, moon discs alike;
+// no special cases). The Davis Dam marches outward as the disc drains, minting planetesimals that
+// coagulate — within ISO_HILL_C mutual Hill radii — into oligarchic isolation-mass bodies, each
+// seeding the next a feeding-zone out. ROCK is the refractory SEED present at EVERY radius; ICE only
+// MANTLES that seed past the viscous snow line (heterogeneous nucleation on silicate — no ice-only
+// bodies). Isolation mass M_iso = [2π·C·a²·Σ]^1.5 / (3·M★)^½ on the seeded solid, Σ ∝ r⁻² over the
+// disc (inner dam → centrifugal R_c). Returns the local product at r split into {total, rock, ice}.
+function factory_product(r, M_star, omega, f_disc) {
+    if (!(r > 0))
+        return { total: 0, rock: 0, ice: 0 };
+    const R_disc = disc_radius(M_star, omega, omega, f_disc);
+    const R_A = alfven_radius(M_star, omega);
+    const r_visc = viscous_snow_line(M_star, f_disc);
+    const R_in = Math.max(Math.min(R_A, R_disc), 1e-9); // inner dam
+    const R_c = SOL_R_C * omega * omega / Math.max(M_star, 1e-9); // centrifugal disc extent
+    const R_out = Math.max(R_c, R_in * 1.0001);
+    const lnD = Math.log(R_out / R_in);
+    if (!(lnD > 0))
+        return { total: 0, rock: 0, ice: 0 };
+    const M_star_E = M_star * M_SUN_EARTH; // central mass in M⊕ (Hill dynamics)
+    const solid = f_disc * m_star_earth(M_star) * COMP_Z; // disc metals budget
+    const S_base = solid / (2 * Math.PI * lnD) / (r * r); // Σ_solid ∝ r⁻², normalized to disc metals
+    const S_rock = S_base * COMP_F_ROCK; // ROCK seed — refractory, at every radius
+    const S_ice = (r > r_visc) ? S_base * (1 - COMP_F_ROCK) : 0; // ICE mantle — only past the snow line
+    const S_solid = S_rock + S_ice;
+    if (S_solid <= 0)
+        return { total: 0, rock: 0, ice: 0 };
+    const M_iso = Math.pow(2 * Math.PI * ISO_HILL_C * r * r * S_solid, 1.5) / Math.sqrt(3 * M_star_E);
+    const fr = S_rock / S_solid;
+    return { total: M_iso, rock: M_iso * fr, ice: M_iso * (1 - fr) };
+}
 function rock_allocation(r, M_star, spin, f_disc, omega) {
     const om = (omega === undefined) ? spin : omega;
     const C = compression(M_star, spin, om, f_disc);
@@ -58,22 +89,10 @@ function rock_allocation(r, M_star, spin, f_disc, omega) {
         }
         return base * f_trunc + outer_pileup + snow_bump;
     }
-    // INVERTED regime (v5.2): the FACTORY assembly line, PHASE 1 = ROCK. The
-    // dense pile-up is viscously hot, so water is gaseous and only ROCK
-    // condenses out to the viscous snow line r_visc — the rock-only phase,
-    // exhausted by ~vintage 3. Mass descends OUTWARD from the dam (biggest at
-    // the dam = the innermost "big rock"), the disc-solid budget tying the
-    // scale so the f-bisection matches the total. Beyond r_visc the disc cools
-    // and ice takes over (ice_allocation), so rock returns 0 there.
-    // (Memory: inverted-regime-model.)
-    const r_visc = viscous_snow_line(M_star, f_disc);
-    if (r > r_visc)
-        return 0; // past the viscous snow line: cool ⇒ ice, not rock
-    const disc_solid = f_disc * m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * ETA_ROCK;
-    // STEEP descent: rock is ferromagnetic, so the magnetic slots (slot 0 + the
-    // marching factory) concentrate it strongly ⇒ fast, front-loaded consumption.
-    const descent = Math.pow(r_disc / Math.max(r, r_disc), INV_ROCK_DESCENT);
-    return Math.max(0, disc_solid * descent);
+    // INVERTED regime: the oligarchic FACTORY (no rock-only "phase", no descent fudge). Rock is
+    // refractory and condenses at EVERY radius, so this returns the rock share of the local
+    // isolation mass — even outer products carry rock. (See inverted_isolation.)
+    return factory_product(r, M_star, om, f_disc).rock;
 }
 function ice_retention(r, M_star, spin, f_disc, omega) {
     const r_snow = snow_line(M_star, f_disc);
@@ -93,25 +112,10 @@ function ice_allocation(r, M_star, spin, f_disc, omega) {
     // a "big ice" product (the big-small-big pattern). (Phase 3 = nebula KBOs
     // beyond R_A, handled in the exterior block.)
     if (compression(M_star, spin, omega, f_disc) >= 1.0) {
-        const r_visc = viscous_snow_line(M_star, f_disc);
-        if (r <= r_visc)
-            return 0; // PHASE 1 (rock): viscously hot, water gaseous
+        // INVERTED regime: the oligarchic FACTORY. Ice condenses only PAST the viscous snow line, so
+        // this returns the ice share of the local isolation mass (zero inside r_visc, rising outward).
         const om = (omega === undefined) ? spin : omega;
-        const r_A = alfven_radius(M_star, om);
-        const disc_ice = f_disc * m_star_earth(M_star) * COMP_Z * COMP_F_ROCK * ETA_ROCK;
-        // The assembly DESCENT resets at each phase boundary, giving the
-        // big-small-big pattern (comparable peaks, same coefficient):
-        //   PHASE 2 (ice):    r_visc..R_A — descent from the viscous line.
-        //   PHASE 3 (nebula): beyond R_A  — descent from R_A; the dam has marched
-        //     past the magnetosphere into the Alfvén-repelled nebula (the
-        //     "big nebula" product sits at R_A). These are the exterior KBO-class
-        //     bodies, minted with a real ICE composition like every other body.
-        const origin = (r > r_A && r_A > r_visc) ? r_A : r_visc;
-        // SHALLOW descent: ice is NOT ferromagnetic, so the magnetic slots can't
-        // concentrate it — it accretes by gravity/drift alone, slower and more
-        // spread ⇒ ice consumed more slowly than rock down the assembly line.
-        const descent = Math.pow(origin / Math.max(r, origin), INV_ICE_DESCENT);
-        return Math.max(0, disc_ice * descent);
+        return factory_product(r, M_star, om, f_disc).ice;
     }
     const sl = slope(M_star, f_disc);
     const r_snow = snow_line(M_star, f_disc);

@@ -1078,8 +1078,12 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             }
             for (const p of kbo_bodies) {
                 const rr = p.r, observed = p.observed || 0;
-                let rock = rock_share[p.name] || 0; // rock condenses at every radius
-                let ice = ice_share[p.name] || 0; // ice only beyond R_snow
+                // ONE FACTORY everywhere (no special cases): the shared isolation-mass product. Rock seeds
+                // every body; ice mantles it past the snow line. Inverted planets, exterior KBOs and outer
+                // moons all mint through the same factory_product.
+                const iso = factory_product(p.r, M_star, omega, f_disc);
+                let rock = iso.rock;
+                let ice = iso.ice;
                 let peb = 0;
                 let core = rock + ice + peb;
                 const t_form = vintage[p.name]; // marching-dam formation epoch
@@ -2389,8 +2393,17 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             spin = omega; // real spin everywhere — no fake geometry spin
             const M_E_body = M * M_SUN_TO_EARTH;
             // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
-            // dams over R_c=SOL_R_C·spin²/M. From spin + budget alone; bare ≡ populated disc.
-            const R_c = SOL_R_C * spin_eff * spin_eff / M;
+            // dams over the disc profile-scale R_c. From spin + budget alone; bare ≡ populated disc.
+            //   NORMAL (R_A inner, R_disc outer): the disc spreads to the CENTRIFUGAL radius
+            //     R_c = SOL_R_C·spin²/M, with the outer dam (R_disc) sitting near it ⇒ a healthy
+            //     inter-dam capture (Sol ~8.5%).
+            //   INVERTED (R_disc inner, R_A outer; feeble wind, dense disc): the disc is concentrated
+            //     WITHIN the magnetosphere — it never reaches the centrifugal radius — so its profile
+            //     scale is the OUTER dam (R_A). Otherwise both dams sit ~300× inside a centrifugal R_c,
+            //     the inter-dam slice is ~0.3% and f_disc plunges to ~0, starving the M-dwarf factory.
+            const R_c = (R_A_mag >= R_disc_phys)
+                ? Math.max(R_A_mag, 1e-9) // inverted: disc bounded by the magnetosphere
+                : (SOL_R_C * spin_eff * spin_eff / M); // normal: centrifugal spread
             // The reservoir is the nebula mass BETWEEN the two dams — independent of which is
             // inner. Normal: R_A inner, R_disc outer. INVERTED: R_disc (Davis) inner, R_A (Alfvén)
             // outer. Order by radius so the difference stays positive in both regimes.

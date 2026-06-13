@@ -24,15 +24,21 @@ function cascade_slot_positions(M_star: number, spin: number,
   const R_A_phys = alfven_radius(M_star, om);
   const out: number[] = [];
   if (R_A_phys >= R_disc) {
-    // INVERTED (v5): the cascade runs OUTWARD from the Davis Dam (R_disc,
-    // the INNER pile-up) to the magnetosphere (R_A, OUTER). This regime is
-    // factory/pile-up minting, NOT a reflecting standing-wave cavity, so it
-    // is a plain ρ-ladder (no superposition phase shift): r_n = R_disc·ρ^(−n),
-    // bounded by R_A. Half-steps (the second, Alfvén-anchored factory) are
-    // added in cascade_sites. See memory: inverted-regime-model.
-    const span = Math.floor(Math.log(R_A_phys / R_disc) / (-Math.log(CASCADE_RATIO))) + 1;
-    const n_slots = Math.max(span, Math.ceil(min_slots / 2), 1);
-    for (let n = 0; n < n_slots; n++) out.push(R_disc * Math.pow(CASCADE_RATIO, -n));
+    // INVERTED FACTORY (oligarchic isolation-mass growth) — NO ρ-ladder, NO half-steps, NO
+    // Alfvén-anchored second factory (R_A only REPELS). The Davis Dam marches outward as the
+    // dense disc drains; planetesimals coagulate within ISO_HILL_C mutual Hill radii into one
+    // isolation-mass planet, each seeding the next a feeding-zone out:
+    //   a_{n+1} = a_n + ISO_HILL_C·R_H(M_iso(a_n)),  bounded by the repelling magnetosphere R_A.
+    const fd = (f_disc !== undefined && f_disc > 0) ? f_disc : 0.01;
+    let a = R_disc;
+    while (a < R_A_phys && out.length < 40) {
+      out.push(a);
+      const Mi = factory_product(a, M_star, om, fd).total;
+      const R_H = a * Math.pow(Math.max(Mi, 1e-12) / (3 * M_star * M_SUN_EARTH), 1 / 3);
+      const step = ISO_HILL_C * R_H;
+      if (!(step > 0) || !isFinite(step)) break;
+      a += step;
+    }
     return out;
   }
   // NORMAL: the two FUNDAMENTAL waveforms — Maas (Davis Dam, R_disc) and
