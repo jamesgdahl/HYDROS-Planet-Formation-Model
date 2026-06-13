@@ -167,6 +167,13 @@ function spin_from_nebula_density(D) {
 function disc_radius_from_density(M_star, D) {
     return SOL_R_DISC * (M_star / SOL_M_PRIMORDIAL) * Math.pow(D, -1.0 / 3.0);
 }
+// Centrifugal disc radius R_c = j²/GM (∝ spin²/M) — the disc profile scale. For a sub-cascade
+// (moon disc) the central mass is tiny, so the bare 1/M scaling explodes (Saturn → ~10⁷ AU);
+// the disc physically cannot exceed the planet's Hill sphere, so it is capped at the parked
+// Hill radius (COMP_R_HILL = Infinity for a top-level star ⇒ no cap).
+function disc_centrifugal_radius(M_star, spin) {
+    return Math.min(SOL_R_C * spin * spin / Math.max(M_star, 1e-9), COMP_R_HILL);
+}
 // Formation-era stellar breakup spin (Sol-primordial units, Ω = 1 ↔
 // P = 1.55 d). On the Hayashi track R_HT ≈ 2.3 R☉·M^(2/3), the breakup
 // period is P_min = 2π√(R³/GM) ≈ 0.41·√M d, so Ω_break ≈ 3.8/√M.

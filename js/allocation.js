@@ -35,7 +35,7 @@ function factory_product(r, M_star, omega, f_disc) {
     const r_visc = viscous_snow_line(M_star, f_disc);
     const R_in = Math.max(Math.min(R_A, R_disc), 1e-9); // inner dam
     const R_outer = Math.max(R_A, R_disc); // outer dam (Davis in normal, Alfvén in inverted)
-    const R_c = SOL_R_C * omega * omega / Math.max(M_star, 1e-9); // centrifugal disc extent
+    const R_c = disc_centrifugal_radius(M_star, omega); // centrifugal disc extent (Hill-capped for sub-cascades)
     const M_star_E = M_star * M_SUN_EARTH; // central mass in M⊕ (Hill dynamics)
     // COMPOSITION SPLIT (same in both zones): ROCK is refractory and seeds every radius;
     // ICE mantles it only past the viscous snow line. fr = rock fraction of the local solid.

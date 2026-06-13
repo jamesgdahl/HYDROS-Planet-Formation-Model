@@ -75,6 +75,12 @@ let COMP_NEBULA = -1.0; // M_d, nebula mass in M⊕ (budget − core)
 let COMP_FLUX = -1.0; // Σ (M_core_i / M☉)^3.54, the combined stellar-flux wind
 function set_dam_inputs(m_d, flux) { COMP_NEBULA = m_d; COMP_FLUX = flux; }
 function reset_dam_inputs() { COMP_NEBULA = -1.0; COMP_FLUX = -1.0; }
+// Hill-radius cap on the centrifugal disc radius R_c. A sub-cascade (moon disc) has a tiny
+// central mass, so the bare R_c ∝ spin²/M explodes to ~10⁷ AU; physically the disc cannot
+// exceed the planet's Hill sphere. Parked when fitting a sub-cascade; Infinity = no cap (star).
+let COMP_R_HILL = Infinity;
+function set_hill_radius(rh) { COMP_R_HILL = (rh > 0) ? rh : Infinity; }
+function reset_hill_radius() { COMP_R_HILL = Infinity; }
 // FORMATION CLOCK (v6 budget wiring) — ONE supply-limited clock for igniters
 // AND non-igniters: t_form = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF). The local
 // accretion rate Ṁ_local = Ṁ·(R_disc/r) falls ∝1/r, so t scales UP with AU

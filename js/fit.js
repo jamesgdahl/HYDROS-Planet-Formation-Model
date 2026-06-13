@@ -2398,6 +2398,12 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             // allocations call the SAME disc_radius/alfven_radius, so the factory marches from the
             // real Davis Dam and the regime is the real magnetopause vs Davis comparison.
             set_dam_inputs(M_d, flux);
+            // Sub-cascade (moon disc): cap the centrifugal radius at the planet's Hill sphere, else
+            // R_c ∝ spin²/M explodes (Saturn → ~10⁷ AU) and the inter-dam reservoir → 0 (f_disc floors).
+            if (parent)
+                set_hill_radius(parent.a * Math.pow(M / (3 * parent.M), 1.0 / 3.0));
+            else
+                reset_hill_radius();
             R_disc_phys = disc_radius(M, omega, omega); // Davis = outward pressure ⇄ density
             R_A_mag = alfven_radius(M, omega); // Alfvén = magnetic field reach
             spin = omega; // real spin everywhere — no fake geometry spin
@@ -2413,7 +2419,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             //     the inter-dam slice is ~0.3% and f_disc plunges to ~0, starving the M-dwarf factory.
             const R_c = (R_A_mag >= R_disc_phys)
                 ? Math.max(R_A_mag, 1e-9) // inverted: disc bounded by the magnetosphere
-                : (SOL_R_C * spin_eff * spin_eff / M); // normal: centrifugal spread
+                : disc_centrifugal_radius(M, spin_eff); // normal: centrifugal spread (Hill-capped for sub-cascades)
             // The reservoir is the nebula mass BETWEEN the two dams — independent of which is
             // inner. Normal: R_A inner, R_disc outer. INVERTED: R_disc (Davis) inner, R_A (Alfvén)
             // outer. Order by radius so the difference stays positive in both regimes.
@@ -2659,5 +2665,6 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         reset_form_spin();
         reset_fragmenting();
         reset_dam_inputs();
+        reset_hill_radius();
     }
 }
