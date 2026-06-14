@@ -119,6 +119,38 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // Primordial spin factor for the accretion clock (≡1 at Sol). formation_time reads
     // this; it scales the Myr accretion time off Sol to the orbital-period cascade.
     set_form_spin((spin && spin > 0) ? spin : 1.0);
+    // SUB-STELLAR FRAGMENTS (hot Jupiters, warm Neptunes). A body INSIDE the snow line whose mass
+    // exceeds the runaway-gas critical core mass (gas_threshold_mass = M_crit) MUST carry an H/He
+    // envelope — but the disc can't supply gas inside the snow line (no ice core to trigger runaway),
+    // so it cannot have formed in situ: it's a rotational-fragmentation sibling (like a co-primary, but
+    // planetary-mass), not a slot product. This is the same "the disc can't form it" test that flags a
+    // stellar co-primary, now via the PHYSICAL runaway threshold M_crit — no arbitrary mass cut, and it
+    // cleanly spares rocky super-Earths (below M_crit) at any radius, including inside R_A. Being
+    // `fragment` not `core`, it carries NO barycentre / Holman-Wiegert weight (low mass ⇒ tiny shift,
+    // thin chaotic clearing). Excluded from the cascade; predicted := observed.
+    // NORMAL regime only: the inverted regime mints EVERY body in the dense pile-up (factory products),
+    // so "the disc can't form it" doesn't apply — its compact planets are not fragments.
+    if (!is_inverted_budget(M_star)) {
+        const om_f = (opts.omega !== undefined && opts.omega !== null) ? opts.omega : ((spin && spin > 0) ? spin : 1.0);
+        const r_snow_f = snow_line(M_star, f_disc);
+        const r_a_f = alfven_radius(M_star, om_f);
+        for (const p of planets) {
+            if (p.core || p.kbo || p.fragment)
+                continue;
+            const mo = p.observed || 0;
+            if (mo <= 0 || mo >= M_STELLAR_BOUNDARY || !(p.r > 0) || p.r >= r_snow_f)
+                continue;
+            // (a) GAS-runaway giant anywhere inside the snow line (mass > M_crit ⇒ it captured H/He the disc
+            //     can't supply there). (b) ICE/gas-DOMINATED body in the disc zone (mass > 2× the rock the
+            //     disc can build there ⇒ it's volatile-rich, and there's no in-situ ice inside the snow
+            //     line). Either way it can't have formed in situ ⇒ a rotational-fragmentation sibling. The
+            //     disc zone (r>R_A) guard keeps the void's rocky super-Earths (handled magnetospherically).
+            const gasGiant = mo > gas_threshold_mass(p.r, M_star, f_disc);
+            const solid = p.r > r_a_f ? rock_allocation(p.r, M_star, om_f, f_disc, om_f) + ice_allocation(p.r, M_star, om_f, f_disc, om_f) : Infinity;
+            if (gasGiant || mo > 2 * Math.max(solid, 1e-6))
+                p.fragment = true;
+        }
+    }
     // All observed bodies participate in the cascade — consistent with
     // the framework's predicted-stellar-companion patterns (HD 60532, etc.).
     // The stellar-mass label is preserved in classification but doesn't
@@ -134,18 +166,18 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // not the cascade. Normal regime: only the catalog-flagged KBOs are factory.
     const all_factory = is_inverted_budget(M_star);
     const kbo_bodies = all_factory
-        ? planets.filter(p => !p.core && (p.observed || 0) >= 0)
+        ? planets.filter(p => !p.core && !p.fragment && (p.observed || 0) >= 0)
         : planets.filter(p => p.kbo && (p.observed || 0) >= 0);
-    // CORE COMPONENTS: catalog-flagged central fragments (co-primaries). Excluded
-    // from the cascade fit entirely (no slot, no anchor weight, no target) — they
-    // belong to the core that DRIVES the dams, not the products it forms.
-    const core_bodies = planets.filter(p => !!p.core && (p.observed || 0) > 0);
+    // CORE COMPONENTS: central fragments — catalog-flagged co-primaries (`core`, stellar) AND the
+    // auto-detected sub-stellar fragments (`fragment`, hot Jupiters / warm Neptunes). Both are
+    // excluded from the cascade fit (predicted:=observed); only `core` drives the dams/barycentre.
+    const core_bodies = planets.filter(p => (!!p.core || !!p.fragment) && (p.observed || 0) > 0);
     const observed_all = all_factory ? []
-        : planets.filter(p => !p.kbo && !p.core && (p.observed || 0) > 0);
+        : planets.filter(p => !p.kbo && !p.core && !p.fragment && (p.observed || 0) > 0);
     if (auto_compress && (spin === undefined || spin === null)) {
         // Anchor search sees only the interior population — KBOs and core
         // components carry no weight in the cascade geometry.
-        spin = auto_spin_with_anchor_search(planets.filter(p => !p.kbo && !p.core), M_star, f_disc).spin;
+        spin = auto_spin_with_anchor_search(planets.filter(p => !p.kbo && !p.core && !p.fragment), M_star, f_disc).spin;
     }
     else if (spin === undefined || spin === null) {
         spin = 1.0;
@@ -879,6 +911,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     for (const p of core_bodies) {
         const m_obs = p.observed || 0;
         const lam_break = breakup_spin(M_star);
+        const is_frag = !!p.fragment && m_obs < M_STELLAR_BOUNDARY; // sub-stellar (planetary) fragment
         results.push({
             slot_n: -1, slot_r: p.r, r_used: p.r,
             filled: true, name: p.name,
@@ -886,7 +919,9 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             predicted: m_obs, observed: m_obs, err_pct: 0, implied_dM: 0,
             stripped: false, in_void: true, external: true, core_component: true,
             primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
-            interpretation: `core component (co-primary): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation sibling star (λ_break ≈ ${lam_break.toFixed(1)}), not a slot product. With the predicted main star, both masses drive the wind/field dams and the barycentre the products orbit.`,
+            interpretation: is_frag
+                ? `sub-stellar core fragment: ${m_obs.toFixed(0)} M⊕ at ${p.r} AU — gas/ice-dominated and interior to the snow line, so the disc cannot build it in situ. A rotational-fragmentation sibling (planetary-mass; the same spin-shedding channel as a co-primary star), not a slot product; predicted := observed.`
+                : `core component (co-primary): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation sibling star (λ_break ≈ ${lam_break.toFixed(1)}), not a slot product. With the predicted main star, both masses drive the wind/field dams and the barycentre the products orbit.`,
         });
     }
     // KBO-class population (the Kuiper mechanism): a distinct entity

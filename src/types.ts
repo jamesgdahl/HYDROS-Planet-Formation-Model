@@ -25,6 +25,11 @@ interface Planet {
    *  orbit. Excluded from the cascade fit (predicted := observed). Alpha Cen B
    *  is the exemplar — a rotational-fragmentation co-primary. */
   core?: boolean;
+  /** SUB-STELLAR rotational-fragmentation sibling (a "hot Jupiter" the disc can't build in situ:
+   *  massive AND interior to the snow line). Like a co-primary `core` but planetary-mass — excluded
+   *  from the slot/cascade fit and reported predicted:=observed, but WITHOUT the stellar barycentre /
+   *  Holman-Wiegert side effects (those stay keyed on `core`). Auto-set in slot_aware_fit. */
+  fragment?: boolean;
   /** Orbital eccentricity (co-primary cores). The binary destabilization uses the
    *  worst-case extremes — "destabilized is destabilized": the P-type circumbinary
    *  clear-out reaches the APASTRON a(1+e), the S-type circum-element stable edge is set
