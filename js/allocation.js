@@ -53,6 +53,9 @@ function factory_product(r, M_star, omega, f_disc) {
         const r_cm = r * AU_CM;
         const Omega2 = G_CGS * (M_star * M_SUN_G) / (r_cm * r_cm * r_cm);
         const M_G_g = 4 * Math.pow(Math.PI, 5) * G_CGS * G_CGS * Math.pow(Sigma_cgs, 3) / (Omega2 * Omega2);
+        // M_G = the streaming-instability seed (one self-gravitating clump) at the local solid Σ. This
+        // is the right per-KBO scale (Sol dam-edge ≈ Triton); the DECLINING size trend comes from the
+        // reservoir depleting as the factory mints (handled in the KBO loop), not from a global factor.
         const M_G = M_G_g / EARTH_G_PER_ME;
         return { total: M_G, rock: M_G * fr, ice: M_G * (1 - fr) };
     }
@@ -150,6 +153,13 @@ function ice_allocation(r, M_star, spin, f_disc, omega) {
     return base_ice * f_trunc + snow_bump;
 }
 function total_pebble_bonus_budget(M_star, f_disc) {
+    // CONSERVED pebble flux — sourced from the OUTER solids draining inward during the gas epoch
+    // (budgetFit sets the captured mass ε_PA·(1−ε_SI)·Z·M_beyond from the beyond-dam reservoir, in
+    // the budget's f_rock:1−f_rock ratio; 0 when there's no outer reservoir / it's trapped). It is
+    // NOT minted from the inner disc ice (the old "mana" double-counted the disc's own metals).
+    if (COMP_PEBBLE_FLUX >= 0)
+        return COMP_PEBBLE_FLUX;
+    // Sub-cascade fallback (moon disc — no stellar outer zone parked): legacy disc-ice drift flux.
     const disc_ice = f_disc * COMP_Z * (1 - COMP_F_ROCK) * m_star_earth(M_star);
     return disc_ice * PEBBLE_CAPTURE_EFFICIENCY;
 }

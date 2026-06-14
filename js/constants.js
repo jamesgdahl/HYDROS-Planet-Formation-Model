@@ -81,6 +81,28 @@ function reset_dam_inputs() { COMP_NEBULA = -1.0; COMP_FLUX = -1.0; }
 let COMP_R_HILL = Infinity;
 function set_hill_radius(rh) { COMP_R_HILL = (rh > 0) ? rh : Infinity; }
 function reset_hill_radius() { COMP_R_HILL = Infinity; }
+// Conserved captured-pebble mass (M⊕): ε_PA·(1−ε_SI)·Z·M_beyond, set by budgetFit from the OUTER
+// reservoir (the Act-1 drift drainage that the inner cores catch). 0 when there's no beyond-dam
+// material (binary / inverted — trapped, no inward flux). -1 = unset ⇒ legacy disc-ice fallback.
+let COMP_PEBBLE_FLUX = -1.0;
+function set_pebble_flux_budget(m) { COMP_PEBBLE_FLUX = (m >= 0) ? m : 0; }
+function reset_pebble_flux_budget() { COMP_PEBBLE_FLUX = -1.0; }
+// Conserved KBO budget (M⊕): the SI-retained residual ε_SI·S_outer (the 1% the streaming
+// instability sieves from the outer solids; the 99% is the inward pebble flux). The dam-march
+// factory is capped at this — it can't mint more KBOs than the budget holds. Replaces the anchored
+// census stock C_STOCK. -1 = unset (sub-cascade / legacy).
+let COMP_KBO_BUDGET = -1.0;
+function set_kbo_budget(m) { COMP_KBO_BUDGET = (m >= 0) ? m : 0; }
+function reset_kbo_budget() { COMP_KBO_BUDGET = -1.0; }
+// Outer-zone (KBO) streaming-instability RETENTION ε_SI. M_G = 4π⁵G²Σ³/Ω⁴ is the UPPER bound — the
+// full self-gravitating clump collapsing into one body, realised only when the trap holds the
+// solids to completion (the inverted regime, ε_SI=1). Untrapped (normal outer zone), drift strips
+// most solids before the clump finishes, so the collapsed body is M_G·ε_SI (ε_SI = min(1,
+// t_drift/t_disc) ≈ 1% — Sol's Kuiper belt). Default 1 (full M_G): inverted products + sub-cascade
+// moons. budgetFit sets <1 only for the NORMAL stellar regime.
+let COMP_SI_RETENTION = 1.0;
+function set_si_retention(e) { COMP_SI_RETENTION = (e > 0 && e <= 1) ? e : 1.0; }
+function reset_si_retention() { COMP_SI_RETENTION = 1.0; }
 // FORMATION CLOCK (v6 budget wiring) — ONE supply-limited clock for igniters
 // AND non-igniters: t_form = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF). The local
 // accretion rate Ṁ_local = Ṁ·(R_disc/r) falls ∝1/r, so t scales UP with AU
@@ -225,7 +247,19 @@ const GAS_TRICKLE_COEF = 1.296e-4;
 const GAS_PILEUP_EFF = 5.9e-4; // Sol-anchored on Neptune's envelope (~2.35 M⊕ at R_disc)
 const GAS_PILEUP_Q = 0.22; // inward GROWTH of the pileup (∝(R_disc/r)^q): Uranus ≳ Neptune
 const TAU_KH0_MYR = 100.0;
-const PEBBLE_CAPTURE_EFFICIENCY = 0.40;
+// ε_PA — fraction of the inward pebble FLUX the inner cores accrete (pebble-accretion efficiency,
+// a few % in the literature). The flux is now sourced from the OUTER reservoir (~10× the old
+// disc-ice pool), so this dropped from 0.40 (applied to the wrong, too-small pool) to ~0.03.
+const PEBBLE_CAPTURE_EFFICIENCY = 0.03;
+// Pebble drift physics: the drift-limited Stokes number (universal pebble size) and the
+// sub-Keplerian pressure-gradient parameter η. Set the radial-drift timescale t_drift, hence the
+// streaming-instability retention ε_SI = min(1, t_drift/t_disc) (the gas-off residual → KBOs).
+const PEBBLE_STOKES = 0.1;
+const PEBBLE_ETA = 0.002;
+// KBO size DECLINE is NOT a free parameter — it's the Davis Dam marching outward as the nebula
+// depletes. The nebula mass holds the dam in (disc_radius: R_disc ∝ M_nebula^−½), so M_nebula ∝ R⁻²;
+// by the time the dam reaches R_birth the local Σ ∝ R⁻³ and the SI seed M_G ∝ Σ³/Ω⁴ ∝ R⁻³ ⇒
+// M_k = M_seed·(R_dam/R_birth)³. Applied in the KBO loop (fit.ts); no coupling constant.
 const ETA_ROCK = 0.78;
 const SNOW_PILEUP_FACTOR = 0.5;
 const SNOW_PILEUP_WIDTH_FRAC = 0.15;

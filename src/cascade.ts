@@ -2,6 +2,16 @@
 // Global-script style: depends on constants.ts, disc.ts, allocation.ts;
 // uses assign_planets_to_slots from fit.ts (resolved at call time).
 
+// BINARY / MULTI-CORE override of the ladder's inner terminus. A single star's cascade bottoms
+// out at its R_A; a binary's CANNOT — no slot forms inside the cores' mutual orbit, so the
+// circumbinary ladder terminates at the OUTERMOST core element's Alfvén Dam (its apastron from
+// the barycentre + that element's R_A), not the combined R_A back at the barycentre. budgetFit
+// sets this before the binary fit and resets it after; single stars leave it null. (The
+// Holman-Wiegert instability separately destroys anything that forms further out.)
+let CASCADE_INNER_DAM: number | null = null;
+function set_cascade_inner_dam(r: number): void { CASCADE_INNER_DAM = (r > 0) ? r : null; }
+function reset_cascade_inner_dam(): void { CASCADE_INNER_DAM = null; }
+
 function cascade_slot_positions(M_star: number, spin: number,
                                 min_slots: number = 0,
                                 omega?: number, f_disc?: number): number[] {
@@ -21,7 +31,10 @@ function cascade_slot_positions(M_star: number, spin: number,
   // Both dams are the universal laws now (disc_radius = outward pressure ⇄ density,
   // alfven_radius = magnetic field reach) — the factory marches from the real Davis Dam.
   const R_disc = disc_radius(M_star, spin, om, f_disc);
-  const R_A_phys = alfven_radius(M_star, om);
+  // Inner terminus: the combined R_A, unless a binary raised it to the outermost core dam.
+  const R_A_bare = alfven_radius(M_star, om);
+  const R_A_phys = (CASCADE_INNER_DAM != null && CASCADE_INNER_DAM > R_A_bare)
+    ? CASCADE_INNER_DAM : R_A_bare;
   const out: number[] = [];
   if (R_A_phys >= R_disc) {
     // INVERTED FACTORY (oligarchic isolation-mass growth) — NO ρ-ladder, NO half-steps, NO
@@ -48,7 +61,12 @@ function cascade_slot_positions(M_star: number, spin: number,
   // Ladder terminates at the inner Alfvén Dam.
   const n_slots = Math.max(1, Math.floor(Math.log(R_A_phys / R_disc) / Math.log(CASCADE_RATIO)) + 1);
   const shift = superposition_phase_shift(R_disc, R_A_phys);
-  for (let n = 0; n < n_slots; n++) out.push(R_disc * shift * Math.pow(CASCADE_RATIO, n));
+  // The geometric ladder is the closed-form scaffold (the anchor/spin solve inverts it); the
+  // SLOT is then placed at the standing wave's true antinode in that lobe — the source of truth.
+  for (let n = 0; n < n_slots; n++) {
+    const r_ladder = R_disc * shift * Math.pow(CASCADE_RATIO, n);
+    out.push(snap_to_antinode(r_ladder, R_disc, R_A_phys));
+  }
   return out;
 }
 
@@ -74,12 +92,41 @@ function superposition_phase_shift(R_disc: number, R_A: number): number {
   return Math.exp(-delta / CASCADE_ALPHA);
 }
 
-// Net (signed) Alfvén–Maas amplitude at radius r — the quantity the chart
-// plots and the fit scores. Antinodes (|A| maximal) are the slot seats.
+// Each wave's amplitude attenuates by half per ρ-step away from its own dam (the resonance
+// diminishing into the cavity). This falloff is the standing wave's amplitude — it's what makes
+// the slot masses differ (outer big, inner small) and what lets the Alfvén wave matter in the
+// inner system where the Maas wave has attenuated. ≈1.287.
+const CASCADE_DECAY = Math.log(2) / (-Math.log(CASCADE_RATIO));
+
+// Net (signed) Alfvén–Maas standing wave at radius r — THE SOURCE OF TRUTH for slot positions
+// (its antinodes) and masses (its amplitude). A_M(r)·cos(φ_M) + A_A(r)·cos(φ_A): the Maas wave
+// radiates from the Davis Dam (R_disc) attenuating inward; the Alfvén wave radiates from the
+// Alfvén Dam (R_A, single-star comb centred at the star) attenuating outward.
 function superposition_amplitude(r: number, R_disc: number, R_A: number): number {
   const { wM, wA } = dam_weights(R_disc, R_A);
-  return wM * Math.cos(CASCADE_ALPHA * Math.log(R_disc / r))
-       + wA * Math.cos(CASCADE_ALPHA * Math.log(r / R_A));
+  const ampM = Math.pow(Math.min(r / R_disc, 1), CASCADE_DECAY);          // Maas amplitude: attenuates inward from R_disc
+  const dA = Math.max(r, R_A * 0.2);                                      // Alfvén comb centred at the star (d=r), inner-clamped
+  const ampA = Math.pow(Math.min(R_A / dA, 1), CASCADE_DECAY);            // Alfvén amplitude: attenuates outward from R_A
+  // The Alfvén wave launches NEGATIVE (π out of phase with Maas): the Davis Dam PILES matter
+  // (positive antinode) while the magnetosphere EXCLUDES it (a density minimum at R_A).
+  return wM * ampM * Math.cos(CASCADE_ALPHA * Math.log(R_disc / r))
+       - wA * ampA * Math.cos(CASCADE_ALPHA * Math.log(dA / R_A));
+}
+
+// Snap a geometric-ladder guess to the nearest TRUE antinode (local |amplitude| max) of the
+// enveloped superposition, searching only within the slot's own lobe so it can't jump to a
+// neighbour. The ladder solves the anchor/spin in closed form; the snap places the seat where
+// the real net wave actually peaks (inner slots shift out most, where the Alfvén bites).
+function snap_to_antinode(r_guess: number, R_disc: number, R_A: number): number {
+  if (!(r_guess > 0) || !(R_disc > 0) || !(R_A > 0)) return r_guess;
+  let best = r_guess, bestA = Math.abs(superposition_amplitude(r_guess, R_disc, R_A));
+  const N = 60, lo = r_guess * 0.82, hi = Math.min(r_guess * 1.30, R_disc);
+  for (let i = 0; i <= N; i++) {
+    const r = lo + (hi - lo) * i / N;
+    const a = Math.abs(superposition_amplitude(r, R_disc, R_A));
+    if (a > bestA) { bestA = a; best = r; }
+  }
+  return best;
 }
 
 // Predict the cascade: r_n = R_disc * 0.5837^n (geometric ratio from the

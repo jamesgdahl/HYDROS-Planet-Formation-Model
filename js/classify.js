@@ -140,13 +140,10 @@ function classify_slot(slot, primordial, r_snow, migrated, _migrants) {
     const tags = [];
     if (migrated)
         tags.push(`migrated ${direction}`);
-    // Late delivery is a rocky-planet phenomenon — gas/ice giants vary in
-    // envelope mass from formation-timing, not from impactor delivery.
-    if (mass_delta_frac >= LATE_DELIVERY_FRAC && observed_r < r_snow
-        && comp === "rocky") {
-        tags.push("late delivery");
-    }
-    else if (mass_delta_frac < -0.5) {
+    // Late delivery is NO LONGER inferred from a mass excess. It's a FORWARD result — a scattered
+    // fragment crossing this body's orbit (its Hill space), set by impact_forensics. Here we only
+    // tag mass DEFICITS (a body that lost mass to scattering or an impact).
+    if (mass_delta_frac < -0.5) {
         tags.push("scattered/lost");
     }
     else if (mass_delta_frac < -LATE_DELIVERY_FRAC) {

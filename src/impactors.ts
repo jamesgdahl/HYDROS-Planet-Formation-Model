@@ -160,48 +160,33 @@ function impact_forensics(all_slots: FitSlot[], planets: Planet[],
              lo, hi, residual_lo: 0, residual_hi: 0 };
   });
   if (zones.length) {
-    for (const s of slots) {
-      if (!s.filled || s.observed <= 0) continue;
-      const core_s = s.rock + s.ice + s.pebble;
-      if (core_s > 3.0) continue;                  // rocky receivers only
-      const excess = s.observed - s.predicted;
-      if (excess <= 0 || excess / s.predicted < 0.02) continue;
-      // Reconstruct the LAUNCHED impactor through the retention line,
-      // run backwards: the retained excess is ret x impactor. Arrival:
-      // grazing-perihelion convention q = 0.85 r_t (Opik: collision
-      // probability peaks for orbits whose perihelion grazes the
-      // target's orbit). The ledger counts the launched mass; the
-      // difference is lost to the impact disc / past the target's dam.
-      const cands = zones
-        .map(z => ({ z, zr: slots.find(x => x.slot_n === z.slot) }))
-        .filter(c => c.zr && s.slot_r < c.zr.slot_r)
-        .sort((a, b) =>
-          Math.abs(Math.log(a.zr!.slot_r / s.slot_r))
-          - Math.abs(Math.log(b.zr!.slot_r / s.slot_r)));
-      if (!cands.length) continue;
-      // attribute to the nearest zone with band CAPACITY for the
-      // launched mass; spill outward when the implied impactor cannot
-      // fit (this recovers parentage from arithmetic alone)
-      for (let ci = 0; ci < cands.length; ci++) {
-        const c = cands[ci];
-        const r0 = c.zr!.slot_r, rt = s.slot_r;
-        const q = 0.85 * rt, ao = (q + r0) / 2, e = (r0 - q) / (r0 + q);
-        const vc = 29.785 * Math.sqrt(1.14 * M_star / rt);
-        const vv = Math.sqrt(2 - rt / ao);                  // v/vc
-        const vt = Math.sqrt(ao * (1 - e * e) / rt);        // v_t/vc
-        const vr = Math.sqrt(Math.max(0, vv * vv - vt * vt));
-        const dv = vc * Math.sqrt((vt - 1) ** 2 + vr * vr);
-        const vesc = 11.186 * Math.pow(Math.max(s.observed, 0.01), 1 / 3);
-        const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
-        const imp = excess / ret;
-        const cap = c.z.hi - (c.z.survivor + c.z.delivered);
-        if (imp <= cap + 0.02 || ci === cands.length - 1) {
-          c.z.delivered += imp;
-          c.z.receivers.push({ name: s.name, excess, impactor: imp,
-            dv, ret, lost: imp - excess, zoneSlot: c.z.slot });
-          break;
-        }
-      }
+    // FORWARD late delivery (crossing orbit → Hill space). Each dispersed fragment is scattered
+    // onto a crossing orbit (aphelion at its source slot) and delivered to the LARGEST interior
+    // rocky body whose orbit it crosses — the dominant gravitational sink (cross-section ∝ M^⅔
+    // with focusing). The TRAJECTORY picks the receiver; the receiver's observed mass is the
+    // confirmation, not the trigger. Arrival Δv via the Öpik grazing-perihelion convention
+    // (q = 0.85 r_t); the launched 7.5% inward share is retained per the impact retention line.
+    for (const z of zones) {
+      const zr = slots.find(x => x.slot_n === z.slot);
+      if (!zr || !(zr.slot_r > 0)) continue;
+      const crossers = slots.filter(s => s.filled && s.observed > 0
+        && (s.rock + s.ice + s.pebble) <= 3.0           // rocky receivers
+        && s.slot_r > 0 && s.slot_r < zr.slot_r);       // interior to the source — the fragment crosses it
+      if (!crossers.length) continue;
+      const tgt = crossers.reduce((a, b) => (b.observed > a.observed ? b : a));  // largest sink it crosses
+      const imp = 0.075 * z.alloc;                       // 7.5% inward share (5-10% midpoint)
+      const r0 = zr.slot_r, rt = tgt.slot_r;
+      const q = 0.85 * rt, ao = (q + r0) / 2, ecc = (r0 - q) / (r0 + q);
+      const vc = 29.785 * Math.sqrt(1.14 * M_star / rt);
+      const vv = Math.sqrt(2 - rt / ao);
+      const vt = Math.sqrt(ao * (1 - ecc * ecc) / rt);
+      const vr = Math.sqrt(Math.max(0, vv * vv - vt * vt));
+      const dv = vc * Math.sqrt((vt - 1) ** 2 + vr * vr);
+      const vesc = 11.186 * Math.pow(Math.max(tgt.observed, 0.01), 1 / 3);
+      const ret = Math.max(0.05, 0.969 - 0.605 * dv / vesc);
+      z.delivered += imp;
+      z.receivers.push({ name: tgt.name, excess: imp * ret, impactor: imp,
+        dv, ret, lost: imp * (1 - ret), zoneSlot: z.slot });
     }
     for (const z of zones) {
       const known = z.survivor + z.delivered;

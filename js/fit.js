@@ -393,55 +393,61 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             in_void, primordial, interpretation,
         });
     }
-    // Impact-merger detection — retention scales with impact energy,
-    // and impact energy scales with orbital velocity difference between
-    // outer and inner slots. Adjacent slots → low energy → high retention
-    // (clean merger). Distant slots → high energy → low retention (iron-
-    // enriched survivor, mantle stripped).
+    // Inner-magnetosphere bombardment + general catastrophic collision. v_orbit(r)=29.785·√(M/r)
+    // km/s; v_esc(M)=11.186·M^(1/3) km/s (M in M⊕, rocky).
     const COLLISION_SURVIVOR_MAX = 0.15; // survivor observed < this × combined ⇒ a collision happened
+    const v_orbit_r = (r) => (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / r);
     for (let i = 0; i < results.length - 1; i++) {
         const outer = results[i], inner = results[i + 1];
         if (!outer.filled || inner.filled)
-            continue; // survivor is the FILLED (bigger) body; impactor an empty slot
+            continue; // survivor is the FILLED body; impactor an empty slot
         if (outer.observed <= 0)
             continue;
+        const outer_rocky = outer.primordial.rock + outer.primordial.pebble;
+        const inner_rocky = inner.primordial.rock + inner.primordial.pebble;
         const rocky_combined = outer.primordial.rock + outer.primordial.ice + outer.primordial.pebble +
             inner.primordial.rock + inner.primordial.ice + inner.primordial.pebble;
         if (rocky_combined <= 0)
             continue;
-        // Impact retention model (on-slot calibration):
-        //   v_orbit(r) = 29.785 · √(M_star/r)  [km/s; r in AU, M_star in M_sun]
-        //   v_esc(M)   = 11.186 · M^(1/3)      [km/s; M in M_E, rocky]
-        //   retention = max(0.05, 0.969 - 0.605 · Δv/v_esc)
-        // Two anchors, two constants, both at SLOT-radius allocations:
-        //   Mercury–Vulcan (Sol slots 8/9, combined 0.789 M_E primordial):
-        //     Δv≈15.4 km/s, v_esc≈10.3 → ratio≈1.49 → retention 0.070
-        //   Tau Ceti e (slots 1.5/2, combined 4.90 M_E primordial):
-        //     ratio≈0.275 → retention 0.803
-        // Intercept 0.969 < 1: even the gentlest merger sheds percent-level
-        // ejecta. The old (0.3 floor, 0.37 slope) carried the observed-radius
-        // conflation and underestimated primordial masses.
-        const v_orbit_r = (r) => (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / r);
+        // INNER-MAGNETOSPHERE BOMBARDMENT (Mercury). An unfilled slot at/inside the Alfvén Dam can't
+        // hold a planet — the rotating field magnetically accelerates its planetesimals OUTWARD (the
+        // same magnetocentrifugal push that drives the Davis Dam). Launched at ~the dam's orbital
+        // velocity (≫ the target's escape velocity), they sandblast the first ROCKY body just outside
+        // R_A, ejecting its silicate mantle; the dense iron cores (target + impactors) survive →
+        // an iron-rich CORE REMNANT. This is why Mercury is iron-rich AND the innermost planet.
+        if (inner.slot_r <= 1.3 * R_A_now && outer_rocky > 0 && outer.primordial.core < 3.0) {
+            const v_launch = v_orbit_r(Math.max(R_A_now, 1e-6)); // magnetocentrifugal launch at the dam
+            const v_esc_m = 11.186 * Math.pow(Math.max(outer_rocky, 0.01), 1.0 / 3.0);
+            if (v_launch > v_esc_m) {
+                const iron = IRON_FRACTION * (outer_rocky + inner_rocky); // both mantles blasted off; iron cores retained
+                const klass = outer.interpretation.split(' (')[0];
+                outer.predicted = iron;
+                outer.rock = iron;
+                outer.ice = 0;
+                outer.pebble = 0;
+                outer.h_he = 0;
+                outer.core = iron;
+                outer.remnant = true;
+                outer.err_pct = outer.observed > 0 ? (iron - outer.observed) / outer.observed * 100 : 0;
+                outer.implied_dM = outer.observed > 0 ? outer.observed - iron : 0;
+                outer.interpretation = `${klass} (core remnant: planetesimals magnetically flung outward from the Alfvén Dam (slot ${inner.slot_n}) at ~${v_launch.toFixed(0)} km/s ≫ v_esc ${v_esc_m.toFixed(1)} sandblasted ${outer.name}'s silicate mantle off — only the iron core survives, ${iron.toFixed(3)} M⊕)`;
+                inner.destroyed = true;
+                inner.interpretation = `destroyed (magnetically scattered from the Alfvén Dam — too close for a planet to survive; its planetesimals are flung outward to bombard ${outer.name})`;
+                continue;
+            }
+        }
+        // GENERAL catastrophic collision (non-inner): the inner slot's body crosses the filled outer
+        // body at Δv > v_esc and shatters it; the survivor keeps the retained remnant + the impactor's
+        // iron core. Gated on a small observed survivor so quiet/wide systems don't mis-fire.
         const dv = Math.abs(v_orbit_r(inner.slot_r) - v_orbit_r(outer.slot_r));
         const v_esc = 11.186 * Math.pow(rocky_combined, 1.0 / 3.0);
-        const catastrophic = dv > v_esc;
-        // Fire only for a genuine CATASTROPHIC collision (Δv > escape velocity — the bodies cross
-        // and shatter, not gently merge) whose observed survivor is a small remnant of the combined
-        // pair. Widely-spaced or low-velocity systems (sub-cascade moons, outer-factory dregs) have
-        // Δv ≪ v_esc and never fire — so a tiny outer moon isn't mistaken for a collision survivor.
-        if (!catastrophic)
+        if (!(dv > v_esc))
             continue;
         if (!(outer.observed < COLLISION_SURVIVOR_MAX * rocky_combined))
             continue;
         const retention = v_esc > 0 ? Math.max(0.05, 0.969 - 0.605 * dv / v_esc) : 0.05;
-        // The catastrophic hit strips both mantles to the retained remnant, AND the impactor's dense
-        // IRON CORE sinks in and is absorbed by the survivor (Mercury keeps its core + slot-9's core).
-        const inner_core = IRON_FRACTION * (inner.primordial.rock + inner.primordial.pebble);
+        const inner_core = IRON_FRACTION * inner_rocky;
         const expected = retention * rocky_combined + inner_core;
-        // THE RETAINED REMNANT IS THE PREDICTION (not the pre-collision slot allocation). A
-        // catastrophic hit (Δv > v_esc) strips the mantle to an iron-rich core — Mercury. Flagged
-        // remnant: reported with its real error but kept OUT of the f_disc bisection (collision
-        // output, not a disc-mass calibration point). The bigger body is the survivor.
         const klass = outer.interpretation.split(' (')[0];
         outer.predicted = expected;
         outer.rock = expected;
@@ -452,9 +458,9 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         outer.remnant = true;
         outer.err_pct = outer.observed > 0 ? (expected - outer.observed) / outer.observed * 100 : 0;
         outer.implied_dM = outer.observed > 0 ? outer.observed - expected : 0;
-        outer.interpretation = `${klass} (collision remnant: the predicted slot-${inner.slot_n} body collided with ${outer.name} at Δv ≈ ${dv.toFixed(1)} km/s — ${catastrophic ? 'catastrophic, mantle stripped to an iron-rich core' : 'merger'}; ${(retention * 100).toFixed(0)}% retained → ${expected.toFixed(3)} M⊕)`;
+        outer.interpretation = `${klass} (collision remnant: the predicted slot-${inner.slot_n} body collided with ${outer.name} at Δv ≈ ${dv.toFixed(1)} km/s — catastrophic, mantle stripped to an iron-rich core; ${(retention * 100).toFixed(0)}% retained → ${expected.toFixed(3)} M⊕)`;
         inner.destroyed = true;
-        inner.interpretation = `destroyed (collided with ${outer.name} at Δv ≈ ${dv.toFixed(1)} km/s — ${catastrophic ? 'catastrophic impact, mantle stripped' : 'merged in'})`;
+        inner.interpretation = `destroyed (collided with ${outer.name} at Δv ≈ ${dv.toFixed(1)} km/s — catastrophic impact, mantle stripped)`;
     }
     // Mutual-eviction detection: adjacent MISSING slots both predicting
     // brown-dwarf-or-larger mass cannot coexist (Sep/R_H,mutual << 3.5).
@@ -987,20 +993,21 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             // assembly-line order: earliest vintage first (bigger product =
             // denser supply = earlier; onset ties resolve by mass descending)
             kbo_bodies.sort((a, b) => (b.observed || 0) - (a.observed || 0));
+            // The firstborn is the dam-EDGE streaming-instability seed M_G (the OUTER-zone branch, just
+            // beyond the dam — Sol's is ≈ Triton), NOT the inter-dam oligarchic isolation mass (that gave
+            // 0.7-M⊕ phantoms). The size DECLINE is the Davis Dam MARCHING OUT as the nebula depletes — the
+            // nebula mass holds the dam in (disc_radius: R_disc ∝ M_nebula^−½ ⇒ M_nebula ∝ R⁻²), so by the
+            // time the dam reaches R_birth the local Σ ∝ M_nebula/area ∝ R⁻³ and the seed M_G ∝ Σ³/Ω⁴ ∝ R⁻³.
+            // ⇒ M_k = seed·(R_dam/R_birth)³. No fudge coupling: the decline IS the dam march (the increasing AU).
+            const seed_fp = factory_product(R_dam * 1.0002, M_star, omega, f_disc);
             for (const p of kbo_bodies) {
                 const m_obs_k = p.observed || 0;
-                // ONE FACTORY: the KBO mass is PREDICTED by factory_product (the streaming-instability
-                // seed in the sparse outer zone) — no predicted:=observed shortcut. rock seeds it, ice
-                // mantles it past the snow line. The factory is evaluated at the FORMATION DAM (R_dam),
-                // not the body's current AU: KBOs mint at the marching dam face and scatter outward, so a
-                // present-day position (Pluto's 39.5 AU, Eris' 67.8) is post-history and uncertain — only
-                // the in-situ firstborn (Triton, at the dam) reads its birth stance directly. This is the
-                // system's CHARACTERISTIC product mass; the smaller catalogued dwarfs are the sub-
-                // characteristic size distribution at that stance (formation-only scope).
-                const fp_k = factory_product(R_dam, M_star, omega, f_disc);
                 const onset = m_obs_k >= m_at_dam * 0.999;
                 const R_birth = onset ? R_dam
                     : R_dam * Math.pow(m_at_dam / m_obs_k, 0.25);
+                // Davis-dam march depletion: seed × (R_dam/R_birth)³ (the nebula that left to move the dam out).
+                const march = Math.pow(R_dam / Math.max(R_birth, R_dam), 3);
+                const fp_k = { rock: seed_fp.rock * march, ice: seed_fp.ice * march, total: seed_fp.total * march };
                 // NUMERIC vintage (Myr) → carried in t_form so the slot column shows it (like
                 // the inverted factory products); the era qualifier stays in the description.
                 let t_vintage, era;
@@ -1056,8 +1063,13 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             // fill it. A shortfall is a SIBLING DEFICIT — same vintage, more
             // members predicted, hiding where the survival law says survivors
             // hide (scattered: high inclination, far from perihelion).
+            // Census stock = the conserved KBO budget ε_SI·S_outer (the 1% the SI retains from the outer
+            // solids). This is the FULL population, not the detected belt: we catalogue only the bright,
+            // nearby tip (~0.013 M⊕ for Sol — Triton/Pluto/Eris…); the rest (~99.8%) is UNDETECTED, in
+            // distant scattered/detached/inner-Oort orbits at hundreds of AU where surveys are blind. The
+            // census deficit IS that prediction. Fallback (sub-cascade, no parked budget): the legacy anchor.
             const C_STOCK = 5.1e-6;
-            const stock = C_STOCK * f_disc * m_star_earth(M_star);
+            const stock = COMP_KBO_BUDGET >= 0 ? COMP_KBO_BUDGET : C_STOCK * f_disc * m_star_earth(M_star);
             {
                 const binned = new Set();
                 for (const p of kbo_bodies) {
@@ -2158,6 +2170,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         let R_disc_phys = null;
         let R_A_mag = null;
         let f_disc_derived = null;
+        let M_core_earth = 0; // hoisted: needed below for the outer-zone (pebble/KBO) budget
         let spin;
         if (usePhysicsDam) {
             // Co-primaries — OBSERVED or forward-SYNTHESIZED above — make this a fragmenting binary
@@ -2168,7 +2181,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             // Core = primary + every co-primary (observed, or the forward-synthesized fragment). The
             // synthesized B carries the centrifugal-split mass, so the co-primary's ~0.9 M☉ leaves the
             // nebula and f_disc stays ~0.12 (not 0.52) — no inflated-budget O-class phantoms.
-            const M_core_earth = primaryMass * M_SUN_EARTH
+            M_core_earth = primaryMass * M_SUN_EARTH
                 + co.reduce((a, p) => a + (p.observed || 0), 0);
             // DERIVED nebula density (no calibration constant). The disc mass is the nebula
             // M_d = budget − core (budget minus the stars). It spreads over the centrifugal
@@ -2252,6 +2265,62 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const snow_of = (fd) => inverted
             ? Math.max(pile_snow_line(M, fd, alfven_radius(M, SNOW_REF_SPIN), SNOW_REF_SPIN), irradiation_snow_line(M))
             : mulders_snow_line(M, Mdot_of(fd));
+        // BINARY: the circumbinary ladder bottoms out at the OUTERMOST core element's Alfvén Dam, not
+        // the combined R_A at the barycentre — no slot forms inside the cores' mutual orbit. Each
+        // element's dam reaches to its apastron-from-barycentre + its own R_A; take the widest (incl.
+        // the primary, sitting r_bary off the barycentre). (HW instability clears anything beyond it.)
+        let cascade_inner_dam = null;
+        if (co_cores.length > 0 && omega !== undefined && primaryMass != null && r_bary !== 0) {
+            const e_bin = co_cores.reduce((m, p) => Math.max(m, p.e || 0), 0);
+            let dam = Math.abs(r_bary) * (1 + e_bin) + alfven_radius(primaryMass, omega);
+            for (const p of co_cores) {
+                const reach = Math.abs(p.r - r_bary) * (1 + (p.e || 0))
+                    + alfven_radius((p.observed || 0) / M_SUN_TO_EARTH, omega);
+                if (reach > dam)
+                    dam = reach;
+            }
+            cascade_inner_dam = dam;
+            set_cascade_inner_dam(dam);
+        }
+        else {
+            reset_cascade_inner_dam();
+        }
+        // OUTER-ZONE conserved budget (the Davis-dam factory), on ONE gas-dispersal clock. The solids
+        // beyond the dam (S = Z·M_beyond, M_beyond = budget − core − disc) split temporally: during the
+        // gas epoch the headwind drives radial drift, so most drain inward as the PEBBLE FLUX (caught by
+        // inner cores at ε_PA = PEBBLE_CAPTURE_EFFICIENCY); the residual still present when the gas
+        // turns off (drift stalls) collapses into KBOs. ε_SI = min(1, t_drift/t_disc) IS that residual —
+        // small where untrapped (drift fast vs disc life → starved Kuiper belt), ≈1 where trapped
+        // (inverted: no headwind, nothing leaks → efficient assembly line). No beyond-dam ⇒ no flux.
+        if (usePhysicsDam && R_disc_phys != null && f_disc_derived != null && M_core_earth > 0 && parent == null) {
+            const Mtot_e = M * M_SUN_TO_EARTH;
+            const M_beyond = Math.max(0, Mtot_e - M_core_earth - f_disc_derived * Mtot_e);
+            const S_outer = COMP_Z * M_beyond; // outer solids (full f_rock:1−f_rock ratio)
+            const P_dam = Math.sqrt(Math.pow(R_disc_phys, 3) / Math.max(M, 1e-9)); // yr (model period convention)
+            const t_drift = (1 + PEBBLE_STOKES * PEBBLE_STOKES) / (2 * PEBBLE_STOKES * PEBBLE_ETA)
+                * (P_dam / (2 * Math.PI)) / 1e6; // Myr (radial-drift time at the dam)
+            const t_disc = gas_dispersal_time(M, f_disc_derived); // Myr (gas-dispersal clock)
+            const eps_SI = inverted ? 1.0 : Math.min(1.0, t_drift / Math.max(t_disc, 1e-9));
+            if (!inverted) {
+                // Normal stellar: the pebble flux drains inward (Act 1). KBOs are dam-edge SI seeds whose
+                // per-rank size DECLINE is set by ε_SI (carried via COMP_SI_RETENTION to the KBO loop): the
+                // drawdown scales with the drained fraction (1−ε_SI), so a drift-dominated belt (Sol, ε_SI≈1%)
+                // declines steeply while a trapped reservoir wouldn't decline at all.
+                set_pebble_flux_budget(PEBBLE_CAPTURE_EFFICIENCY * (1 - eps_SI) * S_outer);
+                set_kbo_budget(eps_SI * S_outer); // the 1% the SI retains (KBO factory ceiling)
+                set_si_retention(eps_SI);
+            }
+            else {
+                set_pebble_flux_budget(0); // trapped — no inward pebble flux
+                reset_kbo_budget();
+                reset_si_retention(); // (inverted uses the phase-3 branch, not the KBO loop)
+            }
+        }
+        else {
+            reset_pebble_flux_budget(); // sub-cascade → legacy disc-ice flux
+            reset_kbo_budget();
+            reset_si_retention(); // sub-cascade moons: no KBO-style decline
+        }
         let f;
         let fit;
         if (f_disc_derived != null) {
@@ -2326,6 +2395,10 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             f = passB.f;
             fit = passB.fit;
         }
+        reset_cascade_inner_dam(); // scope the binary terminus override to slot generation
+        reset_pebble_flux_budget(); // scope the outer-sourced pebble flux to this fit
+        reset_kbo_budget(); // scope the KBO budget to this fit
+        reset_si_retention(); // scope the KBO drift-retention (M_G·ε_SI) to this fit
         // The Davis dam is fixed by the budget − core − captured-planets (f_disc-
         // independent). The outermost body's distance from it is the fit-quality metric —
         // no longer forced to zero by an anchor.
@@ -2430,6 +2503,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             budget_barycentre: r_bary,
             budget_hw_inner: hw_in, budget_hw_outer: hw_out,
             budget_R_disc: R_disc_final, budget_dam_align: dam_align,
+            budget_R_A_outer: cascade_inner_dam != null ? cascade_inner_dam : alfven_radius(M, om_eff),
             // CONDUCTOR-LADDER magnetosphere classification (exposed, non-driving for now):
             // does the dynamo field project beyond the body → exterior Alfvén Dam, or is it
             // BURIED (single-body infall)? Then magnetized → normal / inverted by R_A vs R_disc.
