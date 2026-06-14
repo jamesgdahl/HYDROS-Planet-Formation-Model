@@ -154,7 +154,13 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // thin chaotic clearing). Excluded from the cascade; predicted := observed.
   // NORMAL regime only: the inverted regime mints EVERY body in the dense pile-up (factory products),
   // so "the disc can't form it" doesn't apply — its compact planets are not fragments.
-  if (!is_inverted_budget(M_star)) {
+  // SPIN JUSTIFICATION (the necessary precondition): a core fragment can only exist if the core
+  // actually fissioned — i.e. the primordial spin reached the bar-mode limit β = BETA_SOL·λ² ≥ 0.274
+  // (Bate 2011), `core_fragments(λ)`. Below it the core stays axisymmetric and sheds nothing, so no
+  // body at any orbit is a fragment — it's a disc product. This stops the mass-only test from
+  // mislabelling under-fed disc cascades (Kepler-90, λ=0.23 ⇒ β≈0.0004) as fission debris.
+  const lam_frag = (spin && spin > 0) ? spin : 1.0;
+  if (!is_inverted_budget(M_star) && core_fragments(lam_frag)) {
     const om_f = (opts.omega !== undefined && opts.omega !== null) ? opts.omega : ((spin && spin > 0) ? spin : 1.0);
     const r_snow_f = snow_line(M_star, f_disc);
     const r_a_f = alfven_radius(M_star, om_f);
@@ -262,12 +268,24 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     cores[s.slot_n] = rock_allocation(r, M_star, spin, f_disc, omega)
                     + ice_allocation(r, M_star, spin, f_disc, omega);
   }
-  const weights: Record<number, number> = {};
+  // PEBBLE CAPTURE is GRAVITATIONAL — captured by ANY core (no gas-eligibility gate) at ALL radii (no
+  // snow-line zero: icy pebbles freeze onto a cooled planet even inside the gas snow line — volatile
+  // delivery). The capture rate scales with the core's gravitational REACH (Hill space ∝ mass), so the
+  // MOST MASSIVE core — Jupiter, whose gas runaway gives it a gigantic Hill space, or a compact disc's
+  // outermost barrier — gobbles nearly all the inward flux (pebble isolation) and starves the rest.
+  // Weight ∝ mass² (steep, barrier-like dominance of the heaviest core); mass = core + gas-runaway
+  // envelope (so the gas giant's huge mass, not just its solid core, sets its Hill reach).
+  const gas_est: Record<number, number> = {};
   for (const s of slot_data) {
     const r = fit_r(s);
-    const tf_casc = formation_time(r, cores[s.slot_n], M_star, f_disc);
-    const eligible = (cores[s.slot_n] > gas_threshold_mass(r, M_star, f_disc)) && (tf_casc < gas_dispersal_time(M_star, f_disc));
-    weights[s.slot_n] = eligible ? pebble_allocation_weight(r, M_star, f_disc) : 0.0;
+    const tf = formation_time(r, cores[s.slot_n], M_star, f_disc);
+    gas_est[s.slot_n] = (cores[s.slot_n] > gas_threshold_mass(r, M_star, f_disc) && tf < gas_dispersal_time(M_star, f_disc))
+      ? hydrogen_capture(cores[s.slot_n], tf, spin, r, M_star, f_disc, omega) : 0;
+  }
+  const weights: Record<number, number> = {};
+  for (const s of slot_data) {
+    const m = cores[s.slot_n] + gas_est[s.slot_n];
+    weights[s.slot_n] = m * m;
   }
   const total_w = Object.values(weights).reduce((a, b) => a + b, 0);
   const pebble: Record<number, number> = {};
@@ -289,6 +307,9 @@ function slot_aware_fit(planets: Planet[], M_star: number,
              rr > snow_line(M_star, f_disc) ? INV_ICE_DESCENT : INV_ROCK_DESCENT);
   let avail_sumA = 0;
   for (const s of slot_data) if (fit_r(s) > 0) avail_sumA += avail_amp(fit_r(s));
+  // The cap is on the DIRECT (in-situ) disc accretion only — the local material the standing wave
+  // concentrates. The pebble flux is gravitationally captured drift, NOT limited by this budget, so
+  // it is added AFTER the cap (uncapped) in the slot loop.
   const disc_solid_budget = f_disc * m_star_earth(M_star) * COMP_Z;
   const cap_active = !inverted && !COMP_FRAGMENTING && R_disc_local > 0 && avail_sumA > 0;
   const availability_of = (rr: number): number =>
@@ -309,25 +330,34 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     const r = fit_r(s);
     let rock = rock_allocation(r, M_star, spin, f_disc, omega);
     let ice = ice_allocation(r, M_star, spin, f_disc, omega);
-    // Pebbles are a drift flux of the SAME bulk composition — fold them into
-    // their constituent rock/ice (f_rock : 1−f_rock = 22%:78% for Sol) rather
-    // than carrying a separate component. peb stays 0 (the field is retained for
-    // the type, but pebbles no longer appear in results).
-    rock += COMP_F_ROCK * pebble[n];
-    ice  += (1 - COMP_F_ROCK) * pebble[n];
+    // PEBBLE BONUS, folded into rock/ice at f_rock:1−f_rock. The water survives only if the planet can
+    // hold a steam atmosphere against hydrodynamic escape — massive (deep gravity well) OR cold (beyond
+    // the snow line). Inside the Hamano (2013) Type-II proximity boundary r_typeII = TYPE_II_AU·√L (≈
+    // Mars's orbit at Sol; bolometric-flux set) a SMALL planet's magma ocean persists and its water is
+    // photodissociated / lost → it stays dry (Hadean zircons: Earth held this state until Theia
+    // delivered water LATE — the model's late-volatile mechanism, not the pebble flux). A massive body
+    // (Kepler-90 h ~200 M⊕) keeps it → STEAM GIANT; cold ones (Uranus/Neptune) → ice giants.
+    const peb_rock = COMP_F_ROCK * pebble[n];
+    const peb_water = (1 - COMP_F_ROCK) * pebble[n];
+    const L_star = M_star > 0.43 ? Math.pow(M_star, 4) : 0.23 * Math.pow(M_star, 2.3);
+    const r_typeII = TYPE_II_AU * Math.sqrt(L_star);
+    const retains_water = (r > r_typeII) || (rock + peb_rock > STEAM_RETAIN_MASS);
+    // POTENTIAL core (uncapped — the accretion the body actually did; the gas clock reads this, NOT
+    // the availability-capped solid): direct + the captured pebble.
+    const potential_core = rock + ice + peb_rock + (retains_water ? peb_water : 0);
+    // AVAILABILITY CAP applies ONLY to the DIRECT (in-situ) disc accretion — the local material the
+    // standing wave concentrates. The pebble flux is gravitationally captured drift, NOT limited by
+    // the local disc-solid budget, so it is added AFTER the cap, uncapped.
+    const availability = availability_of(r);
+    const direct = rock + ice;
+    if (direct > availability && direct > 0) {
+      const cap_k = availability / direct;
+      rock *= cap_k; ice *= cap_k;
+    }
+    rock += peb_rock;
+    if (retains_water) ice += peb_water;   // else Type-II: delivered water destroyed, planet stays dry
     let peb = 0;
     let core = rock + ice + peb;
-    // POTENTIAL core (pre-cap): the formation clock and the gas runaway are set by the
-    // accretion the body actually did over time — NOT by the availability cap on the final
-    // solid. Capping the core here shrank t_form (Jupiter 1.6 → 0.9 Myr) and blew the gas
-    // window wide open. So the clock + gas read potential_core; only the SOLID is capped.
-    const potential_core = core;
-    // Cap the accreted core at the available material (preserve rock:ice ratio).
-    const availability = availability_of(r);
-    if (core > availability && core > 0) {
-      const cap_k = availability / core;
-      rock *= cap_k; ice *= cap_k; peb *= cap_k; core = availability;
-    }
     const in_void = false;
     const observed = s.filled ? s.observed : 0;
     // Inverted bodies CAN become gas giants too — if the aggregate core
@@ -2301,7 +2331,12 @@ function budgetFit(planets: Planet[], budget: Budget,
         // per-rank size DECLINE is set by ε_SI (carried via COMP_SI_RETENTION to the KBO loop): the
         // drawdown scales with the drained fraction (1−ε_SI), so a drift-dominated belt (Sol, ε_SI≈1%)
         // declines steeply while a trapped reservoir wouldn't decline at all.
-        set_pebble_flux_budget(PEBBLE_CAPTURE_EFFICIENCY * (1 - eps_SI) * S_outer);
+        // CAPTURE EFFICIENCY ε_PA scales with disc COMPACTNESS, not a constant: a compact disc (R_A
+        // close to R_disc) intercepts most of the inward-drifting flux; a wide one lets it drain to
+        // the star. ε_PA = √(R_A/R_disc) — Sol (0.2/30) ≈ 0.08, Kepler-90 (0.2/1.2) ≈ 0.41. This is
+        // the budget-split knob that lets a compact disc keep the recycled flux and build big planets.
+        const eps_PA = Math.min(0.9, Math.sqrt(R_A_used / Math.max(R_disc_scale, 1e-9)));
+        set_pebble_flux_budget(eps_PA * (1 - eps_SI) * S_outer);
         set_kbo_budget(eps_SI * S_outer);                       // the 1% the SI retains (KBO factory ceiling)
         set_si_retention(eps_SI);
       } else {

@@ -364,6 +364,16 @@ const LATE_DELIVERY_FRAC = 0.5 * (0.02 / 0.107);
 // Mass class boundaries (Earth masses)
 const M_STELLAR_BOUNDARY = 25400.0; // 0.08 M_sun, hydrogen burning
 const DISC_TRUNCATION_FACTOR = 0.15; // Holman-Wiegert fallback only
+// Hamano Type-II steam-retention mass (M⊕): a hot planet below this can't hold its delivered-water
+// steam atmosphere against hydrodynamic escape (cosmic-shoreline scale, Zahnle & Catling) — it stays
+// in the Type-II magma-ocean state and the pebble-delivered water is destroyed (dry until late
+// delivery). Above it (or beyond the snow line, where ice is solid) the water is retained.
+const STEAM_RETAIN_MASS = 3.0;
+// Hamano Type-II proximity boundary (AU at Sol): inside this distance the stellar bolometric flux
+// keeps a magma ocean molten for ~20 Myr, so the steam atmosphere is photodissociated / lost and the
+// delivered water is destroyed (a small planet here stays dry). At Sol it reaches ~Mars's orbit; it
+// scales with insolation as r ∝ √L. Beyond it the magma ocean solidifies (Type I) and water is kept.
+const TYPE_II_AU = 1.52;
 // ---- Physical guardrails (v5: reject fits requiring impossible inputs) ----
 // A disc cannot exceed half the stellar mass (gravitationally it would be
 // a binary, not a disc). The f_disc bisection is bounded by this.

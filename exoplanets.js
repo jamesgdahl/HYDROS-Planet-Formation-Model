@@ -391,9 +391,9 @@ window.EXOPLANETS = [
     "id": "kep90",
     "name": "Kepler-90",
     "ly": 2790,
-    "budget": {"rock":1002.09,"ice":3552.87,"hydrogen":424346.1},
+    "budget": {"rock":1448.49,"ice":5135.46,"hydrogen":422316.95},
     "star": 1.13,
-    "feh": -0.12,
+    "feh": 0.04,
     "cto": 0.55,
     "spin": 0.2258,
     "planets": [
