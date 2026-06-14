@@ -2071,29 +2071,63 @@ function apply_hydrogen_conservation(slots, reservoir) {
     const empty = slots.filter(s => !s.filled && claims(s));
     const recipients = (filled.length ? filled : empty).slice().sort((a, b) => b.slot_r - a.slot_r);
     let remaining = total_res, captured = 0, exhausted = false;
-    for (const s of recipients) {
-        const want = s.predicted - s.core;
-        const got = Math.min(want, Math.max(0, remaining));
-        if (got < want - 1e-9)
-            exhausted = true;
-        s.h_he = got;
-        s.predicted = s.core + got;
-        // Keep the primordial composition in step with the cap, or it keeps the raw window want
-        // (~8.6e9 M⊕ at a far dam) and any total-allocated readout balloons into the billions.
+    const setgas = (s, g) => {
+        s.h_he = g;
+        s.predicted = s.core + g;
         if (s.primordial) {
-            s.primordial.h_he = got;
+            s.primordial.h_he = g;
             s.primordial.total = s.predicted;
         }
-        remaining -= got;
-        captured += got;
         if (s.observed > 0) {
             s.err_pct = (s.predicted - s.observed) / s.observed * 100;
             s.implied_dM = s.observed - s.predicted;
         }
+    };
+    const damWant = recipients.length ? (recipients[0].predicted - recipients[0].core) : 0;
+    // SPREAD recipients = ALL gas-eligible claimers (want>0), filled AND empty. The outermost-first
+    // branch below restricts gas to observed bodies; but at a far dam the pile spreads inward and the
+    // EMPTY gas-eligible slots gorge into giants too (later evicted), so they're real sinks here. Using
+    // claims() (predicted−core>0) keeps the model's own runaway-threshold gate: the sub-threshold inner
+    // slots (no gorging want) are correctly left out.
+    const spreadRecipients = slots.filter(claims).slice().sort((a, b) => b.slot_r - a.slot_r);
+    const spread = spreadRecipients.length > 1 && damWant >= total_res;
+    if (spread) {
+        // PRESSURE-BUMP SPREAD. The dam pile would otherwise monopolise (far-dam, near-infinite gorging
+        // window). Physically it can't: the pile pressure pushes gas INWARD and the stellar wind ram
+        // P_wind ∝ Ẇ/r² (the same flux that fixes R_disc) pushes back, rising steeply inward. The pile
+        // relaxes to ≈uniform pressure P_pile; in a flared disc (H∝r) that means Σ ∝ P_pile·r², so the
+        // gas mass per (log-spaced) slot ∝ Σ·r·Δr ∝ r⁴ — sharply peaked at the dam, the inner slots
+        // gorging the steeply-tapering tail into giants (later evicted). The taper itself sets the spread
+        // depth: a big pile reaches a slot or two in, a small one barely past the dam (Sol invisible).
+        // At a far dam every gas-eligible slot's gorging want is unbounded (τ=R_disc³/M → ~1e10 M⊕), so
+        // the want never binds — the wind-ram r⁴ weight, not the want, is what apportions the gas. Only
+        // fires when the dam would monopolise (far dam); bounded-want systems keep outermost-first below.
+        const wsum = spreadRecipients.reduce((a, s) => a + Math.pow(s.slot_r, 4), 0);
+        if (wsum > 0)
+            for (const s of spreadRecipients) {
+                const g = total_res * Math.pow(s.slot_r, 4) / wsum;
+                setgas(s, g);
+                captured += g;
+            }
+        remaining = total_res - captured;
+    }
+    else {
+        // OUTERMOST-FIRST: each body takes min(want, gas still flowing past it). The remainder disperses.
+        for (const s of recipients) {
+            const want = s.predicted - s.core;
+            const got = Math.min(want, Math.max(0, remaining));
+            if (got < want - 1e-9)
+                exhausted = true;
+            setgas(s, got);
+            remaining -= got;
+            captured += got;
+        }
     }
     // Empty slots when real bodies took the disc: they formed nothing, so zero their gas —
-    // otherwise an uncapped far-disc window want renders as a phantom O-class "star".
-    if (filled.length)
+    // otherwise an uncapped far-disc window want renders as a phantom O-class "star". SKIP in spread
+    // mode: there the empty slots gorged a CAPPED r⁴ share into real giants (later evicted), which we
+    // keep for display — they're not phantom uncapped wants.
+    if (!spread && filled.length)
         for (const s of empty) {
             s.h_he = 0;
             s.predicted = s.core;
@@ -2494,15 +2528,13 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
                 if (s.core_component || s.external)
                     continue;
                 if (s.slot_r > hw_in && s.slot_r < hw_out) {
-                    s.predicted = 0;
-                    s.rock = 0;
-                    s.ice = 0;
-                    s.pebble = 0;
-                    s.core = 0;
-                    s.h_he = 0;
+                    // KEEP the formation composition (core + any gorged H/He) — the body DID form, then the
+                    // binary instability ejected it. Flag it destroyed (excluded from the fit/score) but show
+                    // the giant it was, rather than zeroing it to a bare nothing.
+                    s.destroyed = true;
                     s.err_pct = 0;
                     s.implied_dM = s.observed ? -s.observed : 0;
-                    s.interpretation = `destroyed by ${nco}-body core instability — the ${hw_in.toFixed(1)}–${hw_out.toFixed(1)} AU annulus is dynamically unstable (Holman-Wiegert; separations ${a_min.toFixed(1)}–${a_max.toFixed(1)} AU)`;
+                    s.interpretation = `destroyed by ${nco}-body core instability — the ${hw_in.toFixed(1)}–${hw_out.toFixed(1)} AU annulus is dynamically unstable (Holman-Wiegert; separations ${a_min.toFixed(1)}–${a_max.toFixed(1)} AU); formed ${(s.predicted / 332946).toFixed(4)} M☉ before ejection`;
                 }
             }
         }
