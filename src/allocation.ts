@@ -197,8 +197,26 @@ function hydrogen_capture(core_mass: number, t_form_myr: number, spin: number,
   if (core_mass < gas_threshold_mass(r, M_star, f_disc)) return 0;
   const M_gas_disc = f_disc * m_star_earth(M_star);
   const r_disc = disc_radius(M_star, spin, om, f_disc);
-  const tau = Math.pow(r_disc, 3) / Math.max(M_star, 1e-9) * GAS_TRICKLE_COEF; // disc lifetime, Myr
-  const window = Math.max(0, tau - t_form_myr);                                // Epoch-1 gorging window
+  // GORGING WINDOW = the disc-GAS LIFETIME (a TIME), i.e. how long every gobbler — planets AND the
+  // central star — competes for the reservoir before "the gas is gone." Whatever the planets don't
+  // grab by then the star gobbles (the "dispersed" bucket IS the star's share, not a loss). This is
+  // gas_dispersal_time (∝ disc mass), NOT the old R_disc³/M clock, which smuggled disc SIZE (an
+  // availability/supply property) into the time and so COLLAPSED to ~0 for a compact disc (HD 134987:
+  // R_disc=6.27 ⇒ window≈0 ⇒ c starved to ~5 M⊕ while the star swept 99.9%). The disc SIZE/amount now
+  // lives only in the reservoir (availability); the window is a clean time. Floored at the old clock so
+  // a large, long-lived disc (HR 8799) is never shortened. NORMAL regime ONLY: an inverted M-dwarf
+  // disc is gas-poor and mints rocky factory planets (TRAPPIST, Proxima) — flooring its window would
+  // hand those rocky bodies spurious H/He envelopes (T-1b → 108 M⊕). Inverted keeps the bare R_disc³
+  // clock, which collapses for its compact disc and correctly suppresses gas gorging.
+  const tau_clock = Math.pow(r_disc, 3) / Math.max(M_star, 1e-9) * GAS_TRICKLE_COEF;
+  // Inverted = the FULL budgetFit condition (mass test OR magnetopause past the dam, R_A ≥ R_disc) —
+  // is_inverted_budget(M) alone misses M-dwarfs inverted via R_A≥R_disc (Proxima), which would then
+  // get the floor and spurious gas.
+  const inverted_here = is_inverted_budget(M_star) || (alfven_radius(M_star, om) >= r_disc);
+  const tau = inverted_here
+    ? tau_clock
+    : Math.max(gas_dispersal_time(M_star, f_disc), tau_clock);
+  const window = Math.max(0, tau - t_form_myr);                                // gorging window (Myr)
   // Dam-wind ram suppression (∝ W/r², W = M⋆^3.54 ≡ COMP_FLUX, the dam-setting wind):
   const W = (COMP_FLUX > 0) ? COMP_FLUX : Math.pow(Math.max(M_star, 1e-9), 3.54);
   const wind_suppression = 1.0 / (1.0 + GAS_WIND_K * W / Math.max(r * r, 1e-6));
