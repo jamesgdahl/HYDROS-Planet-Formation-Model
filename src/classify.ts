@@ -20,20 +20,35 @@ function mantle_strip_fraction(r: number, M_star: number): number {
   return Math.max(0, Math.min(1, 1 - Math.pow(T_STRIP_K / T_eq, 4)));
 }
 
-function apply_mantle_stripping(rock: number, ice: number, peb: number,
-                                h_he: number, r: number, M_star: number):
-    [number, number, number, number] {
-  const strip = mantle_strip_fraction(r, M_star);
+// Remove a given fraction of the silicate MANTLE (down to the iron-core floor), ice and envelope.
+function strip_mantle_by(rock: number, ice: number, peb: number, h_he: number,
+                         strip: number): [number, number, number, number] {
   if (strip <= 0) return [rock, ice, peb, h_he];
   const rocky_total = rock + peb;
-  const mantle_max = rocky_total * (1 - IRON_FRACTION);
-  const mantle_lost = mantle_max * strip;
+  const mantle_lost = rocky_total * (1 - IRON_FRACTION) * Math.min(1, strip);
   let rock_keep = rock, peb_keep = peb;
   if (rocky_total > 0) {
     rock_keep = rock - mantle_lost * (rock / rocky_total);
     peb_keep = peb - mantle_lost * (peb / rocky_total);
   }
   return [rock_keep, 0, peb_keep, 0];
+}
+
+function apply_mantle_stripping(rock: number, ice: number, peb: number,
+                                h_he: number, r: number, M_star: number):
+    [number, number, number, number] {
+  return strip_mantle_by(rock, ice, peb, h_he, mantle_strip_fraction(r, M_star));
+}
+
+// MAGNETIC sandblasting fraction at the inner Alfvén dam. The viscous-heated inner edge of the
+// Accretion Halo drives magnetic-reconnection bombardment that vaporizes the innermost rocky
+// survivor's silicate mantle (~70% loss; Cameron 1985, Fegley & Cameron 1987 — Mercury's iron-rich
+// composition). Fires only in the bombardment zone r < MAG_BOMBARD_R_A·R_A; the innermost slot of a
+// sparse disc (Sol → Mercury at 1.9 R_A) is caught, a compact disc's inner planets (Kepler-90 b at
+// 2.4 R_A) sit outside it. The fully-ablated next-in slot leaves no survivor (Sol's vanished slot 9).
+function magnetic_strip_fraction(r: number, R_A: number): number {
+  if (!(R_A > 0) || r >= MAG_BOMBARD_R_A * R_A) return 0;
+  return MERCURY_SANDBLAST;
 }
 
 function is_stripped(planet: { r: number; observed?: number }, M_star: number): boolean {

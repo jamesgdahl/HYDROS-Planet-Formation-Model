@@ -285,7 +285,15 @@ function dynamo_field_rel(M_E: number, M_rock_E: number, M_h_E: number, spin: nu
   const Mc = conductive_mass_earth(M_E, M_rock_E, M_h_E);
   if (Mc <= 0 || spin <= 0) return 0;
   const Mc_sol = CONDUCT_PLASMA * ME_PER_MSUN;                     // Sol: all plasma
-  return Math.pow(Mc / Mc_sol, DYNAMO_SAT_EXP) * Math.pow(spin, 0.25);  // spin organizes (saturating)
+  // Rotation organizes the field, but it SATURATES at a mass-dependent spin (Rossby): spin_sat ∝
+  // M^DYNAMO_SAT_SPIN_EXP, capped at 1. Low-mass stars (long convective turnover) saturate at low
+  // spin — a slow M-dwarf keeps a strong field (R_A ~0.02, inverted regime intact) — while a
+  // solar-mass slow rotator (Kepler-90, spin 0.23 ≪ spin_sat≈1) is rotation-starved ⇒ feeble field
+  // ⇒ R_A collapses inside its innermost planet. Below saturation B ∝ (spin/spin_sat)^4; zero spin
+  // still ⇒ zero field. M≥M☉ has spin_sat=1, so Sol/Kepler-90/giants are unchanged.
+  const spin_sat = Math.min(1.0, Math.pow(M_E / ME_PER_MSUN, DYNAMO_SAT_SPIN_EXP));
+  const spinfac = Math.pow(Math.min(spin / spin_sat, 1.0), DYNAMO_SPIN_EXP);
+  return Math.pow(Mc / Mc_sol, DYNAMO_SAT_EXP) * spinfac;
 }
 
 // Predictive surface field (Gauss): conductor ladder, organized by spin with a

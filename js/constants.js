@@ -306,6 +306,21 @@ const CONDUCT_PLASMA = 1.0e-4; // ionized stellar plasma, per M⊕ (feeble per m
 const RHO_METALLIC_H = 0.7; // g/cc — metallic-H transition density (P≈1 Mbar)
 const IRON_MELT_MASS_E = 0.3; // M⊕ — iron core freezes below this (Mars goes dark)
 const DYNAMO_SAT_EXP = 0.16; // B ∝ (conductive mass)^this — saturated dynamo (R&C ~1/6)
+// TACHOCLINE-dynamo rotation law: B ∝ min(spin,1)^this (fully-convective stars are exempt —
+// they saturate; see dynamo_field_rel). SATURATES at/above the Sol-anchor spin (spin≥1 ⇒
+// field set by conductor mass alone, so fast rotators — Jupiter, Saturn, α Cen — keep their
+// tight R_A); BELOW it the field is strongly rotation-starved, so a slow tachocline rotator
+// (Kepler-90, spin 0.23) has a feeble field ⇒ small R_A ⇒ the Alfvén Dam retreats inside its
+// innermost planet and the cascade reaches the whole compact system. The old 0.25 left the
+// spin-INDEPENDENT conductor baseline dominant (Kepler-90's spin only knocked B to 69%),
+// pinning R_A at ~0.2 for any solar-mass star regardless of spin.
+const DYNAMO_SPIN_EXP = 4.0;
+// Mass-dependent dynamo SATURATION spin (Rossby): the field plateaus once spin ≥ spin_sat,
+// and spin_sat ∝ (M/M☉)^this — low-mass stars have long convective turnover (low Rossby) so
+// they saturate at LOW spin (a slow M-dwarf still runs a strong field ⇒ R_A stays ~0.02 ⇒
+// inverted regime intact), while solar-mass stars saturate only near spin≈1 (Kepler-90 at
+// spin 0.23 is rotation-starved ⇒ R_A collapses to ~0.03). Capped at 1, so M≥M☉ is unchanged.
+const DYNAMO_SAT_SPIN_EXP = 1.5;
 const EARTH_G_PER_ME = 5.972e27; // grams per Earth mass
 const EARTH_CM_PER_RE = 6.371e8; // cm per Earth radius
 const G_CGS = 6.674e-8; // gravitational constant, cm³ g⁻¹ s⁻²
@@ -326,7 +341,7 @@ const MU0_SI = 1.2566e-6; // vacuum permeability (SI)
 // Shoda+2020 Alfvén-wave magnetic-rotator winds; Vidotto+2013 M-dwarf winds stay weak
 // despite strong fields). So the field's strength feeds R_A (magnetopause), NOT the wind —
 // a strong-field M-dwarf still has a feeble wind ⇒ small R_disc + large R_A ⇒ inverted.
-const WIND_MAG_FRAC = 1.0e-3; // magnetic-only wind baseline, relative to Sol's flux
+const WIND_MAG_FRAC = 0.0; // magnetic-only wind baseline, relative to Sol's flux
 const WIND_OMEGA_EXP = 0.57; // R_disc wind ram-pressure rotation dependence (Shoda+2020 P_w∝Ω^0.57)
 // Fully-convective α² dynamo boost: below ~0.35 M⊙ a low-mass star loses its tachocline and
 // runs a fully-convective dynamo saturating near kG (TRAPPIST-1 ~600 G vs Sun ~1 G). Applies
@@ -341,6 +356,20 @@ const EARTH_RE_IN_AU = 4.2635e-5; // Earth radius in AU (for R_body vs R_A compa
 // in any orthogonal decomposition, appearing in 45° polarization,
 // Butterworth filter damping, and inscribed-circle-to-diagonal ratios.
 const CASCADE_RATIO = 1.0 - Math.sqrt(Math.log(2.0)) / 2.0; // ~0.5837
+// HWHM / second-harmonic population (v7). A compact, dense disc is a high-Q Alfvén-wave
+// resonator: the echo off the inner wall (magnetosphere / steep stellar potential) survives the
+// round trip and the cavity rings on its SECOND HARMONIC (Maas & Lam wave attractor; MNRAS
+// reflection-trapping — reflection peaks at λ_struct≈λ/2, trapping ∝ density contrast). The 2nd
+// harmonic fills the fundamental's NODES — the HWHM interstitials at the geometric half-rung
+// r_n·ρ^½ — seating an extra, smaller planet between each full rung (Kepler-90's ~1.31× chain
+// vs Sol's ~1.71×). Strength h2 = Q/(Q+Q_HARMONIC_CRIT) from the disc solid surface-density
+// contrast Q = Σ/Σ☉; Sol (Q≈1) ⇒ h2≈0.01 (full-rung only), Kepler-90 (Q≈800) ⇒ h2≈0.89.
+const Q_HARMONIC_CRIT = 100.0; // cavity-Q (Σ/Σ☉) at which the 2nd harmonic reaches half strength
+const SIGMA_SOL_SOLID = 5.88; // Sol disc solid surface density (rock+ice)/R_disc² (M⊕/AU²) — Q normalizer
+const HARMONIC_SITE_THRESH = 0.15; // h2 above which the half-rung interstitials are seeded
+let COMP_HARMONIC = 0.0; // parked 2nd-harmonic strength (0 = fundamental only); set per-fit
+function set_harmonic(h) { COMP_HARMONIC = (h > 0) ? Math.min(1.0, h) : 0.0; }
+function reset_harmonic() { COMP_HARMONIC = 0.0; }
 // Assignment scoring
 const OVERPRED_PENALTY = 0.2;
 const UNDERPRED_PENALTY = 5.0; // slot prediction far BELOW observed:
@@ -353,6 +382,8 @@ const GAS_DECISIVE_DIST = 0.05;
 // Stripping / composition
 const IRON_FRACTION = 0.30;
 const T_STRIP_K = 2000.0; // silicate vaporization threshold (K)
+const MERCURY_SANDBLAST = 0.70; // mantle fraction lost to inner-dam magnetic bombardment (Cameron 1985)
+const MAG_BOMBARD_R_A = 2.0; // bombardment zone extent in units of R_A (innermost survivor only)
 const L_T_TAURI_FACTOR = 10.0; // pre-MS luminosity boost over MS
 const ALBEDO = 0.1;
 const SIGMA_SB = 5.670374419e-8;
@@ -364,6 +395,13 @@ const LATE_DELIVERY_FRAC = 0.5 * (0.02 / 0.107);
 // Mass class boundaries (Earth masses)
 const M_STELLAR_BOUNDARY = 25400.0; // 0.08 M_sun, hydrogen burning
 const DISC_TRUNCATION_FACTOR = 0.15; // Holman-Wiegert fallback only
+// Accretion-pressure Hill-overflow fragment floor (M⊕): a gas-DOMINATED body that completed runaway
+// H/He capture sits well above the critical core mass M_crit (~10–15 M⊕). This absolute floor (≈2×
+// M_crit) is what separates a fission fragment (a runaway giant the disc can't build) from a disc
+// super-Earth / Neptune, and — unlike the bare M_crit test — it does NOT collapse during the f_disc
+// bisection sweep, so packed super-Earth systems (Kepler-90) and clean Neptune systems (HD 69830)
+// are never mislabelled. See accretion-overflow-fragmentation.md.
+const FRAG_GIANT_MIN = 30.0;
 // Hamano Type-II steam-retention mass (M⊕): a hot planet below this can't hold its delivered-water
 // steam atmosphere against hydrodynamic escape (cosmic-shoreline scale, Zahnle & Catling) — it stays
 // in the Type-II magma-ocean state and the pebble-delivered water is destroyed (dry until late

@@ -33,7 +33,7 @@ window.EXOPLANETS = [
     "id": "alphacen",
     "name": "Alpha Centauri (A+B core)",
     "ly": 4.367,
-    "comment": "Triple: A (primary) + B (close co-primary core fragment at a_bin=23.5 AU) + Proxima (WIDE stellar fragment). The core fragmented — β = E_rot/|E_grav| = BETA_SOL·λ² = 0.274 at λ=5.7, the bar-mode (Bate 2011) limit — and the excess angular momentum that tore the core in two flung the wide fragment out to the CENTRIFUGAL radius R_c = R_wind·λ² ≈ 9200 AU = Proxima's SEMI-MAJOR axis (~8700 AU; the oft-quoted 13,000 is its current near-apastron distance, e=0.5). So spin λ=5.7 is DERIVED from fragmentation, not fit (the old 1267 was a stale back-solve). Proxima sits in situ on the Davis Dam (slot 0). Its mass (0.122 M☉) is under-predicted ~2× (pred ~0.062) by the gas-capture disc allocation — a stellar-mass fragment needs the GI/direct-collapse channel (pending), the same gap as HR 8799's giants. (Memory: binary-two-waveform-proxima.)",
+    "comment": "Triple: A (primary) + B (close co-primary core fragment at a_bin=23.5 AU) + Proxima (WIDE stellar fragment). The core fragmented — β = E_rot/|E_grav| = BETA_SOL·λ² = 0.274 at λ=5.7, the bar-mode (Bate 2011) limit — and the excess angular momentum that tore the core in two flung the wide fragment out to the CENTRIFUGAL radius R_c = R_wind·λ² ≈ 9200 AU = Proxima's SEMI-MAJOR axis (~8700 AU; the oft-quoted 13,000 is its current near-apastron distance, e=0.5). So spin λ=5.7 is DERIVED from fragmentation, not fit (the old 1267 was a stale back-solve). Proxima FORMS in situ on the Davis Dam (slot 0, ~9200 AU = its semi-major axis ~8700) and is shown at its CURRENT location (~13,000 AU near-apastron, e=0.5) — an outward migrant: the chart connects its formation slot to its observed position. Its mass (0.122 M☉) is under-predicted ~2× (pred ~0.062) by the gas-capture disc allocation — a stellar-mass fragment needs the GI/direct-collapse channel (pending), the same gap as HR 8799's giants. (Memory: binary-two-waveform-proxima.)",
     "budget": {"rock":3224.75,"ice":15091.8,"hydrogen":734546.1},
     "star": 1.0788,
     "feh": 0.24,
@@ -41,7 +41,7 @@ window.EXOPLANETS = [
     "spin": 5.7,
     "planets": [
       {"name":"Alpha Centauri B","r":23.52,"observed":302770,"core":true,"e":0.5179},
-      {"name":"Proxima Centauri","r":8700,"observed":40625}
+      {"name":"Proxima Centauri","r":13000,"observed":40625}
     ]
   },
   {
@@ -397,14 +397,14 @@ window.EXOPLANETS = [
     "cto": 0.55,
     "spin": 0.2258,
     "planets": [
-      {"name":"Kep90-c","r":0.0478,"observed":5},
-      {"name":"Kep90-b","r":0.0739,"observed":7},
-      {"name":"Kep90-i","r":0.1143,"observed":7},
-      {"name":"Kep90-f","r":0.1767,"observed":10},
-      {"name":"Kep90-d","r":0.2733,"observed":10},
-      {"name":"Kep90-e","r":0.4225,"observed":10},
-      {"name":"Kep90-g","r":0.6532,"observed":88},
-      {"name":"Kep90-h","r":1.01,"observed":203}
+      {"name":"Kep90-b","r":0.0747,"observed":4.3},
+      {"name":"Kep90-c","r":0.0863,"observed":6.5},
+      {"name":"Kep90-i","r":0.1209,"observed":4.5},
+      {"name":"Kep90-d","r":0.3114,"observed":7.2},
+      {"name":"Kep90-e","r":0.4154,"observed":6.6},
+      {"name":"Kep90-f","r":0.5094,"observed":6.9},
+      {"name":"Kep90-g","r":0.7216,"observed":15.0},
+      {"name":"Kep90-h","r":0.9765,"observed":203}
     ]
   }
 ];

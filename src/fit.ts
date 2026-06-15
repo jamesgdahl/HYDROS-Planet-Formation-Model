@@ -35,7 +35,11 @@ function cascade_sites(M_star: number, spin: number,
   const sites: CascadeSite[] = slots_r.map((r, n) =>
     ({ n, r, interstitial: false }));
   const om_s = (omega === undefined) ? spin : omega;
-  const inverted = alfven_radius(M_star, om_s) >= disc_radius(M_star, spin, om_s, f_disc);
+  // Regime = can the stellar ram pressure (flux + magnetic wind) hold the disc out? The budget
+  // criterion (compression_budget ≥ 1) is the physical test — a feeble-ram M-dwarf can't, so it
+  // inverts even though its rotation-starved field leaves R_A geometrically inside R_disc. The
+  // geometric R_A ≥ R_disc still catches genuine high-field inversions. (Either ⇒ inverted.)
+  const inverted = is_inverted_budget(M_star) || alfven_radius(M_star, om_s) >= disc_radius(M_star, spin, om_s, f_disc);
   if (inverted) {
     // INVERTED regime = a SINGLE Davis assembly line. The Alfvén Dam REPELS
     // material (magnetosphere — it cannot accrete), so there is NO second
@@ -159,23 +163,33 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // (Bate 2011), `core_fragments(λ)`. Below it the core stays axisymmetric and sheds nothing, so no
   // body at any orbit is a fragment — it's a disc product. This stops the mass-only test from
   // mislabelling under-fed disc cascades (Kepler-90, λ=0.23 ⇒ β≈0.0004) as fission debris.
-  const lam_frag = (spin && spin > 0) ? spin : 1.0;
-  if (!is_inverted_budget(M_star) && core_fragments(lam_frag)) {
-    const om_f = (opts.omega !== undefined && opts.omega !== null) ? opts.omega : ((spin && spin > 0) ? spin : 1.0);
+  // ACCRETION-PRESSURE HILL-OVERFLOW FRAGMENTS. A runaway H/He GAS giant INSIDE the snow line cannot
+  // form in situ — the disc can't supply H/He there and there's no in-situ ice. At low-but-not-too-low
+  // spin the accretion-heat outward pressure pushes the un-distributed core mass past its Hill radius,
+  // where it pinches off as a hot Jupiter (see accretion-overflow-fragmentation.md). The discriminator
+  // is structural, not the bar-mode β (β≈0.274 is the rotational-STABILITY ceiling, ~30× above the
+  // pressure-assisted fragmentation onset): the fragment is an inner giant with a body EXTERIOR to it.
+  // The OUTERMOST body is spared — it's the slot-0 cascade barrier (or the cold giant beyond the snow
+  // line, e.g. HD 134987 c). Normal regime only; inverted M-dwarfs mound at the dam, they don't overflow.
+  if (!is_inverted_budget(M_star)) {
     const r_snow_f = snow_line(M_star, f_disc);
-    const r_a_f = alfven_radius(M_star, om_f);
+    let outer_r = 0;
+    for (const p of planets) {
+      if (p.core || p.kbo) continue;
+      const m = p.observed || 0;
+      if (m > 0 && m < M_STELLAR_BOUNDARY && p.r > outer_r) outer_r = p.r;
+    }
     for (const p of planets) {
       if (p.core || p.kbo || p.fragment) continue;
       const mo = p.observed || 0;
       if (mo <= 0 || mo >= M_STELLAR_BOUNDARY || !(p.r > 0) || p.r >= r_snow_f) continue;
-      // (a) GAS-runaway giant anywhere inside the snow line (mass > M_crit ⇒ it captured H/He the disc
-      //     can't supply there). (b) ICE/gas-DOMINATED body in the disc zone (mass > 2× the rock the
-      //     disc can build there ⇒ it's volatile-rich, and there's no in-situ ice inside the snow
-      //     line). Either way it can't have formed in situ ⇒ a rotational-fragmentation sibling. The
-      //     disc zone (r>R_A) guard keeps the void's rocky super-Earths (handled magnetospherically).
-      const gasGiant = mo > gas_threshold_mass(p.r, M_star, f_disc);
-      const solid = p.r > r_a_f ? rock_allocation(p.r, M_star, om_f, f_disc, om_f) + ice_allocation(p.r, M_star, om_f, f_disc, om_f) : Infinity;
-      if (gasGiant || mo > 2 * Math.max(solid, 1e-6)) p.fragment = true;
+      if (!(p.r < outer_r)) continue;                         // outermost body = cascade barrier, spared
+      // Gas-DOMINATED runaway giant the disc can't build here. The absolute floor (not the bare
+      // f_disc-sensitive M_crit) survives the f_disc bisection sweep — packed super-Earth systems
+      // (Kepler-90) are never mislabelled when a low trial f_disc collapses gas_threshold_mass.
+      if (mo >= FRAG_GIANT_MIN && mo > gas_threshold_mass(p.r, M_star, f_disc)) {
+        p.fragment = true;
+      }
     }
   }
 
@@ -224,7 +238,9 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   const omega = (opts.omega === undefined || opts.omega === null)
     ? (spin as number) : opts.omega;
   const R_A_now = alfven_radius(M_star, omega);
-  const inverted = R_A_now >= disc_radius(M_star, spin, omega, f_disc);
+  // Ram-pressure regime (see slot_positions): feeble-ram M-dwarf inverts even if its crushed
+  // field leaves R_A inside R_disc; geometric R_A ≥ R_disc still catches high-field inversions.
+  const inverted = is_inverted_budget(M_star) || R_A_now >= disc_radius(M_star, spin, omega, f_disc);
   // Only the DEEP void (r < 0.5 R_A) is exclusion-eligible: the dam
   // edge is not razor-sharp, and marginal cases remain fittable.
   const VOID_DEPTH = 0.5;
@@ -369,7 +385,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     // Lost-slot predictions then reflect post-strip survival mass.
     const mass_for_strip_gate = s.filled ? (planet_by_slot[n].observed || 0) : core;
     const strip_r = s.filled ? planet_by_slot[n].r : r;
-    const stripped = is_stripped({ r: strip_r, observed: mass_for_strip_gate }, M_star);
+    let stripped = is_stripped({ r: strip_r, observed: mass_for_strip_gate }, M_star);
 
     let t_form: number, h_he: number, total: number;
     // Outward-migrant gas giants: t_form capped at the giant-pair
@@ -436,6 +452,20 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       rock = rk2; ice = ic2; peb = pb2; h_he = hh2;
       core = rock + ice + peb;
       total = core + h_he;
+    }
+    // MAGNETIC SANDBLASTING (inner Alfvén-dam reconnection bombardment): the innermost rocky
+    // survivor in the bombardment zone (r < 2·R_A) loses ~70% of its mantle even when too cool to
+    // vaporize bolometrically — Mercury's iron-rich core. r<2·R_A spares compact-disc inner planets
+    // (Kepler-90 b at 2.4 R_A). Normal regime only (the inverted factory has no inner Alfvén dam).
+    if (!stripped && !inverted) {
+      const mstrip = magnetic_strip_fraction(strip_r, R_A_now);
+      if (mstrip > 0 && (rock + peb) > 0) {
+        const [rk3, ic3, pb3, hh3] = strip_mantle_by(rock, ice, peb, h_he, mstrip);
+        rock = rk3; ice = ic3; peb = pb3; h_he = hh3;
+        core = rock + ice + peb;
+        total = core + h_he;
+        stripped = true;   // a magnetically-sandblasted iron core ⇒ "core remnant" classification
+      }
     }
 
     const err_pct = observed > 0 ? ((total - observed) / observed * 100) : 0;
@@ -1065,17 +1095,21 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     for (const p of kbo_bodies) {
       const m_obs_k = p.observed || 0;
       const onset = m_obs_k >= m_at_dam * 0.999;
+      // INVERT the dam-march size-clock M = m_at_dam·(R_dam/R_birth)³ (homogeneous outer factory,
+      // M ∝ R⁻³) ⇒ R_birth = R_dam·(m_at_dam/M)^(1/3). Mass alone fixes the vintage and original AU
+      // (^(1/3) matches the cube march below, so predicted := observed exactly). [was ^0.25, which
+      // didn't invert the cube and left a spurious mass residual.]
       const R_birth = onset ? R_dam
-        : R_dam * Math.pow(m_at_dam / m_obs_k, 0.25);
+        : R_dam * Math.pow(m_at_dam / m_obs_k, 1.0 / 3.0);
       // Davis-dam march depletion: seed × (R_dam/R_birth)³ (the nebula that left to move the dam out).
       const march = Math.pow(R_dam / Math.max(R_birth, R_dam), 3);
       const fp_k = { rock: seed_fp.rock * march, ice: seed_fp.ice * march, total: seed_fp.total * march };
       // NUMERIC vintage (Myr) → carried in t_form so the slot column shows it (like
-      // the inverted factory products); the era qualifier stays in the description.
-      let t_vintage: number, era: string;
-      if (onset) { t_vintage = t_disc_myr; era = 'firehose onset'; }
-      else if (R_birth <= R_cliff) { t_vintage = t_disc_myr + 3 * (R_birth - R_dam) / (0.6 * R_dam); era = 'firehose'; }
-      else { t_vintage = (t_disc_myr + 3) * Math.pow(R_birth / R_cliff, 1 / BETA); era = 'retreat era'; }
+      // the inverted factory products).
+      let t_vintage: number;
+      if (onset) { t_vintage = t_disc_myr; }
+      else if (R_birth <= R_cliff) { t_vintage = t_disc_myr + 3 * (R_birth - R_dam) / (0.6 * R_dam); }
+      else { t_vintage = (t_disc_myr + 3) * Math.pow(R_birth / R_cliff, 1 / BETA); }
       const disp = (p.r - R_birth) / R_birth;
       let where: string;
       if (p.captured !== undefined) {
@@ -1107,7 +1141,7 @@ function slot_aware_fit(planets: Planet[], M_star: number,
         stripped: false, in_void: false, exterior: true,
         primordial: { rock: fp_k.rock, ice: fp_k.ice, pebble: 0, h_he: 0, core: core_k,
                       total: core_k },
-        interpretation: `factory product (${era}) — streaming-instability seed predicted ${core_k < 0.01 ? (core_k * 1000).toPrecision(3) + ' mE' : core_k.toFixed(2) + ' M⊕'}; size-clock birth stance ${R_birth.toFixed(1)} AU; ${where}`,
+        interpretation: `factory product — streaming-instability seed predicted ${core_k < 0.01 ? (core_k * 1000).toPrecision(3) + ' mE' : core_k.toFixed(2) + ' M⊕'}; size-clock birth stance ${R_birth.toFixed(1)} AU; ${where}`,
       });
     }
     // PER-VINTAGE COUNT AUDIT: the census law (stance stock / product
@@ -2113,7 +2147,7 @@ function core_barycentre(primaryMass: number | undefined | null, planets: Planet
   if (primaryMass == null || !isFinite(primaryMass)) return 0;
   let m = primaryMass * 332946;   // primary mass in M⊕, at r=0
   let mr = 0;
-  for (const p of planets) { const mo = p.observed || 0; if (p.core && mo > 0) { m += mo; mr += mo * p.r; } }
+  for (const p of planets) { const mo = p.observed || 0; if ((p.core || p.fragment) && mo > 0) { m += mo; mr += mo * p.r; } }
   return m > 0 ? mr / m : 0;
 }
 function budgetFit(planets: Planet[], budget: Budget,
@@ -2136,6 +2170,34 @@ function budgetFit(planets: Planet[], budget: Budget,
     if (M_B > 0) planets = [...planets,
       { name: "Co-primary (predicted)", r: close_binary_separation(lambda), observed: M_B, core: true }];
   }
+  // ACCRETION-PRESSURE HILL-OVERFLOW FRAGMENTS — detected HERE, before the barycentre, so the
+  // fragment drives the SHARED-CORE dynamics exactly like a co-primary star (Alpha Cen B): it
+  // fragmented off the core, so the rest of the system orbits the primary+fragment barycentre, the
+  // dams are emitted from it, and its Holman-Wiegert annulus + outermost-R_A dam clear the slots
+  // around it. A runaway H/He giant inside the snow line that is NOT the outermost body cannot form
+  // in situ (the disc can't supply gas there); at low spin the accretion-heat overflow pinches it
+  // off past its Hill radius. The absolute giant floor (FRAG_GIANT_MIN) keeps disc super-Earths /
+  // Neptunes out. Normal regime only. See accretion-overflow-fragmentation.md.
+  if (parent == null && primaryMass != null && isFinite(primaryMass)) {
+    const M_pre = mass_from_budget(budget);
+    if (!is_inverted_budget(M_pre)) {
+      const r_snow_pre = irradiation_snow_line(M_pre);
+      let outer_r = 0;
+      for (const p of planets) {
+        if (p.core || p.kbo) continue;
+        const m = p.observed || 0;
+        if (m > 0 && m < M_STELLAR_BOUNDARY && p.r > outer_r) outer_r = p.r;
+      }
+      for (const p of planets) {
+        if (p.core || p.kbo || p.fragment) continue;
+        const mo = p.observed || 0;
+        if (mo < FRAG_GIANT_MIN || mo >= M_STELLAR_BOUNDARY || !(p.r > 0)) continue;
+        if (p.r >= r_snow_pre) continue;     // cold giants = cascade slot-0 (e.g. HD 134987 c)
+        if (!(p.r < outer_r)) continue;      // outermost body = cascade barrier, spared
+        p.fragment = true;                   // sub-stellar core fragment ⇒ a shared-core element
+      }
+    }
+  }
   // Re-reference every body to the core barycentre: the dams are emitted from it and
   // products orbit it, so positions are measured from the barycentre, not the primary.
   const r_bary = core_barycentre(primaryMass, planets);
@@ -2150,7 +2212,7 @@ function budgetFit(planets: Planet[], budget: Budget,
   // closest approach (PERIASTRON a(1-e)). Circular pairs (e=0) reduce to a. Alpha Cen
   // (e≈0.52) ⇒ swept 3.4→86 AU, matching the full Holman-Wiegert eccentric polynomial
   // (vs 7→56 with bare a). e defaults to 0, so single stars / circular binaries are unchanged.
-  const co_cores = planets.filter(p => p.core && (p.observed || 0) > 0);
+  const co_cores = planets.filter(p => (p.core || p.fragment) && (p.observed || 0) > 0);
   const apo = co_cores.map(p => p.r * (1 + (p.e || 0)));    // widest reach (P-type limiter)
   const peri = co_cores.map(p => p.r * (1 - (p.e || 0)));   // closest approach (S-type limiter)
   const a_min = peri.length ? Math.min(...peri) : 0;
@@ -2164,7 +2226,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     // should display as negative). Disc products clamp to a tiny positive: a negative
     // would break the log-spaced slot assignment, and an inside-barycentre product is
     // in the destabilization annulus anyway.
-    return { ...p, r: p.core ? shifted : Math.max(shifted, 1e-9) };
+    return { ...p, r: (p.core || p.fragment) ? shifted : Math.max(shifted, 1e-9) };
   });
   const M = mass_from_budget(budget);
   const Z = metallicity_from_budget(budget);
@@ -2205,7 +2267,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       // Co-primaries — OBSERVED or forward-SYNTHESIZED above — make this a fragmenting binary
       // (⇒ the centrifugal dam fires in disc_radius). The synthesis already gated on the spin
       // fragmentation criterion + a positive sibling mass, so a plain co.length test suffices.
-      const co = planets.filter(p => p.core && (p.observed || 0) > 0);
+      const co = planets.filter(p => (p.core || p.fragment) && (p.observed || 0) > 0);
       set_fragmenting(co.length > 0);
       // Core = primary + every co-primary (observed, or the forward-synthesized fragment). The
       // synthesized B carries the centrifugal-split mass, so the co-primary's ~0.9 M☉ leaves the
@@ -2221,9 +2283,18 @@ function budgetFit(planets: Planet[], budget: Budget,
       // into the co-primary, so a binary's disc isn't spun out to absurd radii.
       const M_d = Math.max(M * M_SUN_TO_EARTH - M_core_earth, 1e-3);   // nebula = budget − core
       const spin_eff = Math.min(omega as number, breakup_spin(M));     // disc rotation ≤ breakup
-      // Combined outward FLUX (Σ core-element luminosity, super-linear in mass).
-      let flux = Math.pow(primaryMass as number, 3.54);
-      for (const p of co) flux += Math.pow((p.observed || 0) / M_SUN_EARTH, 3.54);
+      // Combined outward FLUX (Σ core-element luminosity). The mass–luminosity relation is
+      // steep for fusing stars (L ∝ M^3.54) but FLATTENS below the low-mass break (~0.43 M☉,
+      // M-dwarf M–L knee, L ∝ M^2.3). A single M^3.54 law under-counts an M-dwarf's flux ~8×,
+      // starving its Davis-Dam ram pressure so R_disc collapses below R_A at any spin. The
+      // flattened branch restores the flux-driven ram pressure (same broken law the insolation
+      // snow line uses), so a slow M-dwarf sits NORMAL (feeble field can't reach past the dam)
+      // and only inverts once it spins fast enough to grow R_A past the flux-set R_disc.
+      const FLUX_BREAK = 0.43;
+      const lum = (m: number) => m > FLUX_BREAK ? Math.pow(m, 3.54)
+        : Math.pow(FLUX_BREAK, 3.54) * Math.pow(m / FLUX_BREAK, 2.3);
+      let flux = lum(primaryMass as number);
+      for (const p of co) flux += lum((p.observed || 0) / M_SUN_EARTH);
       // Park the dam INPUTS (nebula mass, flux) as context, then the TWO UNIVERSAL LAWS
       // compute the dams — no inline formula, no override, no back-solve. The cascade and
       // allocations call the SAME disc_radius/alfven_radius, so the factory marches from the
@@ -2236,6 +2307,14 @@ function budgetFit(planets: Planet[], budget: Budget,
       R_disc_phys = disc_radius(M, omega as number, omega as number);   // Davis = outward pressure ⇄ density
       R_A_mag = alfven_radius(M, omega as number);                      // Alfvén = magnetic field reach
       spin = omega as number;                                           // real spin everywhere — no fake geometry spin
+      // HWHM second-harmonic strength from the disc solid surface-density contrast (cavity Q).
+      // NORMAL stellar regime only: inverted M-dwarfs run the factory (no slot cascade) and
+      // sub-cascades (moons) are a separate resonator. Sol (Q≈1)⇒~0.01, Kepler-90 (Q≈800)⇒~0.89.
+      if (!parent && !is_inverted_budget(M) && R_A_mag < R_disc_phys) {
+        const Sigma = (budget.rock + budget.ice) / Math.max(R_disc_phys * R_disc_phys, 1e-12);
+        const Q = Sigma / SIGMA_SOL_SOLID;
+        set_harmonic(Q / (Q + Q_HARMONIC_CRIT));
+      } else { reset_harmonic(); }
       const M_E_body = M * M_SUN_TO_EARTH;
       // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
       // dams over the disc profile-scale R_c. From spin + budget alone; bare ≡ populated disc.
@@ -2529,5 +2608,5 @@ function budgetFit(planets: Planet[], budget: Budget,
         return { budget_field_G: B_G, budget_R_A_mag: R_A_m, budget_R_body_AU: R_body_AU, budget_regime: regime };
       })(),
     };
-  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); reset_hill_radius(); }
+  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); reset_hill_radius(); reset_harmonic(); }
 }

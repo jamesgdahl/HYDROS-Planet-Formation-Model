@@ -57,13 +57,26 @@ function cascade_slot_positions(M_star, spin, min_slots = 0, omega, f_disc) {
     // sum to ONE cosine, ρ-spaced but phase-shifted by δ: antinodes
     // r_n = R_disc·e^(−δ/α)·ρⁿ (δ→0 ⇒ r_n = R_disc·ρⁿ when Maas dominates).
     // Ladder terminates at the inner Alfvén Dam.
-    const n_slots = Math.max(1, Math.floor(Math.log(R_A_phys / R_disc) / Math.log(CASCADE_RATIO)) + 1);
-    const shift = superposition_phase_shift(R_disc, R_A_phys);
-    // The geometric ladder is the closed-form scaffold (the anchor/spin solve inverts it); the
-    // SLOT is then placed at the standing wave's true antinode in that lobe — the source of truth.
-    for (let n = 0; n < n_slots; n++) {
-        const r_ladder = R_disc * shift * Math.pow(CASCADE_RATIO, n);
-        out.push(snap_to_antinode(r_ladder, R_disc, R_A_phys));
+    // SLOTS = ANTINODES OF THE NET SUPERPOSITION (the single source of truth). Scan |amplitude|
+    // over [R_A, R_disc] and take every LOCAL MAXIMUM — that is where the standing wave actually
+    // piles matter. No geometric ρ-ladder, no snap, no dip-filter: for the fundamental alone (low-Q,
+    // Sol) the maxima land on the ρ-rungs (full-rung spacing); for a high-Q disc the 2nd harmonic
+    // adds half-rung maxima, and a near-zero DIP between two peaks (a suppressed rung) is simply not
+    // a maximum ⇒ not a slot. The phase shift, the Alfvén comb, the envelope and the 2nd harmonic
+    // are all already baked into superposition_amplitude.
+    const NS = 1200;
+    const logHi = Math.log(R_disc), logLo = Math.log(R_A_phys);
+    const rAt = (i) => Math.exp(logHi - (logHi - logLo) * i / NS);
+    const ampAt = (i) => Math.abs(superposition_amplitude(rAt(i), R_disc, R_A_phys));
+    let aL = ampAt(0), aC = ampAt(1);
+    if (aL > aC)
+        out.push(R_disc); // antinode right at the dam (fundamental peak)
+    for (let i = 1; i < NS; i++) {
+        const aR = ampAt(i + 1);
+        if (aC > aL && aC >= aR)
+            out.push(rAt(i)); // local |amplitude| maximum = a real antinode
+        aL = aC;
+        aC = aR;
     }
     return out;
 }
@@ -103,8 +116,14 @@ function superposition_amplitude(r, R_disc, R_A) {
     const ampA = Math.pow(Math.min(R_A / dA, 1), CASCADE_DECAY); // Alfvén amplitude: attenuates outward from R_A
     // The Alfvén wave launches NEGATIVE (π out of phase with Maas): the Davis Dam PILES matter
     // (positive antinode) while the magnetosphere EXCLUDES it (a density minimum at R_A).
+    // SECOND HARMONIC (high-Q cavity, COMP_HARMONIC>0): a dense disc rings on the Maas 2nd harmonic,
+    // which peaks at the fundamental's NODES — the HWHM half-rungs — seating a smaller pile between
+    // each full rung. It's an ADDITION on top of the fundamental (multiple harmonics coexist in a
+    // high-Q cavity), weighted h₂<1 so it stays SUBDOMINANT to the fundamental. Attenuates with the
+    // Maas envelope; 0 for a low-Q disc (Sol) ⇒ full-rung only, unchanged.
     return wM * ampM * Math.cos(CASCADE_ALPHA * Math.log(R_disc / r))
-        - wA * ampA * Math.cos(CASCADE_ALPHA * Math.log(dA / R_A));
+        - wA * ampA * Math.cos(CASCADE_ALPHA * Math.log(dA / R_A))
+        - COMP_HARMONIC * wM * ampM * Math.cos(2 * CASCADE_ALPHA * Math.log(R_disc / r));
 }
 // Snap a geometric-ladder guess to the nearest TRUE antinode (local |amplitude| max) of the
 // enveloped superposition, searching only within the slot's own lobe so it can't jump to a
