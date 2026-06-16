@@ -288,6 +288,10 @@ function getPlanets() {
       r: parseFloat(inputs[1].value),
       observed: parseFloat(inputs[2].value),
     };
+    // inward-swept remnant (the "small Mars") rides the row as a data attribute,
+    // like KBO capture provenance — preserved through the table round-trip so the
+    // matcher defers it and the chart shows the un-swapped assignment.
+    if (row.dataset.swept === "true") p.swept = true;
     planets.push(p);
   });
   return planets;
@@ -296,6 +300,7 @@ function getPlanets() {
 function addPlanetRow(planet = {}) {
   const tbody = document.getElementById("planet-rows");
   const tr = document.createElement("tr");
+  if (planet.swept) tr.dataset.swept = "true";
   tr.innerHTML = `
     <td><input type="text" value="${planet.name || ''}"></td>
     <td><input type="number" step="any" value="${planet.r ?? 1}"></td>
@@ -747,18 +752,12 @@ function planetStyle(s, inHZ, delivered) {
   return { c: '#c1502e', t: 'rocky, outside HZ' };                                 // martian red
 }
 
-// Alfvén–Maas Superposition chart: the two component waveforms (Davis-dam
-// reverberation inward = "Maas"; Alfvén-dam radiation outward) and their
-// NET (signed) superposition, with each slot plotted at its net amplitude.
-// The dams are a SEE-SAW (ampRatio = w_Alfvén/w_Maas, default = compression
-// C, uncapped): the dominant waveform is normalized to 100% and the weaker
-// is scaled down by the ratio. Davis dominates the normal regime, Alfvén
-// dominates when inverted (the gas-pressure Davis wave is suppressed as the
-// magnetosphere expands past it), equal only at the C=1 crossover.
-// EXPLORATORY: the component amplitudes/envelopes are not yet derived; the
-// ratio is tunable in-panel — a concept visualizer, not a calibrated mass
-// prediction.
-function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter, ampRatio) {
+// Alfvén–Maas Superposition chart. Plots the component waveforms (1st Maas / Alfvén / 2nd Maas
+// harmonic) and their NET superposition by calling the SAME cascade.js functions the fit uses
+// (maas_component / alfven_component / harmonic_component / superposition_amplitude), so the chart
+// is the model, not a parallel reimplementation. Dam weights are the cascade.ts see-saw; h₂ is the
+// fit's value (budget_harmonic_h2). EXPLORATORY: the component amplitudes are not yet calibrated.
+function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
   window._wf = { fit, R_disc, R_A, r_snow, hwInner, hwOuter };
   const el = document.getElementById("waveform");
   // Core fragments (co-primaries + the primary star) are NOT disc-wave products —
@@ -767,67 +766,21 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter, ampRatio) {
   const slots = fit.slots.filter(s => isFinite(s.slot_r) && s.slot_r > 0 && !s.exterior && !s.external);
   if (!slots.length || !isFinite(R_disc) || !isFinite(R_A) || R_A <= 0) { el.innerHTML = ""; return; }
 
-  const rho = 1 - Math.sqrt(Math.log(2)) / 2;          // 0.5837
-  const alpha = Math.PI / (-Math.log(rho));            // 5.836
-  // The waveform amplitude DECAYS from each dam — the resonance diminishes into the cavity
-  // (this is the availability envelope, the same decay that sets the masses): amp ∝
-  // (dist/R_dam)^DECAY, DECAY = ln2/(−ln ρ) ≈ 1.29 (half-amplitude per ρ-step). Maas decays
-  // INWARD from R_disc; each Alfvén comb decays OUTWARD from its core's R_A. (Phase is NOT
-  // compensated — the natural product env·cos peaks ~3.6% off the cos-antinode.)
-  const DECAY = Math.log(2) / (-Math.log(rho));        // ≈ 1.286
-  // PHYSICAL dam_weights see-saw (matches cascade.ts dam_weights, which the fit uses):
-  // the dominant dam is normalized to 1, the weaker scaled by C = R_A/R_disc. Normal
-  // (C<1): wM=1, wA=C — so a feeble-magnetosphere star like Sol (C≈0.007) is >99% Maas
-  // and the Alfvén comb is correctly near-invisible. Inverted (C≥1): Alfvén dominates,
-  // wA=1, wM=1/C. ampRatio stays as an OPTIONAL exploratory multiplier on the Alfvén comb
-  // (default 1 = the physical weight). The old default-1 wA wrongly drew Sol Alfvén-heavy.
-  const C = R_A / R_disc;
-  if (ampRatio == null || !isFinite(ampRatio) || ampRatio < 0) ampRatio = 1;
-  const wM = C >= 1 ? 1 / C : 1;
-  const wA = (C >= 1 ? 1 : C) * ampRatio;
-  const maas = r => wM * Math.pow(Math.min(r / R_disc, 1), DECAY) * Math.cos(alpha * Math.log(R_disc / r));  // Maas wave, decays inward from R_disc
-  // One Alfvén waveform PER CORE element (each fragment's magnetosphere), centred on the
-  // core's barycentre-relative position d_i and anchored at its own R_A_i (from its mass).
-  // A single star (one core at d=0) is the familiar wA·cos(α·ln(r/R_A)); a binary
-  // superimposes A's and B's combs. Net = the shared Maas (Davis-dam) wave + Σ Alfvén_i.
+  // SINGLE SOURCE OF TRUTH: the chart plots the SAME cascade.js component waveforms the FIT uses
+  // (maas_component / alfven_component / harmonic_component / superposition_amplitude), so the
+  // waveform can never drift from the model. h₂ is the EXACT value the fit used (budget_harmonic_h2);
+  // set_harmonic primes the global the components read. The Alfvén trace is the single magnetospheric
+  // comb the fit uses (not a per-core binary sum — the fit's superposition_amplitude is single-Alfvén).
   const cb = window.CURRENT_BUDGET || {};
-  const om_wf = (cb.omega_rot != null) ? cb.omega_rot : (cb.spin || 1);
-  const cores = fit.slots.filter(s => s.core_component && (s.observed || 0) > 0);
-  let coreWaves;
-  if (cores.length <= 1) {
-    coreWaves = [{ name: (cores[0] && cores[0].name) || 'core', d: 0, RA: R_A }];
-  } else {
-    coreWaves = cores.map(c => ({
-      name: c.name, d: Math.abs(c.slot_r),
-      RA: alfven_radius((c.observed || 0) / M_SUN_TO_EARTH, om_wf)
-    })).filter(cw => isFinite(cw.RA) && cw.RA > 0);
-    if (!coreWaves.length) coreWaves = [{ name: 'core', d: 0, RA: R_A }];
-  }
-  // Each Alfvén comb is LOCAL to its core: an amplitude envelope decays it away from
-  // R_A (the magnetosphere doesn't reach the outer dam), so it neither piles onto the
-  // Maas peak at slot 0 nor blows up. The inner distance is clamped so the comb doesn't
-  // oscillate into a singularity right at the core position.
-  const alfvenOf = cw => r => {
-    const d = Math.max(Math.abs(r - cw.d), cw.RA * 0.2);   // clamp inner: bound the comb at the core
-    const env = Math.pow(Math.min(cw.RA / d, 1), DECAY);   // decays OUTWARD from this core's R_A
-    // NEGATIVE: the magnetosphere EXCLUDES matter (density minimum at R_A), π out of phase with
-    // the Maas wave (which piles matter at the Davis Dam) — matches cascade.ts superposition_amplitude.
-    return -wA * env * Math.cos(alpha * Math.log(d / cw.RA));  // per-core Alfvén wave
-  };
-  const alfven = r => coreWaves.reduce((a, cw) => a + alfvenOf(cw)(r), 0);  // total Alfvén (Σ cores)
-  // SECOND HARMONIC (high-Q disc): a dense, compact disc is a high-Q Alfvén-wave resonator and
-  // rings on the Maas 2nd harmonic, which peaks at the fundamental's NODES — the HWHM half-rungs —
-  // seating a smaller planet between each full rung. Strength h2 = Q/(Q+Q_crit) from the disc
-  // solid surface-density contrast Q = Σ/Σ☉ (matches budgetFit/cascade.ts). Sol Q≈1 ⇒ ~0.01
-  // (full-rung only); Kepler-90 Q≈800 ⇒ ~0.89 (half-rungs fill in).
-  let h2 = 0;
-  if (cb.budget && !cb.parent && C < 1 && typeof SIGMA_SOL_SOLID !== 'undefined') {
-    const Sigma = (cb.budget.rock + cb.budget.ice) / Math.max(R_disc * R_disc, 1e-12);
-    const Q = Sigma / SIGMA_SOL_SOLID;
-    h2 = Q / (Q + Q_HARMONIC_CRIT);
-  }
-  const harm = r => -h2 * wM * Math.pow(Math.min(r / R_disc, 1), DECAY) * Math.cos(2 * alpha * Math.log(R_disc / r));  // Maas 2nd harmonic (subdominant, h2<1)
-  const sup = r => maas(r) + alfven(r) + harm(r);      // NET (signed) superposition incl. 2nd harmonic
+  const C = R_A / R_disc;
+  const dw = dam_weights(R_disc, R_A);
+  const wM = dw.wM, wA = dw.wA;
+  const h2 = (cb.budget_harmonic_h2 != null && isFinite(cb.budget_harmonic_h2)) ? cb.budget_harmonic_h2 : 0;
+  set_harmonic(h2);                                            // prime the components' COMP_HARMONIC global
+  const maas   = r => maas_component(r, R_disc, R_A);          // Maas wave: Davis-Dam (R_disc) echo, attenuates inward
+  const alfven = r => alfven_component(r, R_disc, R_A);        // Alfvén comb: Maas reflected off R_A, 180° flipped (negative)
+  const harm   = r => harmonic_component(r, R_disc, R_A);      // retired (0) — kept for call-signature parity
+  const sup    = r => superposition_amplitude(r, R_disc, R_A); // NET = maas + alfven (the model's value)
 
   // ---- Chart.js render (the custom SVG couldn't handle the waveform's symlog dynamic range
   //      and the multi-wave overlay) ----
@@ -843,8 +796,8 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter, ampRatio) {
     if (isFinite(s.form_r) && s.form_r > 0) rs.push(s.form_r);
     if (s.filled && isFinite(s.observed_r) && s.observed_r > 0) rs.push(s.observed_r);
   }
-  const rmin = Math.min(...rs) * 0.82, rmax = Math.max(...rs) * 1.18;
-  const aLim = Math.max(1.05, wM * (1 + h2) + wA * coreWaves.length) * 1.05;
+  const rmin = Math.min(Math.min(...rs) * 0.82, R_A * 0.92), rmax = Math.max(...rs) * 1.18;  // extend to R_A so the negative terminus is visible
+  const aLim = Math.max(1.05, wM * (1 + h2) + wA) * 1.05;
   // SYMLOG y: the amplitude decays steeply inward, so a linear axis collapses the inner
   // antinodes onto zero; signed-log keeps them visible and resolves the sign flips.
   const symlin = aLim * 0.005;
@@ -928,21 +881,18 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter, ampRatio) {
     borderColor: color, borderWidth: 1.3, borderDash: dash, pointRadius: 0, fill: false, tension: 0, order: 6
   });
 
+  // Rung count over the cavity span: at the fixed universal ρ, N = α·ln(R_disc/R_A)/π ρ-rungs fit between
+  // the Alfvén dam and the Davis Dam. (α is the fixed CASCADE_ALPHA — the wavelength is NOT pinned to R_A.)
+  const N_rungs = Math.round(cascade_alpha_eff(R_disc, R_A) * Math.log(R_disc / Math.max(R_A, 1e-9)) / Math.PI);
   const datasets = [
     { label: 'net superposition', data: sample(sup), borderColor: '#b07cff', borderWidth: 2, pointRadius: 0, fill: false, tension: 0.25, order: 1 },
-    { label: `Maas · FWHM (w=${wM.toFixed(2)})`, data: sample(maas), borderColor: '#5aa9e6', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.25, order: 2 }
+    { label: `Maas wave (N=${N_rungs} rungs)`, data: sample(maas), borderColor: '#5aa9e6', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.25, order: 2 }
   ];
-  coreWaves.forEach(cw => datasets.push({
-    label: coreWaves.length > 1 ? `Alfvén · ${cw.name}` : `Alfvén (w=${wA.toFixed(2)})`,
-    data: sample(alfvenOf(cw)), borderColor: '#e6695a', borderWidth: 1,
-    borderDash: coreWaves.length > 1 ? [4, 2] : [], pointRadius: 0, fill: false, tension: 0.25, order: 3
-  }));
-  // 2nd-harmonic trace (only when the high-Q cavity rings it) — the HWHM half-rung structure
-  if (h2 > 0.01) datasets.push({
-    label: `Maas 2nd harmonic · HWHM (h₂=${h2.toFixed(2)})`,
-    data: sample(harm), borderColor: '#5aa9e6', borderWidth: 1, borderDash: [3, 2],
-    pointRadius: 0, fill: false, tension: 0.25, order: 3
+  datasets.push({
+    label: `Alfvén (w=${wA.toFixed(2)})`,
+    data: sample(alfven), borderColor: '#e6695a', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.25, order: 3
   });
+  // (the additive 2nd-harmonic trace is retired — compression now shifts the fundamental wavelength)
   if (r_snow > rmin && r_snow < rmax) datasets.push(vline(r_snow, '#3cb371', [5, 3], `snow line ${r_snow.toFixed(2)} AU`));
   datasets.push({
     label: 'migration', data: migr, showLine: true, spanGaps: false,
@@ -960,9 +910,8 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter, ampRatio) {
   });
 
   el.innerHTML =
-    `<h3 style="margin:6px 0">Alfvén–Maas Superposition${h2 > 0.01 ? ` <span style="font-weight:normal;font-size:0.78em;color:#5aa9e6">+ HWHM 2nd harmonic (high-Q disc, h₂=${h2.toFixed(2)})</span>` : ''} <span style="font-weight:normal;font-size:0.8em;color:#999">(exploratory — amplitudes not yet calibrated)</span></h3>`
-    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">Alfvén ×multiplier (1 = physical dam-weights see-saw: wA=${(C >= 1 ? 1 : C).toExponential(1)}, wM=${(C >= 1 ? (1 / C) : 1).toFixed(2)}, C=R_A/R_disc=${C.toExponential(1)}): `
-    + `<input type="number" step="0.05" min="0" value="${(+ampRatio).toFixed(3)}" style="width:6rem;padding:0.2rem" onchange="renderWaveform(window._wf.fit, window._wf.R_disc, window._wf.R_A, window._wf.r_snow, window._wf.hwInner, window._wf.hwOuter, parseFloat(this.value))"></div>`
+    `<h3 style="margin:6px 0">Alfvén–Maas Superposition <span style="font-weight:normal;font-size:0.8em;color:#999">(fixed-ρ Maas + reflected Alfvén comb)</span></h3>`
+    + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">~${N_rungs} ρ-rungs across [R_A, R_disc]; +antinode (pile) at the Davis Dam, −antinode (exclusion) at the Alfvén dam — the Maas wave reflected off R_A with a 180° flip (Zhao 2024). dam-weights wA=${wA.toExponential(1)}, wM=${wM.toFixed(2)}, C=R_A/R_disc=${C.toExponential(1)}</div>`
     + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px">●<span style="opacity:0.5">faint</span> predicted (formation slot, size ∝ original mass) &nbsp; ● solid observed (current AU, size ∝ observed mass) &nbsp; ┈ migration; hover for the mass story</div>`
     + `<div style="position:relative;height:360px;background:#15151c;border:1px solid #333;border-radius:4px;padding:4px"><canvas id="wf-canvas"></canvas></div>`;
 

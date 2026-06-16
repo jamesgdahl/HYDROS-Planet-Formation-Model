@@ -83,8 +83,15 @@ function assign_planets_to_slots(planets: Planet[], M_star: number,
   const assignments: (string | null)[] = new Array(n_sites).fill(null);
   const unassigned = observed.slice();
   while (unassigned.length) {
+    // INWARD-SWEPT REMNANTS yield: while any in-situ body is still unseated, swept remnants are not
+    // considered. Their observed AU is post-sweep, so letting them compete on position would let them
+    // squat an inner slot and evict the in-situ neighbour. Once the in-situ bodies hold their natural
+    // slots, the remnant takes the best remaining site — necessarily OUTWARD (its formation AU) — and
+    // is reported as an inward migrant (form_r = slot_r > observed r).
+    const in_situ_left = unassigned.some(p => !p.swept);
     let best: { score: number; planet: Planet; n: number } | null = null;
     for (const p of unassigned) {
+      if (in_situ_left && p.swept) continue;
       for (let n = 0; n < n_sites; n++) {
         if (assignments[n] !== null) continue;
         const s = pair_score(p, n);
@@ -2138,6 +2145,7 @@ interface BudgetFitResult extends BruteFitResult {
   // Binary only: the outermost core element's Alfvén Dam (the cascade's inner terminus); equals
   // budget_R_A for a single star.
   budget_R_A_outer: number;
+  budget_harmonic_h2: number;
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2153,6 +2161,53 @@ function core_barycentre(primaryMass: number | undefined | null, planets: Planet
 function budgetFit(planets: Planet[], budget: Budget,
                    lambda?: number | null, parent?: BudgetParent | null,
                    primaryMass?: number | null): BudgetFitResult {
+  // CENTRIFUGAL λ-ANCHOR ON A WIDE STELLAR COMPANION + DISTANCE-GATED FRAGMENT CLASSIFICATION.
+  // A wide stellar companion's POSITION over-determines λ: it sits at the centrifugal Davis Dam
+  // R_c = R_wind(M)·λ², so λ_wide = √(r_wide / R_wind(M)). That implied λ is the physical spin and
+  // CAPS the stored value: a stored spin far ABOVE it is an inflated artifact (GJ 667 stores
+  // spin=59.9 ≈ 8000× breakup; the companion C at 230 AU implies only λ≈4.6 — already past
+  // λ_frag=2, self-consistently fragmenting), so we replace it with λ_wide and pin the dam at the
+  // companion's position. A stored spin AT-OR-BELOW λ_wide is kept untouched: Alpha Cen's λ=5.7
+  // was derived from Proxima's SEMI-MAJOR axis (~9000 AU), so it sits below the apastron-implied
+  // λ≈18 from the OBSERVED 13,000 AU — keeping it preserves the calibrated fit exactly.
+  // Independently of the λ override, classify the stellar bodies by DISTANCE:
+  //   • the WIDE companion (outermost, sitting AT ~R_c) is the centrifugal Davis Dam — a SLOT
+  //     PRODUCT formed on the dam (Proxima's role, GJ 667 C's role); it is NOT a close fragment.
+  //   • any OTHER stellar body well INSIDE R_c (near the inner-pair separation a_bin) is the CLOSE
+  //     fission product (Alpha Cen B's role, GJ 667 B's role) ⇒ flagged `core`, drives barycentre.
+  // Only fires for a TOP-LEVEL system (no parent) with a stellar-mass body beyond the wind disc;
+  // sub-cascades and single stars are untouched.
+  reset_wide_dam();
+  if (parent == null && primaryMass != null && isFinite(primaryMass) && primaryMass > 0) {
+    const R_wind = disc_radius_wind(primaryMass);
+    const stellar = planets.filter(p => (p.observed || 0) >= M_STELLAR_BOUNDARY && !p.kbo);
+    // The wide companion = the outermost stellar body, IF it sits well beyond the wind dam
+    // (r_wide ≥ WIDE_DAM_FACTOR·R_wind ⇒ it is the centrifugal dam, not a close-in pair).
+    const WIDE_DAM_FACTOR = 4.0;
+    let wide: Planet | null = null;
+    for (const p of stellar) {
+      if (p.r > R_wind * WIDE_DAM_FACTOR && (!wide || p.r > wide.r)) wide = p;
+    }
+    if (wide) {
+      const lam_wide = Math.sqrt(wide.r / Math.max(R_wind, 1e-12));
+      // Override ONLY when the stored spin is inflated past the companion-implied λ (the artifact
+      // case). Then λ := λ_wide and the dam is pinned at the companion's observed position (this
+      // resolves the primary-vs-total-budget mass ambiguity in disc_radius_wind(M)·λ²). A reasonable
+      // stored λ (≤ λ_wide, e.g. Alpha Cen's semimajor-derived 5.7) is left exactly as-is.
+      const lam_stored = (lambda != null && isFinite(lambda)) ? lambda : Infinity;
+      if (isFinite(lam_wide) && lam_wide > 0 && lam_stored > lam_wide) {
+        lambda = lam_wide;
+        set_wide_dam(wide.r);
+      }
+      // Distance gate (always): any stellar body well INSIDE the wide dam (r < FRAG_INNER_FRAC·R_c)
+      // is the close fission product ⇒ flag `core`. The wide companion itself stays a slot product.
+      const FRAG_INNER_FRAC = 0.25;
+      for (const p of stellar) {
+        if (p === wide) continue;
+        if (p.r > 0 && p.r < FRAG_INNER_FRAC * wide.r) p.core = true;
+      }
+    }
+  }
   // FORWARD BINARY: a fragmenting stellar core (β = BETA_SOL·λ² ≥ 0.274, the bar-mode limit)
   // with NO observed co-primary synthesizes its PREDICTED co-primary, so it flows through the
   // barycentre / Holman-Wiegert / budget / display exactly like an observed one — Alpha Cen
@@ -2168,7 +2223,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     const M_B = (1 - disc_fraction_centrifugal(lambda)) * mass_from_budget(budget) * M_SUN_TO_EARTH
       - primaryMass * M_SUN_EARTH;
     if (M_B > 0) planets = [...planets,
-      { name: "Co-primary (predicted)", r: close_binary_separation(lambda), observed: M_B, core: true }];
+      { name: "Co-primary (predicted)", r: close_binary_separation(lambda, primaryMass), observed: M_B, core: true }];
   }
   // ACCRETION-PRESSURE HILL-OVERFLOW FRAGMENTS — detected HERE, before the barycentre, so the
   // fragment drives the SHARED-CORE dynamics exactly like a co-primary star (Alpha Cen B): it
@@ -2232,6 +2287,7 @@ function budgetFit(planets: Planet[], budget: Budget,
   const Z = metallicity_from_budget(budget);
   const f_rock = f_rock_from_budget(budget);
   let inverted = is_inverted_budget(M);   // refined to the magnetopause regime in the physics-dam path
+  let harmonic_h2 = 0;                     // HWHM 2nd-harmonic strength used this fit (exposed for the chart)
   set_composition(Z, f_rock);
   try {
     // Interior fit population: slot products only — core components (co-primary
@@ -2313,7 +2369,8 @@ function budgetFit(planets: Planet[], budget: Budget,
       if (!parent && !is_inverted_budget(M) && R_A_mag < R_disc_phys) {
         const Sigma = (budget.rock + budget.ice) / Math.max(R_disc_phys * R_disc_phys, 1e-12);
         const Q = Sigma / SIGMA_SOL_SOLID;
-        set_harmonic(Q / (Q + Q_HARMONIC_CRIT));
+        harmonic_h2 = Q / (Q + Q_HARMONIC_CRIT);
+        set_harmonic(harmonic_h2);
       } else { reset_harmonic(); }
       const M_E_body = M * M_SUN_TO_EARTH;
       // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
@@ -2594,6 +2651,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       budget_hw_inner: hw_in, budget_hw_outer: hw_out,
       budget_R_disc: R_disc_final, budget_dam_align: dam_align,
       budget_R_A_outer: cascade_inner_dam != null ? cascade_inner_dam : alfven_radius(M, om_eff),
+      budget_harmonic_h2: harmonic_h2,
       // CONDUCTOR-LADDER magnetosphere classification (exposed, non-driving for now):
       // does the dynamo field project beyond the body → exterior Alfvén Dam, or is it
       // BURIED (single-body infall)? Then magnetized → normal / inverted by R_A vs R_disc.
@@ -2608,5 +2666,5 @@ function budgetFit(planets: Planet[], budget: Budget,
         return { budget_field_G: B_G, budget_R_A_mag: R_A_m, budget_R_body_AU: R_body_AU, budget_regime: regime };
       })(),
     };
-  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); reset_hill_radius(); reset_harmonic(); }
+  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); reset_hill_radius(); reset_harmonic(); reset_wide_dam(); }
 }

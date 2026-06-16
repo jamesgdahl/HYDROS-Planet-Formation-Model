@@ -54,8 +54,11 @@ function disc_radius(M_star, spin, omega, f_disc) {
     // (Memory: binary-two-waveform-proxima.) Gated on COMP_FRAGMENTING (real co-primary
     // present) so it fires only for fragmenting BINARIES — not a high-spin moon disc
     // (Saturn) or an artifact-spin single star.
-    if (COMP_FRAGMENTING && core_fragments(Omega))
-        return centrifugal_radius(M_star, Omega);
+    if (COMP_FRAGMENTING && core_fragments(Omega)) {
+        // An OBSERVED wide stellar companion pins the centrifugal dam at its own position (R_c is
+        // over-determined by where it landed); otherwise fall back to the spin-law R_c = R_wind·λ².
+        return COMP_WIDE_DAM > 0 ? COMP_WIDE_DAM : centrifugal_radius(M_star, Omega);
+    }
     // UNIVERSAL DAVIS DAM (one law, all scales): the wind-balance radius where the OUTWARD
     // pressure equals the INWARD nebula density. Outward = combined stellar FLUX (Σ M_i^3.54,
     // parked) + a coronal magnetic-wind baseline (fusing stars only); inward = the nebula

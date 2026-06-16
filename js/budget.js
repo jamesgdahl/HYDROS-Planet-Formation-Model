@@ -98,17 +98,23 @@ function compression_budget(M) {
 // Alpha Cen ~14,000 AU at λ≈5.7. Higher spin disperses more mass to larger radii
 // (more disc) and leaves less for the core.
 //
-// The rotational parameter β = E_rot/|E_grav| ∝ Ω² ∝ λ². At β ≥ β_FRAG = 0.274
-// (Bate 2011 bar-mode/secular instability) the core cannot stay axisymmetric and
-// tears into a binary — the Alpha Cen A+B channel.
+// The rotational parameter β = E_rot/|E_grav| ∝ Ω² ∝ λ². COLLAPSING protostellar
+// cores fragment FAR below the idealised rigid bar-mode value (β=0.27, Ostriker-Peebles;
+// secular 0.14): the collapse spins them up and off-centre density maxima trigger the
+// low-T/|W| instability. Boss (1999): cores fragment at β_rot > 0.01; observed/initial
+// cores sit at β₀ = 0.02–0.05 (those at the high end of their OWN spread tear). So the
+// physical threshold is β_FRAG ≈ 0.034, i.e. λ_frag ≈ 2 — NOT 0.274 (which no real core
+// reaches). Crucially λ is the PRIMORDIAL (collapse-phase / T-Tauri) spin; the observed
+// "T-Tauri stars spin at 10% of breakup" is the BRAKED rate — the angular-momentum the
+// core arrives with (and tears on) is shed afterwards via the disc/jets/the split itself.
 //
-// CONSISTENCY ANCHOR: BETA_SOL is fixed so the λ that reproduces Alpha Cen's
-// 14,000 AU Davis Dam (λ² = 14000/R_wind(2.26) ≈ 32.4) is exactly its
-// fragmentation threshold (β=0.274) — ONE λ explains the dam AND the core split.
-// The resulting BETA_SOL ≈ 0.0085 also matches the solar-nebula rotational
-// parameter, so the model's λ becomes the physical normalized spin (Sol = 1).
-const BETA_SOL = 0.274 / 32.4; // ≈ 0.00846; ties the dam to fragmentation
-const BETA_FRAG = 0.274; // bar-mode instability → binary (Bate 2011)
+// BETA_SOL stays the Sol anchor: Sol (λ=1) → β = 0.00846 (the solar-nebula rotational
+// parameter), so λ is the physical normalised spin. β_FRAG is now grounded on Boss/observed
+// cores, independent of Alpha Cen (the old 0.274/32.4 coincidence tied λ=5.7 to the wrong,
+// rigid threshold; the wide-companion-implied λ for Alpha Cen and GJ 667 is ~5.5 and ~4.6,
+// both comfortably past λ_frag≈2 — a >200 AU Davis Dam IS tearing spin, self-consistently).
+const BETA_SOL = 0.00846; // Sol (λ=1) → solar-nebula β; λ ≡ normalised primordial spin
+const BETA_FRAG = BETA_SOL * 2.0 * 2.0; // ≈0.0338: Boss 1999 collapse threshold ⇒ λ_frag = 2.0
 function rotational_beta(lambda) {
     return BETA_SOL * lambda * lambda;
 }
@@ -129,13 +135,20 @@ function disc_fraction_centrifugal(lambda) {
     const beta = rotational_beta(lambda);
     return Math.min(F_DISC_MAX, 0.305 * Math.pow(beta, 0.715));
 }
-// CLOSE-BINARY separation a_bin = A_BIN_COEF·λ² — the Terebey-Shu-Cassen centrifugal radius
-// (R_c = j²/GM ∝ spin²) of the inner pair: the SAME spin law that flings the WIDE fragment to
-// R_c = R_wind·λ², here for the close binary. A_BIN_COEF is the single anchor (Alpha Cen A-B
-// sits at 23.52 AU for λ=5.7 ⇒ 23.52/5.7² = 0.724).
-const A_BIN_COEF = 0.724;
-function close_binary_separation(lambda) {
-    return A_BIN_COEF * lambda * lambda;
+// CLOSE-BINARY separation a_bin — the Terebey-Shu-Cassen centrifugal radius (R_c = j²/GM ∝ spin²)
+// of the INNER pair: the same spin law that flings the WIDE fragment to R_c = R_wind·λ², but for
+// the close fission product. The wide dam carries the full SIS wind mass-scaling (R_wind ∝ M^3.27);
+// the inner pair forms from the dense low-j core, whose centrifugal radius carries only the √M
+// SIS specific-angular-momentum scaling, so a_bin = A_BIN_COEF·√M·λ². NO LONGER single-anchored:
+// A_BIN_COEF + the M^0.5 exponent are calibrated to BOTH wide-companion systems —
+//   Alpha Cen (B 23.52 AU, M_A=1.0788, λ=5.7 from Proxima): 23.52/(√1.0788·5.7²)=0.697, and
+//   GJ 667   (B 12.60 AU, M=0.73,     λ=4.63 from C at 230): predicts 12.75 AU (1.2% — within e).
+// (Was A_BIN_COEF=0.724 with NO mass term ⇒ every λ=5.7 core gave a 23.52-AU companion regardless
+// of mass; the √M term breaks that single-anchor degeneracy.)
+const A_BIN_COEF = 0.697;
+const A_BIN_MASS_EXP = 0.5; // inner-pair centrifugal radius ∝ √M (SIS specific-AM scaling)
+function close_binary_separation(lambda, M_star = SOL_M_PRIMORDIAL) {
+    return A_BIN_COEF * Math.pow(M_star / SOL_M_PRIMORDIAL, A_BIN_MASS_EXP) * lambda * lambda;
 }
 function three_budget_split(b, lambda) {
     const M = mass_from_budget(b);

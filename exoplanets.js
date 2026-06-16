@@ -12,7 +12,7 @@ window.EXOPLANETS = [
       {"name":"Mercury","r":0.387099,"observed":0.055274},
       {"name":"Venus","r":0.723336,"observed":0.815004},
       {"name":"Earth","r":1,"observed":1},
-      {"name":"Mars","r":1.52371,"observed":0.107447},
+      {"name":"Mars","r":1.52371,"observed":0.107447,"swept":true},
       {"name":"Jupiter","r":5.202887,"observed":317.828133},
       {"name":"Saturn","r":9.537,"observed":95.161398},
       {"name":"Uranus","r":19.189165,"observed":14.535778},

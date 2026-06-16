@@ -136,6 +136,15 @@ function reset_form_spin(): void { COMP_SPIN = 1.0; }
 let COMP_FRAGMENTING = false;
 function set_fragmenting(b: boolean): void { COMP_FRAGMENTING = b; }
 function reset_fragmenting(): void { COMP_FRAGMENTING = false; }
+// WIDE-COMPANION CENTRIFUGAL-DAM OVERRIDE. When a system has an OBSERVED wide stellar
+// companion its POSITION over-determines the centrifugal Davis Dam (R_c = r_wide), so the
+// fragmenting branch of disc_radius returns this parked value directly rather than recomputing
+// disc_radius_wind(M)·λ² (which mass — primary vs total budget — is ambiguous, and the
+// observed position is the ground truth). Defaults -1 (off ⇒ recompute as before, e.g. when
+// only a forward-SYNTHESIZED companion exists, as in a bare Alpha-Cen-style run).
+let COMP_WIDE_DAM = -1.0;
+function set_wide_dam(r: number): void { COMP_WIDE_DAM = r; }
+function reset_wide_dam(): void { COMP_WIDE_DAM = -1.0; }
 function reset_mdot(): void { COMP_MDOT = -1.0; }
 const F_LODDERS_ICE = 3.5;
 const GAS_FRACTION = 0.95;

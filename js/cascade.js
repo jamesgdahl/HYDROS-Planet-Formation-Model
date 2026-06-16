@@ -105,25 +105,65 @@ function superposition_phase_shift(R_disc, R_A) {
 // the slot masses differ (outer big, inner small) and what lets the Alfvén wave matter in the
 // inner system where the Maas wave has attenuated. ≈1.287.
 const CASCADE_DECAY = Math.log(2) / (-Math.log(CASCADE_RATIO));
+// CAVITY EIGENVALUE. The Maas wave is a standing mode of the cavity [R_A, R_disc], so its wavelength is
+// QUANTIZED: an integer number N of rungs must span the cavity (antinode at the Davis Dam, node at the
+// Alfvén dam), giving ρ = (R_A/R_disc)^(1/N) and α_eff = Nπ/ln(R_disc/R_A). N is the nearest integer to
+// the base-ρ rung count, so the wave is PINNED to BOTH dams — it can't drift off the inner dam the way a
+// fixed-ρ wave does (the fixed ρ=0.5837 gives Sol N=9.3, a non-integer mismatch that floats the inner
+// rungs and was ratcheting Earth outward). Compression then enters through N (a packed/compressed cavity
+// wants more rungs); for now N is the geometric nearest-integer, pinning only.
+function cascade_alpha_eff(R_disc, R_A) {
+    const span = Math.log(R_disc / Math.max(R_A, 1e-9));
+    if (!(span > 0))
+        return CASCADE_ALPHA;
+    // The Maas wave is the Davis-Dam reverberation at the UNIVERSAL self-similar rung ratio ρ — R_A is only
+    // where the ladder TERMINATES (inner dam), it does NOT set the wavelength. Constraining the wavelength to
+    // fit an integer N rungs in [R_A, R_disc] (the cavity-eigenvalue experiment) was a REGRESSION: it shifted
+    // ρ off its universal value and degraded Sol's terrestrials (Mercury/Venus/Earth/Mars 0%→−3..−10%). So
+    // α is the fixed CASCADE_ALPHA, independent of R_A. (span/R_A kept in the signature, now unused.)
+    void span;
+    void R_A;
+    return CASCADE_ALPHA;
+}
 // Net (signed) Alfvén–Maas standing wave at radius r — THE SOURCE OF TRUTH for slot positions
 // (its antinodes) and masses (its amplitude). A_M(r)·cos(φ_M) + A_A(r)·cos(φ_A): the Maas wave
 // radiates from the Davis Dam (R_disc) attenuating inward; the Alfvén wave radiates from the
 // Alfvén Dam (R_A, single-star comb centred at the star) attenuating outward.
+// COMPONENT waveforms — the SINGLE SOURCE OF TRUTH for both the fit (superposition_amplitude, below)
+// AND the index.html chart, so the two can never drift. ONE Maas + ONE Alfvén wave, both at the
+// compression-set frequency cascade_alpha_eff() — no separate harmonic term (the "2nd harmonic" is now
+// the SAME fundamental at the compressed wavelength, see cascade_alpha_eff).
+// Maas wave: radiates from the Davis Dam (R_disc), attenuates INWARD. Frequency α_eff rises with
+// compression (ρ→ρ^g), so a compressed disc's rungs pack tighter (Kepler-90's "half-rung" ladder).
+function maas_component(r, R_disc, R_A) {
+    const { wM } = dam_weights(R_disc, R_A);
+    const ampM = Math.pow(Math.min(r / R_disc, 1), CASCADE_DECAY);
+    return wM * ampM * Math.cos(cascade_alpha_eff(R_disc, R_A) * Math.log(R_disc / r));
+}
+// Alfvén wave = the Maas wave PARTIALLY REFLECTED off the Alfvén-speed gradient at R_A. Lab and
+// magnetospheric measurements (Zhao et al. 2024; the Ionospheric Alfvén Resonator / field-line
+// resonances) show such a reflection is partial and carries a 180° PHASE FLIP — so the reflected wave is
+// sign-INVERTED. That negative sign is the source of the comb's exclusion behaviour (a density minimum at
+// R_A, π out of phase with the Maas pile); it is DERIVED from the reflection boundary condition, not
+// chosen. Radiates outward from R_A, attenuating by half per ρ-step (ampA). LOAD-BEARING: it is what
+// seats Mercury in the magnetic-sandblast zone (slot 0.377, not the absorber's 0.431 where Mercury ran
+// +115%); removing it or flipping it +positive scrambles Sol's inner ladder. The smooth-absorber and
+// hard-node alternatives are both unphysical (a magnetosphere reflects, it does not absorb to zero).
+function alfven_component(r, R_disc, R_A) {
+    const { wA } = dam_weights(R_disc, R_A);
+    const dA = Math.max(r, R_A * 0.2);
+    const ampA = Math.pow(Math.min(R_A / dA, 1), CASCADE_DECAY);
+    return -wA * ampA * Math.cos(cascade_alpha_eff(R_disc, R_A) * Math.log(dA / R_A));
+}
+// Retired: the additive 2nd-harmonic term. Compression now shifts the FUNDAMENTAL wavelength (α_eff)
+// rather than adding a subharmonic, so this returns 0 (kept for the chart's call signature).
+function harmonic_component(_r, _R_disc, _R_A) {
+    return 0;
+}
+// Net (signed) Alfvén–Maas standing wave = the three components. THE SOURCE OF TRUTH for slot positions
+// (its antinodes) and masses (its amplitude).
 function superposition_amplitude(r, R_disc, R_A) {
-    const { wM, wA } = dam_weights(R_disc, R_A);
-    const ampM = Math.pow(Math.min(r / R_disc, 1), CASCADE_DECAY); // Maas amplitude: attenuates inward from R_disc
-    const dA = Math.max(r, R_A * 0.2); // Alfvén comb centred at the star (d=r), inner-clamped
-    const ampA = Math.pow(Math.min(R_A / dA, 1), CASCADE_DECAY); // Alfvén amplitude: attenuates outward from R_A
-    // The Alfvén wave launches NEGATIVE (π out of phase with Maas): the Davis Dam PILES matter
-    // (positive antinode) while the magnetosphere EXCLUDES it (a density minimum at R_A).
-    // SECOND HARMONIC (high-Q cavity, COMP_HARMONIC>0): a dense disc rings on the Maas 2nd harmonic,
-    // which peaks at the fundamental's NODES — the HWHM half-rungs — seating a smaller pile between
-    // each full rung. It's an ADDITION on top of the fundamental (multiple harmonics coexist in a
-    // high-Q cavity), weighted h₂<1 so it stays SUBDOMINANT to the fundamental. Attenuates with the
-    // Maas envelope; 0 for a low-Q disc (Sol) ⇒ full-rung only, unchanged.
-    return wM * ampM * Math.cos(CASCADE_ALPHA * Math.log(R_disc / r))
-        - wA * ampA * Math.cos(CASCADE_ALPHA * Math.log(dA / R_A))
-        - COMP_HARMONIC * wM * ampM * Math.cos(2 * CASCADE_ALPHA * Math.log(R_disc / r));
+    return maas_component(r, R_disc, R_A) + alfven_component(r, R_disc, R_A) + harmonic_component(r, R_disc, R_A);
 }
 // Snap a geometric-ladder guess to the nearest TRUE antinode (local |amplitude| max) of the
 // enveloped superposition, searching only within the slot's own lobe so it can't jump to a

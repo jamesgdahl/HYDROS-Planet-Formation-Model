@@ -30,6 +30,13 @@ interface Planet {
    *  from the slot/cascade fit and reported predicted:=observed, but WITHOUT the stellar barycentre /
    *  Holman-Wiegert side effects (those stay keyed on `core`). Auto-set in slot_aware_fit. */
   fragment?: boolean;
+  /** INWARD-SWEPT REMNANT (the "small Mars" problem): a body depleted and migrated inward by the
+   *  inner-disc sweep, so its OBSERVED position is post-sweep, not its formation slot. The matcher must
+   *  NOT anchor it to its observed AU (it would squat on an inner slot and evict the in-situ neighbour
+   *  that belongs there). Assigned AFTER all in-situ bodies have claimed their natural slots, so it
+   *  takes the remaining slot OUTWARD of its observed position — its formation AU — and is recorded as
+   *  an inward migrant (form_r > observed r). Catalog-flagged, like `core`/`kbo`. */
+  swept?: boolean;
   /** Orbital eccentricity (co-primary cores). The binary destabilization uses the
    *  worst-case extremes — "destabilized is destabilized": the P-type circumbinary
    *  clear-out reaches the APASTRON a(1+e), the S-type circum-element stable edge is set
