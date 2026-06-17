@@ -151,6 +151,17 @@ const A_BIN_MASS_EXP = 0.5; // inner-pair centrifugal radius ∝ √M (SIS speci
 function close_binary_separation(lambda, M_star = SOL_M_PRIMORDIAL) {
     return A_BIN_COEF * Math.pow(M_star / SOL_M_PRIMORDIAL, A_BIN_MASS_EXP) * lambda * lambda;
 }
+// HOT-JUPITER PARKING RADIUS. A planetary fragment forms at the fission radius a_bin but then
+// MIGRATES inward (type II) and STALLS at the inner-disc cavity edge — the magnetospheric
+// truncation ≈ corotation radius — producing the observed "3-day pile-up" at ~0.04 AU
+// (Romanova/Lovelace; Lin et al.; Fortney 2021). Derived via Kepler from a canonical parking
+// period so it scales correctly with host mass: a_park = (M/M☉)^(1/3)·(P/yr)^(2/3) AU. P≈3 d
+// gives ~0.041·M^(1/3) AU (51 Peg b 0.052, υ And b 0.059 sit just outside this stall edge).
+const HJ_PARK_PERIOD_DAYS = 3.0;
+function hot_jupiter_park_radius(M_star_msun) {
+    const P_yr = HJ_PARK_PERIOD_DAYS / 365.25;
+    return Math.pow(Math.max(M_star_msun, 1e-3), 1 / 3) * Math.pow(P_yr, 2 / 3);
+}
 // PREDICTED low-spin hot-Jupiter fragment MASS — the accretion-pressure Hill-overflow lump.
 // At low spin the accretion heat vaporises rock and builds outward pressure, but the core can't
 // SPREAD that mass into the disc (spreading needs spin), so a share overflows the core's Hill

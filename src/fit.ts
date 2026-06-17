@@ -2092,8 +2092,13 @@ function budgetFit(planets: Planet[], budget: Budget,
           && !core_fragments(lambda) && lambda <= FRAG_SPIN_MAX && isFinite(a_bin) && a_bin > 0) {
         const m_frag = fragment_overflow_mass(M_pre, lambda);
         if (m_frag >= FRAG_GIANT_MIN) {
+          // The fragment forms at the fission radius a_bin but migrates inward and STALLS at the
+          // inner-disc cavity / magnetospheric-truncation pile-up (~0.04·M^⅓ AU), NOT at a_bin
+          // (the old placement parked hot Jupiters out at the Alfvén-dam region). a_bin is kept as
+          // the formation seat (form_r); r is the close parked orbit.
+          const r_park = hot_jupiter_park_radius(M_pre);
           planets = [...planets,
-            { name: "Hot Jupiter (predicted)", r: a_bin, observed: m_frag, fragment: true }];
+            { name: "Hot Jupiter (predicted)", r: r_park, observed: m_frag, fragment: true }];
         }
       }
     }
