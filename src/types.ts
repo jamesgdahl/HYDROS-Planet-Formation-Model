@@ -113,6 +113,23 @@ interface FitSlot {
   // Pre-scatter FORMATION slot, preserved when slot_r is reassigned to a scatter remnant's
   // settled location — the waveform's predicted marker rides this (the antinode it formed on).
   form_r?: number;
+  // Mass-conserved decomposition of a scattering event (scatter.ts): the formation
+  // allocation A (= primordial.total) splits into an inward fragment (the survivor /
+  // impactor), a debris belt (the asteroid belt — C-type if the parent was icy, S-type
+  // if dry), and an outward primary that impacts an outer giant. Plus the angular-
+  // momentum recoil the event imparts to the perturber. Diagnostic OUTPUT, not a fit target.
+  scatter?: {
+    allocation: number;        // A, the pre-scatter formation mass (M⊕)
+    formation_au: number;      // the antinode the parent formed on
+    perturber: string;         // the scatterer (e.g. Jupiter)
+    inward: { mass: number; au: number; fate: string };   // 7.5%A survivor/impactor
+    // debris field → asteroid belt, typed by the parent's primordial ice fraction:
+    // S = dry/silicaceous (inner), C = hydrated/carbonaceous (mid), D = ice-dominated
+    // cometary (outer; absent in Sol, present for HR 8799's icy outer parents).
+    belt: { mass: number; au: number; type: 'C' | 'S' | 'D' };
+    outward: { mass: number; target: string };            // ~85%A primary → outer-planet impact
+    recoil: { perturber_da_au: number };                  // back-reaction on the scatterer
+  };
   // Occupied half-step site (inverted regime). slot_n is half-integer.
   interstitial?: boolean;
   // Dam-exterior cohort member (the Kuiper mechanism): body beyond
@@ -130,6 +147,15 @@ interface FitSlot {
   // second star (Alpha Cen B). Replaces the earlier interior/stellar_fragment
   // pair — they were the same thing.
   core_component?: boolean;
+  // SUB-STELLAR core fragment (hot Jupiter / warm Neptune): a planetary-mass
+  // rotational-fragmentation sibling (not a slot product, not a stellar co-primary).
+  // It clears its OWN Hill + resonance-overlap chaos zone of cascade slots — the
+  // cleared span is [clear_lo, clear_hi] (clear_r = R_Hill + R_sweep). The chart renders
+  // it on the centre line (y=0), NOT riding the Alfvén–Maas wave.
+  core_fragment?: boolean;
+  clear_r?: number;
+  clear_lo?: number;
+  clear_hi?: number;
   // Wrecking-class ledger: condensables of the interior slots this
   // migrant traversed and ate en route to its parking seat. Arrives
   // POST-H/He accumulation (heavy-element enrichment; not fed into the
@@ -148,6 +174,11 @@ interface FitResult {
   ratio: number;
   R_disc: number;
   spin: number;
+  // Deferred post-formation thunk: when slot_aware_fit is called with
+  // defer_post_formation, the scatter + devour + void-remnant passes are NOT run
+  // inline; this runs them on the final (gas-conserved) slot set. budgetFit invokes
+  // it once after gas conservation so scatter reads final masses, not the pre-cap ones.
+  _run_post_formation?: () => void;
 }
 
 interface AnchorResult {

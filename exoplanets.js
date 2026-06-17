@@ -33,7 +33,7 @@ window.EXOPLANETS = [
     "id": "alphacen",
     "name": "Alpha Centauri (A+B core)",
     "ly": 4.367,
-    "comment": "Triple: A (primary) + B (close co-primary core fragment at a_bin=23.5 AU) + Proxima (WIDE stellar fragment). The core fragmented — β = E_rot/|E_grav| = BETA_SOL·λ² = 0.274 at λ=5.7, the bar-mode (Bate 2011) limit — and the excess angular momentum that tore the core in two flung the wide fragment out to the CENTRIFUGAL radius R_c = R_wind·λ² ≈ 9200 AU = Proxima's SEMI-MAJOR axis (~8700 AU; the oft-quoted 13,000 is its current near-apastron distance, e=0.5). So spin λ=5.7 is DERIVED from fragmentation, not fit (the old 1267 was a stale back-solve). Proxima FORMS in situ on the Davis Dam (slot 0, ~9200 AU = its semi-major axis ~8700) and is shown at its CURRENT location (~13,000 AU near-apastron, e=0.5) — an outward migrant: the chart connects its formation slot to its observed position. Its mass (0.122 M☉) is under-predicted ~2× (pred ~0.062) by the gas-capture disc allocation — a stellar-mass fragment needs the GI/direct-collapse channel (pending), the same gap as HR 8799's giants. (Memory: binary-two-waveform-proxima.)",
+    "comment": "Triple: A (primary) + B (close co-primary core fragment at a_bin=23.5 AU) + Proxima (WIDE stellar fragment). The core fragmented — β = E_rot/|E_grav| = BETA_SOL·λ² = 0.274 at λ=5.7, the bar-mode (Bate 2011) limit — and the excess angular momentum that tore the core in two flung the wide fragment out to the CENTRIFUGAL radius R_c = R_wind·λ² ≈ 9172 AU = Proxima's SEMI-MAJOR axis. Observed a = 9100 ⁺⁷⁰⁰₋₄₀₀ AU (Kervella 2017 apsidal midpoint of peri 5300 / apo 12900 AU, e≈0.42) — so the model lands +0.8% from the central value, well inside the 1σ bar. The oft-quoted 13,000 is NOT the orbit scale: it's the current near-apastron SEPARATION (we sit near apastron of the e≈0.42 orbit), which is why the preset records the semi-major axis (9100), not the snapshot. So spin λ=5.7 is DERIVED from fragmentation, not fit (the old 1267 was a stale back-solve). Proxima FORMS in situ on the Davis Dam (slot 0, ~9172 AU) at the observed semi-major axis (9100) — pred ≈ obs, no spurious migration arrow; the e=0.42 carries it out to the ~12,900 AU apastron seen today. Its mass (0.122 M☉) is under-predicted ~2× (pred ~0.062) by the gas-capture disc allocation — a stellar-mass fragment needs the GI/direct-collapse channel (pending), the same gap as HR 8799's giants. (Memory: binary-two-waveform-proxima.)",
     "budget": {"rock":3224.75,"ice":15091.8,"hydrogen":734546.1},
     "star": 1.0788,
     "feh": 0.24,
@@ -41,7 +41,7 @@ window.EXOPLANETS = [
     "spin": 5.7,
     "planets": [
       {"name":"Alpha Centauri B","r":23.52,"observed":302770,"core":true,"e":0.5179},
-      {"name":"Proxima Centauri","r":13000,"observed":40625}
+      {"name":"Proxima Centauri","r":9100,"observed":40625,"e":0.42}
     ]
   },
   {

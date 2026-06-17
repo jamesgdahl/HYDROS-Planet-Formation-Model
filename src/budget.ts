@@ -144,8 +144,9 @@ function disc_fraction_centrifugal(lambda: number): number {
   return Math.min(F_DISC_MAX, 0.305 * Math.pow(beta, 0.715));
 }
 // CLOSE-BINARY separation a_bin — the Terebey-Shu-Cassen centrifugal radius (R_c = j²/GM ∝ spin²)
-// of the INNER pair: the same spin law that flings the WIDE fragment to R_c = R_wind·λ², but for
-// the close fission product. The wide dam carries the full SIS wind mass-scaling (R_wind ∝ M^3.27);
+// of the INNER pair: the SAME spin law that pushes the Davis Dam out to R_c = R_wind·λ² (where the
+// WIDE companion accretes as a slot-0 product — NOT a fragment), but evaluated for the close fission
+// product (the actual split core, e.g. Alpha Cen B). The wide dam carries the full SIS wind mass-scaling (R_wind ∝ M^3.27);
 // the inner pair forms from the dense low-j core, whose centrifugal radius carries only the √M
 // SIS specific-angular-momentum scaling, so a_bin = A_BIN_COEF·√M·λ². NO LONGER single-anchored:
 // A_BIN_COEF + the M^0.5 exponent are calibrated to BOTH wide-companion systems —
@@ -157,6 +158,25 @@ const A_BIN_COEF = 0.697;
 const A_BIN_MASS_EXP = 0.5;   // inner-pair centrifugal radius ∝ √M (SIS specific-AM scaling)
 function close_binary_separation(lambda: number, M_star: number = SOL_M_PRIMORDIAL): number {
   return A_BIN_COEF * Math.pow(M_star / SOL_M_PRIMORDIAL, A_BIN_MASS_EXP) * lambda * lambda;
+}
+
+// PREDICTED low-spin hot-Jupiter fragment MASS — the accretion-pressure Hill-overflow lump.
+// At low spin the accretion heat vaporises rock and builds outward pressure, but the core can't
+// SPREAD that mass into the disc (spreading needs spin), so a share overflows the core's Hill
+// radius and breaks off as a self-bound sub-stellar companion. That overflow is the β-LINEAR
+// part of the centrifugal dispersion: disc_fraction_centrifugal spreads 0.305·β^0.715 of the
+// budget into the disc (sub-linear, efficient), while the un-spread overflow is the linear
+// 0.305·β term — the same dispersion coefficient (FRAG_OVERFLOW_COEF = the 0.305 in
+// disc_fraction_centrifugal), but ∝ β¹ (= BETA_SOL·λ²), so it vanishes faster toward Sol spin
+// (where the spread carries everything ⇒ no lump). Mass = K·β·budget. Reproduces the catalogue's
+// two observed fragments to ~2% with NO extra free parameter: 55 Cnc b 255→253 M⊕, ups And b
+// 218→223 M⊕. Only evaluated for a body the detection has already flagged as a fragment (the
+// low-spin / gas-dominated / interior-to-snow-line / inside-a_bin regime); at Sol-like spin the
+// disc spreads this mass into the cascade instead of lumping it, so the gate — not the formula —
+// is what keeps Jupiter from being read as an overflow fragment.
+const FRAG_OVERFLOW_COEF = 0.305;
+function fragment_overflow_mass(M_star: number, lambda: number): number {
+  return FRAG_OVERFLOW_COEF * rotational_beta(lambda) * m_star_earth(M_star);
 }
 
 // THREE MASS BUDGETS from the centrifugal split (user, 2026-06-10):

@@ -151,6 +151,7 @@
 <script src="js/classify.js"></script>
 <script src="js/cascade.js"></script>
 <script src="js/budget.js"></script>
+<script src="js/scatter.js"></script>
 <script src="js/fit.js"></script>
 <script src="js/impactors.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -719,13 +720,23 @@ function calculate() {
   // x-axis so both render on the correct side; do NOT abs() here.
   const coreFrags = coreSlots.map(s => ({ name: s.name, mass: s.predicted,
     r: (typeof s.slot_r === 'number' ? s.slot_r : 0) }));
+  // Every OTHER body that exists — observed, or predicted and not destroyed — at its AU and mass.
+  // Stars/co-primaries are the coreFrags above; these are the (mostly tiny) planets, fragments,
+  // and KBOs drawn alongside them.
+  const bodies = rB.fit.slots
+    .filter(s => !s.core_component && !s.destroyed && ((s.observed || 0) > 0 || (s.predicted || 0) > 0))
+    .map(s => ({ name: s.name || ('slot ' + s.slot_n), mass: (s.observed > 0 ? s.observed : s.predicted) || 0,
+      r: (s.r_used > 0 ? s.r_used : s.slot_r) || 0, observed: (s.observed || 0) > 0,
+      color: (s._chart && s._chart.c) || null,         // the SAME colour the Alfvén–Maas chart uses
+      rock: s.rock || 0, ice: (s.ice || 0) + (s.pebble || 0), h_he: s.h_he || 0 }))
+    .filter(b => b.r > 0 && b.mass > 0);
   // Binary: the cascade (and so the inner edge of the disc reservoir) starts at the OUTERMOST
   // core element's Alfvén Dam, not the combined R_A at the barycentre. budget_R_A_outer == R_A
   // for a single star.
   const isBinary = coreFrags.length > 1;
   try {
     renderBudgetChart({ Mtot: Mtot_b, coreMe, discMe, beyondMe, capturedMe, dispersedMe,
-      coreFrags, R_A: rB.budget_R_A_outer, R_disc, inverted, isBinary, barycentre: rB.budget_barycentre || 0,
+      coreFrags, bodies, R_A: rB.budget_R_A_outer, R_disc, inverted, isBinary, barycentre: rB.budget_barycentre || 0,
       hwInner: rB.budget_hw_inner, hwOuter: rB.budget_hw_outer, lambda: rB.budget_lambda,
       rock: inp.budget.rock, ice: inp.budget.ice, hydrogen: inp.budget.hydrogen });
   } catch (e) { console.warn('budgetchart:', e); }
@@ -750,6 +761,35 @@ function planetStyle(s, inHZ, delivered) {
   if (inHZ && delivered) return { c: '#3b7be0', t: 'habitable zone + delivery' };  // earth blue
   if (inHZ) return { c: '#d8c49a', t: 'rocky, habitable zone' };                   // venus beige
   return { c: '#c1502e', t: 'rocky, outside HZ' };                                 // martian red
+}
+
+// Word-wrap long tooltip lines. Chart.js renders each entry of a label array as one line and
+// sizes the tooltip box to the WIDEST line, so a verbose interpretation string would otherwise
+// stretch the box across the whole page on a single line. Wrapping every line to a max character
+// width both wraps long descriptions AND caps the tooltip width to a reasonable amount.
+const TIP_WRAP_CHARS = 64;
+function wrapTip(lines, maxChars) {
+  const w = maxChars || TIP_WRAP_CHARS;
+  const out = [];
+  for (const raw of (Array.isArray(lines) ? lines : [lines])) {
+    const s = String(raw == null ? '' : raw);
+    if (s.length <= w) { out.push(s); continue; }
+    let line = '';
+    for (const word of s.split(/\s+/)) {
+      if (word.length > w) {                       // hard-break a word longer than the wrap width
+        if (line) { out.push(line); line = ''; }
+        let rest = word;
+        while (rest.length > w) { out.push(rest.slice(0, w)); rest = rest.slice(w); }
+        line = rest;
+        continue;
+      }
+      const piece = line ? line + ' ' + word : word;
+      if (piece.length <= w) { line = piece; }
+      else { out.push(line); line = word; }
+    }
+    if (line) out.push(line);
+  }
+  return out;
 }
 
 // Alfvén–Maas Superposition chart. Plots the component waveforms (1st Maas / Alfvén / 2nd Maas
@@ -791,10 +831,20 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
   // Axis range spans every PLOTTED position — the slots AND each planet's formation (form_r) and
   // observed (observed_r) radius — so an outward migrant (Proxima: forms on the dam ~9200 AU,
   // observed at ~13,000 AU near-apastron) or an inward one isn't clipped off the chart.
+  // SUB-STELLAR CORE FRAGMENTS (hot Jupiters): NOT Alfvén–Maas wave products — they are
+  // planetary-mass rotational-fragmentation siblings that clear their own local Hill +
+  // resonance-overlap zone. They are rendered on the CENTRE LINE (y=0), not riding the wave,
+  // and are already excluded from `slots` (external) so they never enter predPts/obsPts.
+  const fragSlots = fit.slots.filter(s => s.core_fragment && isFinite(s.slot_r) && s.slot_r > 0);
   const rs = slots.map(s => s.slot_r);
   for (const s of slots) {
     if (isFinite(s.form_r) && s.form_r > 0) rs.push(s.form_r);
     if (s.filled && isFinite(s.observed_r) && s.observed_r > 0) rs.push(s.observed_r);
+  }
+  for (const f of fragSlots) {            // keep fragments + their cleared spans on-chart
+    rs.push(f.slot_r);
+    if (isFinite(f.clear_lo) && f.clear_lo > 0) rs.push(f.clear_lo);
+    if (isFinite(f.clear_hi) && f.clear_hi > 0) rs.push(f.clear_hi);
   }
   const rmin = Math.min(Math.min(...rs) * 0.82, R_A * 0.92), rmax = Math.max(...rs) * 1.18;  // extend to R_A so the negative terminus is visible
   const aLim = Math.max(1.05, wM * (1 + h2) + wA) * 1.05;
@@ -823,6 +873,14 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
   const hexRgba = (hex, al) => {
     const h = hex.replace('#', ''); const n = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
     return `rgba(${parseInt(n.slice(0, 2), 16)},${parseInt(n.slice(2, 4), 16)},${parseInt(n.slice(4, 6), 16)},${al})`;
+  };
+  // A stellar-mass body (≥ ~0.075 M☉) gets the colour of its spectral class instead of a planet
+  // colour. Class boundaries (M☉) match the classifier; the corona is drawn by the plugin below.
+  const STELLAR_M_E = 0.075 * 332946;
+  const stellarColor = mE => {
+    const Msun = mE / 332946;
+    return Msun >= 16 ? '#9bb0ff' : Msun >= 2.1 ? '#aabfff' : Msun >= 1.4 ? '#cad7ff'
+      : Msun >= 1.04 ? '#f8f7ff' : Msun >= 0.8 ? '#fff4ea' : Msun >= 0.45 ? '#ffd2a1' : '#ff9d5c';
   };
   // Marker size scales LOGARITHMICALLY with mass (so the terrestrials don't vanish next to the
   // giants) and is anchored on the largest body in this system → R_MAX. Span 4 decades below the
@@ -857,7 +915,10 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     const yw = symlog(sup(formR));
     const name = s.filled ? s.name : '(slot ' + s.slot_n + ')';
     const obsM = (s.filled && s.observed > 0) ? s.observed : 0;
-    predPts.push({
+    // SCATTERED slots no longer show the faint "intact planet that would have formed without
+    // scattering" — the prediction IS the scatter products (belt + remnant + collision), drawn
+    // below. Only un-scattered slots get the predicted-formation dot.
+    if (!s.scatter) predPts.push({
       x: formR, y: yw, _c: hexRgba(st.c, 0.5), _rad: radOf(formM),
       _tip: [name + ' — predicted ' + st.t, 'formation slot ' + formR.toFixed(formR < 0.1 ? 4 : 3) + ' AU · period ' + periodStr(formR),
              'formation mass ' + massStr(formM) + (obsM > 0 ? ' → observed ' + massStr(obsM) : ' → nothing'),
@@ -866,8 +927,9 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     });
     if (obsM > 0) {
       const ox = (isFinite(s.observed_r) && s.observed_r > 0) ? s.observed_r : formR;
+      const isStar = obsM >= STELLAR_M_E;
       obsPts.push({
-        x: ox, y: yw, _c: hexRgba(st.c, 1.0), _rad: radOf(obsM),
+        x: ox, y: yw, _c: isStar ? stellarColor(obsM) : hexRgba(st.c, 1.0), _rad: radOf(obsM), _star: isStar,
         _tip: [name + ' — observed', 'observed ' + ox.toFixed(ox < 0.1 ? 4 : 3) + ' AU · period ' + periodStr(ox), 'observed mass ' + massStr(obsM),
                'comp: ' + compStr(s.rock || 0, (s.ice || 0) + (s.pebble || 0), s.h_he || 0),
                'formation ' + massStr(formM) + ' → observed ' + massStr(obsM)]
@@ -899,20 +961,99 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     borderColor: 'rgba(176,124,255,0.4)', borderWidth: 1, borderDash: [2, 2], pointRadius: 0, fill: false, order: 4
   });
   datasets.push({
-    label: 'predicted (formation)', data: predPts, showLine: false, order: 0,
+    label: 'predicted (formation)', data: predPts, showLine: false, order: 0, clip: false,
     pointBackgroundColor: predPts.map(p => p._c), pointBorderColor: 'rgba(255,255,255,0.25)', pointBorderWidth: 0.6,
     pointRadius: predPts.map(p => p._rad), pointHoverRadius: predPts.map(p => p._rad + 2)
   });
   datasets.push({
-    label: 'observed', data: obsPts, showLine: false, order: 0,
+    label: 'observed', data: obsPts, showLine: false, order: 0, clip: false,
     pointBackgroundColor: obsPts.map(p => p._c), pointBorderColor: '#111', pointBorderWidth: 0.8,
     pointRadius: obsPts.map(p => p._rad), pointHoverRadius: obsPts.map(p => p._rad + 2)
+  });
+
+  // SCATTER PRODUCTS (forward predictions, from slot.scatter). Each scattered slot leaves a
+  // debris BELT at its formation AU — a diamond coloured by taxonomy (S silicaceous/dry,
+  // C carbonaceous/hydrated, D cometary/ice-dominated). The inward fragment that the calc
+  // puts on a planet-crossing orbit is a predicted COLLISION — a red ✕ at the crossed orbit
+  // (Sol: Theia's 0.2 M⊕ fragment striking primordial Earth at ~1.23 AU). Belts ride the
+  // wave at their formation AU; impacts sit at the crossed planet's orbit.
+  const beltColor = { S: '#c9a227', C: '#9aa0a6', D: '#79c7e3' };
+  const beltName = { S: 'S-type (silicaceous, dry)', C: 'C-type (carbonaceous, hydrated)', D: 'D-type (cometary, ice-dominated)' };
+  // A belt is a ZONE of debris, not a body — render it as a scatter of small grains spread
+  // across a radial band (±BELT_SPREAD around the formation AU), riding the wave, coloured by
+  // taxonomy. Grain count scales weakly with belt mass so a bigger belt reads as denser.
+  const BELT_SPREAD = 0.18;
+  const beltPts = [], impactPts = [];
+  for (const s of slots) {
+    const sc = s.scatter; if (!sc) continue;
+    const lo = sc.belt.au * (1 - BELT_SPREAD), hi = sc.belt.au * (1 + BELT_SPREAD);
+    const nGrain = Math.max(7, Math.min(16, Math.round(9 + 3 * Math.log10(Math.max(sc.belt.mass, 1e-3) / 0.05))));
+    const tip = [`predicted ${beltName[sc.belt.type] || sc.belt.type} asteroid belt`,
+                 `${lo.toFixed(2)}–${hi.toFixed(2)} AU · ${massStr(sc.belt.mass)} debris`,
+                 'from the scattered ' + massStr(sc.allocation) + ' parent (perturber: ' + sc.perturber + ')',
+                 'outward primary ' + massStr(sc.outward.mass) + ' → ' + sc.outward.target];
+    for (let k = 0; k < nGrain; k++) {
+      // spread across the band with a mild centre concentration; jitter the wave height a touch
+      const u = nGrain > 1 ? k / (nGrain - 1) : 0.5;
+      const x = lo + (hi - lo) * u;
+      const j = 1 + 0.10 * Math.sin(k * 2.39996);   // golden-angle vertical jitter so grains don't sit on one line
+      beltPts.push({ x, y: symlog(sup(x)) * j, _c: beltColor[sc.belt.type] || '#888', _rad: 2.4, _tip: tip });
+    }
+    if (/COLLISION/.test(sc.inward.fate)) {
+      impactPts.push({
+        x: sc.inward.au, y: symlog(sup(sc.inward.au)), _c: '#e0392b', _rad: Math.max(6, radOf(sc.inward.mass)),
+        _tip: ['predicted COLLISION — ' + massStr(sc.inward.mass) + ' inward fragment',
+               sc.inward.au.toFixed(sc.inward.au < 0.1 ? 4 : 3) + ' AU', sc.inward.fate]
+      });
+    }
+  }
+  if (beltPts.length) datasets.push({
+    label: 'asteroid belt (C/S/D)', data: beltPts, showLine: false, order: 0, clip: false, pointStyle: 'circle',
+    pointBackgroundColor: beltPts.map(p => p._c), pointBorderColor: 'rgba(0,0,0,0.35)', pointBorderWidth: 0.4,
+    pointRadius: beltPts.map(p => p._rad), pointHoverRadius: beltPts.map(p => p._rad + 2)
+  });
+  if (impactPts.length) datasets.push({
+    label: 'predicted collision', data: impactPts, showLine: false, order: 0, clip: false, pointStyle: 'crossRot',
+    pointBackgroundColor: impactPts.map(p => p._c), pointBorderColor: '#e0392b', pointBorderWidth: 2.5,
+    pointRadius: impactPts.map(p => p._rad), pointHoverRadius: impactPts.map(p => p._rad + 2)
+  });
+
+  // SUB-STELLAR CORE FRAGMENTS — rendered as ORDINARY PLANET MARKERS (the same composition-coloured,
+  // mass-sized filled circles with the same composition tooltip as the observed-planet markers), but
+  // pinned to the CENTRE LINE (y=0) instead of riding the wave (they are not Alfvén–Maas products, so
+  // they carry no wave amplitude). The only visual distinction is the zero-amplitude position. A faint
+  // horizontal span on the centre line still marks each fragment's cleared zone so the exclusion shows.
+  // (Reuses st=_chart for colour/type, radOf() for size, and the obsPts composition-tooltip format.)
+  const fragPts = [], fragSpan = [];
+  for (const f of fragSlots) {
+    const st = f._chart || { c: '#e0b000', t: 'planet' };
+    const m = f.observed || f.predicted || 0;
+    fragPts.push({
+      x: f.slot_r, y: 0, _c: hexRgba(st.c, 1.0), _rad: radOf(m),
+      _tip: [f.name + ' — ' + st.t,
+             f.slot_r.toFixed(f.slot_r < 0.1 ? 4 : 3) + ' AU · period ' + periodStr(f.slot_r),
+             'mass ' + massStr(m),
+             'comp: ' + compStr(f.rock || 0, (f.ice || 0) + (f.pebble || 0), f.h_he || 0),
+             f.interpretation || ''].filter(Boolean)
+    });
+    if (isFinite(f.clear_lo) && isFinite(f.clear_hi)) {
+      fragSpan.push({ x: f.clear_lo, y: 0 }, { x: f.clear_hi, y: 0 }, { x: null, y: null });
+    }
+  }
+  if (fragSpan.length) datasets.push({
+    label: 'cleared zone', data: fragSpan, showLine: true, spanGaps: false,
+    borderColor: 'rgba(46,197,197,0.35)', borderWidth: 6, pointRadius: 0, fill: false, order: 5
+  });
+  if (fragPts.length) datasets.push({
+    label: 'core fragment (y=0)', data: fragPts, showLine: false, order: 0,
+    pointBackgroundColor: fragPts.map(p => p._c), pointBorderColor: '#111', pointBorderWidth: 0.8,
+    pointRadius: fragPts.map(p => p._rad), pointHoverRadius: fragPts.map(p => p._rad + 2)
   });
 
   el.innerHTML =
     `<h3 style="margin:6px 0">Alfvén–Maas Superposition <span style="font-weight:normal;font-size:0.8em;color:#999">(fixed-ρ Maas + reflected Alfvén comb)</span></h3>`
     + `<div style="margin:2px 0 4px;font-size:0.85em;color:#bbb">~${N_rungs} ρ-rungs across [R_A, R_disc]; +antinode (pile) at the Davis Dam, −antinode (exclusion) at the Alfvén dam — the Maas wave reflected off R_A with a 180° flip (Zhao 2024). dam-weights wA=${wA.toExponential(1)}, wM=${wM.toFixed(2)}, C=R_A/R_disc=${C.toExponential(1)}</div>`
-    + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px">●<span style="opacity:0.5">faint</span> predicted (formation slot, size ∝ original mass) &nbsp; ● solid observed (current AU, size ∝ observed mass) &nbsp; ┈ migration; hover for the mass story</div>`
+    + `<div style="font-size:0.72em;color:#aaa;margin:0 0 4px">●<span style="opacity:0.5">faint</span> predicted (formation slot, size ∝ original mass) &nbsp; ● solid observed (current AU, size ∝ observed mass) &nbsp; ┈ migration &nbsp; ● core fragment (y=0 centre line) &nbsp; ∴ debris belt (S tan · C grey · D ice-blue grains) &nbsp; ✕ predicted collision; scattered slots show their belt/remnant/collision instead of an intact planet — hover for the mass story</div>`
     + `<div style="position:relative;height:360px;background:#15151c;border:1px solid #333;border-radius:4px;padding:4px"><canvas id="wf-canvas"></canvas></div>`;
 
   // Habitable-zone band: a faint green gradient, solid across the HZ and fading to zero through
@@ -956,11 +1097,31 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     }
   } : null;
 
+  // Corona glow behind stellar-mass observed markers (e.g. Proxima): a soft radial gradient in the
+  // marker's spectral colour, drawn before the markers so the dot sits on top.
+  const coronaPlugin = obsPts.some(p => p._star) ? {
+    id: 'wfCorona',
+    beforeDatasetsDraw(chart) {
+      const xs = chart.scales.x, ys = chart.scales.y, ca = chart.chartArea, c = chart.ctx;
+      obsPts.forEach(p => {
+        if (!p._star) return;
+        const px = xs.getPixelForValue(p.x), py = ys.getPixelForValue(p.y);
+        if (!(px >= ca.left && px <= ca.right)) return;
+        const coronaR = p._rad * 2.6;
+        const cg = c.createRadialGradient(px, py, p._rad * 0.6, px, py, coronaR);
+        cg.addColorStop(0, hexRgba(p._c, 0.5));
+        cg.addColorStop(0.4, hexRgba(p._c, 0.16));
+        cg.addColorStop(1, hexRgba(p._c, 0));
+        c.save(); c.fillStyle = cg; c.beginPath(); c.arc(px, py, coronaR, 0, 2 * Math.PI); c.fill(); c.restore();
+      });
+    }
+  } : null;
+
   if (window._wfChart) { window._wfChart.destroy(); window._wfChart = null; }
   window._wfChart = new Chart(document.getElementById('wf-canvas').getContext('2d'), {
     type: 'line',
     data: { datasets },
-    plugins: [hzBand, hwBand].filter(Boolean),
+    plugins: [hzBand, hwBand, coronaPlugin].filter(Boolean),
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       interaction: { mode: 'nearest', intersect: true },
@@ -980,13 +1141,13 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
       },
       plugins: {
         legend: { labels: { color: '#ccc', boxWidth: 16, font: { size: 11 },
-          filter: it => !['migration', 'predicted (formation)', 'observed'].includes(it.text) } },
+          filter: it => !['migration', 'predicted (formation)', 'observed', 'cleared zone'].includes(it.text) } },
         tooltip: {
-          filter: item => item.dataset.label !== 'migration',
+          filter: item => item.dataset.label !== 'migration' && item.dataset.label !== 'cleared zone',
           callbacks: {
             title: items => items.length ? 'AU ' + (+items[0].parsed.x).toPrecision(3) : '',
-            label: c => (c.dataset.label === 'predicted (formation)' || c.dataset.label === 'observed')
-              ? c.raw._tip : (c.dataset.label + ': ' + invsym(c.parsed.y).toFixed(3))
+            label: c => (c.dataset.label === 'predicted (formation)' || c.dataset.label === 'observed' || c.dataset.label === 'core fragment (y=0)' || c.dataset.label === 'asteroid belt (C/S/D)' || c.dataset.label === 'predicted collision')
+              ? wrapTip(c.raw._tip) : (c.dataset.label + ': ' + invsym(c.parsed.y).toFixed(3))
           }
         }
       }
@@ -1095,7 +1256,7 @@ function renderFactoryChart(fit, R_disc, inverted, M_star) {
         legend: { labels: { color: '#ccc', boxWidth: 16, font: { size: 11 }, filter: it => it.text !== 'migration' } },
         tooltip: {
           filter: item => item.dataset.label !== 'migration',
-          callbacks: { title: items => items.length ? 't_form ' + (+items[0].parsed.y).toPrecision(3) + ' Myr' : '', label: c => c.raw._tip }
+          callbacks: { title: items => items.length ? 't_form ' + (+items[0].parsed.y).toPrecision(3) + ' Myr' : '', label: c => wrapTip(c.raw._tip) }
         }
       }
     }
@@ -1140,12 +1301,19 @@ function renderBudgetChart(v) {
   const xLo = 0;                                                 // the primary sits at the origin
   const xHi = posMost * 3;
 
-  // SIGNED-LOG Y (mass, M⊕): zero runs through the MIDDLE; each zone band grows logarithmically
-  // UP and mirrors logarithmically DOWN (a disc cross-section). sy maps mass → axis units.
+  // SINGLE-SIDED LOG Y (mass, M⊕): the distribution bands rise from the bottom axis (mass 0) up to
+  // sy(mass); the clear zone above the tallest band is a row where the core stars are drawn ABOVE.
   const MC = 1;                                  // 1 M⊕ linear threshold
   const sy = m => Math.log10(1 + Math.max(m, 0) / MC);
   const ymaxMass = Math.max(v.coreMe, v.discMe, v.beyondMe, 10);
-  const SY = sy(ymaxMass) * 1.08;
+  const SY = sy(ymaxMass) * 1.08;                // top of the tallest band
+  const STAR_ROW = SY * 1.2;                     // y-value of the star row (in the clear zone above the bands)
+  const Y_MAX = SY * 1.5;                        // axis top — leaves room above the bands for the star row
+  // Planet/KBO/fragment TRUE radius in AU (planetary mass–radius relation). Mapped through the axis
+  // at the SAME scale as the stars (see radAxisPx in the plugin) — ONE size law for every body, so a
+  // sub-stellar fragment scales exactly like a planet of the same mass, not like a star.
+  const planetRadAU = m => (typeof body_radius_earth === 'function' ? body_radius_earth(Math.max(m, 1e-6)) : Math.pow(Math.max(m, 1e-6), 0.3))
+    * (typeof EARTH_RE_IN_AU === 'number' ? EARTH_RE_IN_AU : 4.2635e-5);
 
   // STAR rendering from composition. Radius from the main-sequence mass–radius relation (R∝M^0.8
   // below 1 M☉, M^0.57 above) with a weak metallicity bump; temperature from a mass–Teff relation
@@ -1181,12 +1349,12 @@ function renderBudgetChart(v) {
     beforeDatasetsDraw(chart) {
       const xs = chart.scales.x, ys = chart.scales.y, ca = chart.chartArea, c = chart.ctx;
       const clampX = p => Math.max(ca.left, Math.min(ca.right, p));
-      // each band grows from the midline (mass 0) UP to +sy(mass) and mirrors DOWN to −sy(mass)
+      // each band rises from the bottom axis (mass 0) UP to sy(mass) — single-sided
       const zone = (x0, x1, mass, fill, stroke) => {
         if (!(mass > 0)) return;
         const px0 = clampX(xs.getPixelForValue(sx(x0))), px1 = clampX(xs.getPixelForValue(sx(x1)));
         if (px1 <= px0) return;
-        const pyTop = ys.getPixelForValue(sy(mass)), pyBot = ys.getPixelForValue(-sy(mass));
+        const pyBot = ys.getPixelForValue(0), pyTop = ys.getPixelForValue(sy(mass));
         c.save();
         c.fillStyle = fill; c.fillRect(px0, pyTop, px1 - px0, pyBot - pyTop);
         c.strokeStyle = stroke; c.lineWidth = 1.5; c.strokeRect(px0, pyTop, px1 - px0, pyBot - pyTop);
@@ -1199,7 +1367,13 @@ function renderBudgetChart(v) {
     },
     afterDatasetsDraw(chart) {
       const xs = chart.scales.x, ys = chart.scales.y, ca = chart.chartArea, c = chart.ctx;
-      const yMid = ys.getPixelForValue(0);
+      const yMid = ys.getPixelForValue(0);              // bottom axis (mass 0)
+      const yStar = ys.getPixelForValue(STAR_ROW);      // star row, above the bands
+      // ONE size law for every body: pixel radius = its TRUE radius (AU) mapped through the x-axis,
+      // measured outward from the body's position. Stars pass their stellar radius, planets/fragments
+      // their planetary radius — same scale, so nothing is drawn bigger than it really is.
+      const radAxisPx = (disp, R_AU) => Math.max(2, Math.min(42,
+        Math.abs(xs.getPixelForValue(sx(Math.abs(disp) + R_AU)) - xs.getPixelForValue(sx(disp)))));
       const damLine = (r, label, color) => {
         if (!(r > xLo && r < xHi)) return;
         const px = xs.getPixelForValue(sx(r));
@@ -1207,16 +1381,17 @@ function renderBudgetChart(v) {
         c.strokeStyle = color; c.lineWidth = 1.5; c.setLineDash([5, 4]);
         c.beginPath(); c.moveTo(px, ca.top); c.lineTo(px, ca.bottom); c.stroke();
         c.setLineDash([]); c.fillStyle = color; c.font = '11px sans-serif'; c.textAlign = 'left';
-        c.fillText(label, px + 3, ca.bottom - 6);
+        c.fillText(label, px + 3, ca.top + 10);
         c.restore();
       };
+      // zone amount labels — stacked at the BOTTOM of the chart (bold title on top, details below)
       const zlbl = (x0, x1, mass, lines, color) => {
         if (!(mass > 0)) return;
         const px0 = Math.max(ca.left, xs.getPixelForValue(sx(x0))), px1 = Math.min(ca.right, xs.getPixelForValue(sx(x1)));
         if (px1 <= px0) return;
-        const cx = (px0 + px1) / 2;
+        const cx = (px0 + px1) / 2, n = lines.length;
         c.save(); c.fillStyle = color; c.textAlign = 'center';
-        lines.forEach((ln, i) => { c.font = (i === 0 ? 'bold ' : '') + (11 - i) + 'px sans-serif'; c.fillText(ln, cx, ca.top + 13 + i * 12); });
+        lines.forEach((ln, i) => { c.font = (i === 0 ? 'bold ' : '') + (11 - i) + 'px sans-serif'; c.fillText(ln, cx, ca.bottom - 6 - (n - 1 - i) * 12); });
         c.restore();
       };
       zlbl(xLo, innerDam, v.coreMe, ['CORE  ' + pct(v.coreMe).toFixed(1) + '%', msun(v.coreMe).toFixed(3) + ' M☉'], '#f4ca3a');
@@ -1225,44 +1400,56 @@ function renderBudgetChart(v) {
       zlbl(outerDam, xHi, v.beyondMe, ['BEYOND DAVIS DAM  ' + pct(v.beyondMe).toFixed(1) + '%', msun(v.beyondMe).toFixed(3) + ' M☉'], '#c4c6cf');
       // STARS: core elements ON the midline, aligned to AU (signed), sized by TRUE radius, coloured
       // by spectral type, with a corona glow.
-      // barycentre marker (binary): the dams/disc are centred here, r_bary out from the primary
+      // barycentre marker (binary): the dams/disc are centred here, r_bary out from the primary.
+      // Just the dashed line — label removed; hover it for the details.
       if (SHIFT > 1e-6) {
         const bpx = xs.getPixelForValue(sx(SHIFT));
         c.save();
         c.strokeStyle = 'rgba(200,200,210,0.4)'; c.lineWidth = 1; c.setLineDash([2, 3]);
         c.beginPath(); c.moveTo(bpx, ca.top); c.lineTo(bpx, ca.bottom); c.stroke();
-        c.setLineDash([]); c.fillStyle = 'rgba(200,200,210,0.7)'; c.font = '10px sans-serif'; c.textAlign = 'center';
-        c.fillText('⊕ barycentre ' + SHIFT.toFixed(1) + ' AU', bpx, yMid + 4);
         c.restore();
       }
       v.coreFrags.forEach((f, idx) => {
         if (!(f.mass > 0)) return;
         const Msun = f.mass / M_E_PER_MSUN;
         const isStar = Msun >= STAR_MIN_MSUN;                          // fuses H ⇒ a star (corona); below ⇒ sub-stellar fragment (no corona)
-        const rad = starPx(Msun);
         const T = starTeff(Msun);
         const col = bbColor(T);
         const disp = f.r + SHIFT;                                      // distance from the primary
-        const px = Math.max(ca.left + rad + 2, xs.getPixelForValue(sx(disp)));
+        const px = xs.getPixelForValue(sx(disp));                      // centre AT its AU (primary at 0); no edge clamp — left half renders outside the plot
+        // ONE size law (radAxisPx): a fusing star uses its stellar radius, a sub-stellar fragment its
+        // planetary radius — both mapped through the axis, so the fragment scales like a planet, not a star.
+        const R_AU = isStar ? starRadiusRsun(Msun) * RSUN_AU : planetRadAU(f.mass);
+        const rad = radAxisPx(disp, R_AU);
         const coronaR = rad * 2.2;
         c.save();
         if (isStar) {                                                  // only a fusing star gets a corona glow
-          const cg = c.createRadialGradient(px, yMid, rad * 0.7, px, yMid, coronaR);
+          const cg = c.createRadialGradient(px, yStar, rad * 0.7, px, yStar, coronaR);
           cg.addColorStop(0, `rgba(${col[0]},${col[1]},${col[2]},0.5)`);
           cg.addColorStop(0.4, `rgba(${col[0]},${col[1]},${col[2]},0.16)`);
           cg.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0)`);
-          c.fillStyle = cg; c.beginPath(); c.arc(px, yMid, coronaR, 0, 2 * Math.PI); c.fill();
+          c.fillStyle = cg; c.beginPath(); c.arc(px, yStar, coronaR, 0, 2 * Math.PI); c.fill();
         }
-        const dg = c.createRadialGradient(px - rad * 0.3, yMid - rad * 0.3, rad * 0.1, px, yMid, rad);
+        const dg = c.createRadialGradient(px - rad * 0.3, yStar - rad * 0.3, rad * 0.1, px, yStar, rad);
         const hi = lighten(col, 0.3);                       // hue-preserving highlight, not a wash to white
         dg.addColorStop(0, `rgb(${hi[0]},${hi[1]},${hi[2]})`);
         dg.addColorStop(1, `rgb(${col[0]},${col[1]},${col[2]})`);
         c.fillStyle = dg; c.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.9)`; c.lineWidth = 1;
-        c.beginPath(); c.arc(px, yMid, rad, 0, 2 * Math.PI); c.fill(); c.stroke();
-        const above = idx % 2 === 0;
-        const ly = above ? Math.max(ca.top + 42, yMid - coronaR - 4) : Math.min(ca.bottom - 18, yMid + coronaR + 12);
-        c.fillStyle = '#e8e8ee'; c.font = '11px sans-serif'; c.textAlign = 'center';
-        c.fillText(`${f.name} · ${specClass(T)} ${Msun.toFixed(3)} M☉` + (disp > 0.01 ? ` @ ${disp.toFixed(disp < 10 ? 2 : 1)} AU` : ''), px, ly);
+        c.beginPath(); c.arc(px, yStar, rad, 0, 2 * Math.PI); c.fill(); c.stroke();
+        c.restore();                                       // labels removed — hover for name/class/mass
+      });
+      // ALL OTHER BODIES — observed or predicted-not-destroyed — as composition-coloured dots on the
+      // body row at their AU, sized by the SAME radAxisPx law as the stars (true radius via the axis).
+      (v.bodies || []).forEach(b => {
+        const disp = b.r + SHIFT;
+        if (!(disp > 0)) return;
+        const px = xs.getPixelForValue(sx(disp));
+        if (!(px >= ca.left && px <= ca.right)) return;
+        const rad = radAxisPx(disp, planetRadAU(b.mass));
+        const col = b.color || planetStyle({ rock: b.rock, ice: b.ice, pebble: 0, h_he: b.h_he, observed: b.mass }, false, false).c;
+        c.save();
+        c.fillStyle = col; c.strokeStyle = '#0c0c10'; c.lineWidth = 0.6; c.globalAlpha = b.observed ? 1 : 0.5;
+        c.beginPath(); c.arc(px, yStar, rad, 0, 2 * Math.PI); c.fill(); c.stroke();
         c.restore();
       });
       damLine(R_A, (v.isBinary ? 'outermost Alfvén Dam ' : 'Alfvén Dam  R_A ') + v.R_A.toFixed(v.R_A < 0.1 ? 3 : 2) + ' AU', '#e6695a');
@@ -1279,17 +1466,17 @@ function renderBudgetChart(v) {
     + `<span style="color:#f4ca3a">■</span> core &nbsp; `
     + `<span style="color:#9ccef2">■</span> ${reservoirLabel} (R_A→R_disc; dark = condensed into bodies) &nbsp; `
     + `<span style="color:#c4c6cf">■</span> beyond Davis Dam (dispersed) &nbsp; `
-    + `★ stars: true radius (×~4800), blackbody colour from mass+Z &nbsp; bands mirror log-mass about 0</div>`;
+    + `★ stars: true radius (×~4800), blackbody colour from mass+Z, drawn above &nbsp; bands rise from 0 (log-mass)</div>`;
   el.innerHTML = '<h3 style="margin:6px 0">Budget allocation across the disc</h3>' + subtitle
     + '<div style="position:relative;height:300px;background:#15151c;border:1px solid #333;border-radius:4px;padding:4px"><canvas id="bg-canvas"></canvas></div>';
 
   // AU ticks (signed-log): nice values within range; the barycentre 0 is shown when the range crosses it.
   const niceAU = [-1e4, -1e3, -100, -10, -1, -0.1, 0, 0.1, 1, 10, 100, 1e3, 1e4, 1e5];
   const xTicks = niceAU.filter(a => a >= xLo - 1e-9 && a <= xHi + 1e-9).map(a => ({ value: sx(a) }));
-  // Mass ticks (mirrored about 0): same magnitudes above and below the midline.
+  // Mass ticks (single-sided): 0 at the bottom axis, magnitudes rising up to the tallest band.
   const niceM = [10, 100, 1e3, 1e4, 1e5, 1e6];
   const yTicks = [{ value: 0 }];
-  niceM.forEach(m => { if (sy(m) <= SY) { yTicks.push({ value: sy(m) }, { value: -sy(m) }); } });
+  niceM.forEach(m => { if (sy(m) <= SY) { yTicks.push({ value: sy(m) }); } });
   const yLabel = m => m <= 0 ? '0' : m >= 1e5 ? (m / 1e3).toFixed(0) + 'k' : m >= 1e3 ? (m / 1e3).toFixed(0) + 'k' : m.toFixed(0);
 
   // Hoverable elements (native Chart.js tooltips, like the other charts): one invisible point per
@@ -1306,17 +1493,29 @@ function renderBudgetChart(v) {
   v.coreFrags.forEach(f => {
     if (!(f.mass > 0)) return;
     const Ms = f.mass / M_E_PER_MSUN, T = starTeff(Ms), star = Ms >= STAR_MIN_MSUN, au = f.r + SHIFT;
-    hoverPts.push({ x: sx(au), y: 0, _tip: [
+    hoverPts.push({ x: sx(au), y: STAR_ROW, _tip: [
       f.name + (star ? ' · ' + specClass(T) + '-type star' : ' · sub-stellar core fragment'),
       fmtMass(f.mass) + ' @ ' + au.toFixed(au < 10 ? 2 : 1) + ' AU' + (star ? ' · T≈' + T.toFixed(0) + ' K' : ''),
       compLine(f.mass)] });
   });
+  (v.bodies || []).forEach(b => {
+    const au = b.r + SHIFT;
+    if (!(au > 0)) return;
+    hoverPts.push({ x: sx(au), y: STAR_ROW, _tip: [b.name + (b.observed ? '' : ' (predicted)'),
+      fmtMass(b.mass) + ' @ ' + au.toFixed(au < 10 ? 2 : 1) + ' AU',
+      'rock ' + fmtMass(b.rock) + ' · ice ' + fmtMass(b.ice) + ' · H/He ' + fmtMass(b.h_he)] });
+  });
+  if (SHIFT > 1e-6) {                                  // barycentre: hover anywhere mid-line
+    hoverPts.push({ x: sx(SHIFT), y: Y_MAX * 0.5, _tip: ['⊕ barycentre',
+      SHIFT.toFixed(SHIFT < 10 ? 2 : 1) + ' AU from the primary',
+      'system centre of mass — the dams and disc are centred here'] });
+  }
 
   if (window._bgChart) { window._bgChart.destroy(); window._bgChart = null; }
   window._bgChart = new Chart(document.getElementById('bg-canvas').getContext('2d'), {
     type: 'line',
     data: { datasets: [
-      { data: [{ x: sx(xLo), y: -SY }, { x: sx(xHi), y: SY }], pointRadius: 0, showLine: false },
+      { data: [{ x: sx(xLo), y: 0 }, { x: sx(xHi), y: Y_MAX }], pointRadius: 0, showLine: false },
       { data: hoverPts, pointRadius: 0, pointHitRadius: 22, pointHoverRadius: 4, pointHoverBackgroundColor: 'rgba(255,255,255,0.7)', showLine: false }
     ] },
     plugins: [zonesPlugin],
@@ -1331,8 +1530,8 @@ function renderBudgetChart(v) {
           grid: { color: gc => (gc.tick && Math.abs(gc.tick.value) < 1e-9) ? '#555' : '#26262e' }
         },
         y: {
-          type: 'linear', min: -SY, max: SY,
-          title: { display: true, text: 'mass to zone (M⊕, log — mirrored about 0)', color: '#aaa' },
+          type: 'linear', min: 0, max: Y_MAX,
+          title: { display: true, text: 'mass to zone (M⊕, log)', color: '#aaa' },
           afterBuildTicks: ax => { ax.ticks = yTicks; },
           ticks: { color: '#aaa', callback: val => yLabel((Math.pow(10, Math.abs(val)) - 1) * MC) },
           grid: { color: gc => (gc.tick && Math.abs(gc.tick.value) < 1e-9) ? '#555' : '#26262e' }
@@ -1341,7 +1540,7 @@ function renderBudgetChart(v) {
       interaction: { mode: 'nearest', intersect: false },
       plugins: { legend: { display: false }, tooltip: {
         enabled: true, filter: it => it.datasetIndex === 1,
-        callbacks: { title: () => '', label: c => c.raw._tip } } }
+        callbacks: { title: () => '', label: c => wrapTip(c.raw._tip) } } }
     }
   });
 }

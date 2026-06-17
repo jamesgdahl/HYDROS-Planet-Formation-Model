@@ -44,7 +44,7 @@ const load = (rel) => vm.runInContext(
   fs.readFileSync(path.join(root, rel), 'utf8'), ctx, { filename: rel });
 load('exoplanets.js');
 for (const f of ['constants.js', 'disc.js', 'allocation.js',
-                 'classify.js', 'cascade.js', 'fit.js', 'impactors.js']) {
+                 'classify.js', 'cascade.js', 'scatter.js', 'fit.js', 'impactors.js']) {
   load(path.join('js', f));
 }
 

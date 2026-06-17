@@ -28,8 +28,8 @@ const load = (rel) => vm.runInContext(
 
 load('exoplanets.js');
 for (const f of ['constants.js', 'disc.js', 'allocation.js',
-                 'classify.js', 'cascade.js', 'budget.js', 'fit.js',
-                 'impactors.js']) {
+                 'classify.js', 'cascade.js', 'budget.js', 'scatter.js',
+                 'fit.js', 'impactors.js']) {
   load(path.join('js', f));
 }
 

@@ -44,19 +44,20 @@ function inversion_threshold_density(M_star, omega) {
 }
 function disc_radius(M_star, spin, omega, f_disc) {
     const Omega = (omega === undefined) ? spin : omega;
-    // FRAGMENTING CORE (β = E_rot/|E_grav| = BETA_SOL·λ² ≥ 0.274, the bar-mode limit):
-    // the core split into co-primaries and the WIDE fragment is flung to the un-capped
-    // CENTRIFUGAL radius R_c = R_wind(M)·λ² (Terebey-Shu-Cassen). The wind/pressure law
-    // below is suppressed by the large disc mass (D^−½) and badly under-predicts it —
-    // Alpha Cen → Proxima sits at ~9000 AU (R_c), not ~300 (wind). The excess angular
-    // momentum that tore the core in two is what spins the outer dam out to thousands of
-    // AU; BETA_SOL is calibrated so the same λ fragments the core AND sets the dam.
-    // (Memory: binary-two-waveform-proxima.) Gated on COMP_FRAGMENTING (real co-primary
-    // present) so it fires only for fragmenting BINARIES — not a high-spin moon disc
-    // (Saturn) or an artifact-spin single star.
+    // FRAGMENTING CORE (β = E_rot/|E_grav| = BETA_SOL·λ² ≥ the bar-mode limit): the core splits
+    // into co-primaries (the CLOSE fission product sits at a_bin = close_binary_separation(λ),
+    // e.g. Alpha Cen B at ~23.5 AU), and the excess angular momentum that tore it pushes the
+    // CENTRIFUGAL Davis Dam out to R_c = R_wind(M)·λ² (Terebey-Shu-Cassen). The wind/pressure law
+    // below is suppressed by the large disc mass (D^−½) and badly under-predicts that far dam —
+    // the dam reaches ~9000 AU, not ~300 (wind). The WIDE stellar companion observed out there
+    // (Proxima, GJ 667 C) is NOT the fragment: it is a slot-0 ACCRETION product that formed on
+    // this far dam, and its position is what pins the dam (the centrifugal λ-anchor — there is no
+    // GI/direct-collapse channel for it). BETA_SOL is calibrated so the same λ fragments the core
+    // AND sets the dam. Gated on COMP_FRAGMENTING (real co-primary present) so it fires only for
+    // fragmenting BINARIES — not a high-spin moon disc (Saturn) or an artifact-spin single star.
     if (COMP_FRAGMENTING && core_fragments(Omega)) {
-        // An OBSERVED wide stellar companion pins the centrifugal dam at its own position (R_c is
-        // over-determined by where it landed); otherwise fall back to the spin-law R_c = R_wind·λ².
+        // The OBSERVED wide stellar companion pins the centrifugal dam at its own position (R_c is
+        // over-determined by where this slot-0 accretor landed); else fall back to R_c = R_wind·λ².
         return COMP_WIDE_DAM > 0 ? COMP_WIDE_DAM : centrifugal_radius(M_star, Omega);
     }
     // UNIVERSAL DAVIS DAM (one law, all scales): the wind-balance radius where the OUTWARD

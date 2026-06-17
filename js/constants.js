@@ -411,6 +411,14 @@ const DISC_TRUNCATION_FACTOR = 0.15; // Holman-Wiegert fallback only
 // bisection sweep, so packed super-Earth systems (Kepler-90) and clean Neptune systems (HD 69830)
 // are never mislabelled. See accretion-overflow-fragmentation.md.
 const FRAG_GIANT_MIN = 30.0;
+// Upper edge of the low-spin fragment WINDOW (primordial spin λ). Below it (and above the
+// overflow floor) the accretion-pressure overflow can't be spread into a disc cascade, so it
+// lumps off as a hot-Jupiter fragment; at/above it the spread is efficient and the would-be
+// overflow becomes a normal planetary cascade instead (Sol λ=1, HR 8799 λ=1.21 — no lump). Used
+// by the FORWARD fragment synthesis (predict the hot Jupiter from inputs with no observed body).
+// The catalog's fragment systems sit at λ ≈ 0.42–0.52 (ups And, Beta Pic, HD 134987, 55 Cnc) and
+// the non-fragment discs at λ ≥ 1, so 0.7 cleanly separates them (design-doc fragment window 0.3–0.7).
+const FRAG_SPIN_MAX = 0.7;
 // Hamano Type-II steam-retention mass (M⊕): a hot planet below this can't hold its delivered-water
 // steam atmosphere against hydrodynamic escape (cosmic-shoreline scale, Zahnle & Catling) — it stays
 // in the Type-II magma-ocean state and the pebble-delivered water is destroyed (dry until late
