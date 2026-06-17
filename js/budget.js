@@ -151,16 +151,36 @@ const A_BIN_MASS_EXP = 0.5; // inner-pair centrifugal radius ∝ √M (SIS speci
 function close_binary_separation(lambda, M_star = SOL_M_PRIMORDIAL) {
     return A_BIN_COEF * Math.pow(M_star / SOL_M_PRIMORDIAL, A_BIN_MASS_EXP) * lambda * lambda;
 }
-// HOT-JUPITER PARKING RADIUS. A planetary fragment forms at the fission radius a_bin but then
-// MIGRATES inward (type II) and STALLS at the inner-disc cavity edge — the magnetospheric
-// truncation ≈ corotation radius — producing the observed "3-day pile-up" at ~0.04 AU
-// (Romanova/Lovelace; Lin et al.; Fortney 2021). Derived via Kepler from a canonical parking
-// period so it scales correctly with host mass: a_park = (M/M☉)^(1/3)·(P/yr)^(2/3) AU. P≈3 d
-// gives ~0.041·M^(1/3) AU (51 Peg b 0.052, υ And b 0.059 sit just outside this stall edge).
-const HJ_PARK_PERIOD_DAYS = 3.0;
-function hot_jupiter_park_radius(M_star_msun) {
-    const P_yr = HJ_PARK_PERIOD_DAYS / 365.25;
+// COROTATION RADIUS. The disc inner edge / magnetospheric truncation a disc-locked star sits at:
+// R_co = (G M / Ω²)^⅓. Spin λ is normalised to Sol's primordial T-Tauri rotation (λ=1 ≡ SOL_TTAURI
+// period ≈ 6 d, a standard CTTS rate), and Ω ∝ λ, so the rotation period is P = SOL_TTAURI/λ and
+// R_co = (M·(P/yr)²)^⅓ AU. Lower spin ⇒ longer period ⇒ larger corotation (∝ M^⅓·λ^−⅔).
+const SOL_TTAURI_PERIOD_DAYS = 6.0;
+function corotation_radius(M_star_msun, lambda) {
+    const P_yr = (SOL_TTAURI_PERIOD_DAYS / 365.25) / Math.max(lambda, 1e-6);
     return Math.pow(Math.max(M_star_msun, 1e-3), 1 / 3) * Math.pow(P_yr, 2 / 3);
+}
+// FISSION PARKING RADIUS. A fission product migrates in and STALLS at the 2:1 resonance interior
+// to corotation (orbital period ≈ ½ the stellar rotation period; Bouvier/Lin hot-Jupiter pile-up),
+// a_park = (½)^⅔ · R_co ≈ 0.63 R_co. Validated: 0.63·R_co lands the catalogue's confirmed fission
+// products at ~0.04–0.11 AU with the 6-d Sol period (μ Arae d, υ And b, HD 219134/69830 cores).
+const FISSION_PARK_FRAC = Math.pow(0.5, 2 / 3); // ≈ 0.630 (the 2:1 resonance interior to corotation)
+function hot_jupiter_park_radius(M_star_msun, lambda) {
+    return FISSION_PARK_FRAC * corotation_radius(M_star_msun, lambda);
+}
+// FISSION WINDOW. Fission requires the disc-locked crossing R_co ≈ 1.6 R_A (so the 2:1 parking
+// 0.63·R_co lands on the magnetospheric edge R_A, where the retained material sits). Bounded by:
+//   • too high spin → R_co ≪ R_A: the centrifugal fling LAUNCHES material out to the disc → cascade
+//     (catalogue: Sol R_co/R_A≈0.32, HR 8799 ≈0.25);
+//   • fission window → R_co/R_A ≈ 1.2–1.7 (ups And 1.59, μ Arae 1.47, HD 219134 1.67, 55 Cnc 1.22);
+//   • too low spin → R_co ≫ R_A: parking sits above the magnetosphere, material can't reach it →
+//     INVERTED mound (TRAPPIST ≈6.1). Inverted is gated separately (R_A ≥ R_disc); this is the
+//     UPPER (cascade) edge — the one R_co/R_A captures cleanly.
+const FISSION_WINDOW_LO = 0.9; // below ⇒ starved/launched → cascade
+function in_fission_window(M_star_msun, lambda, R_A) {
+    if (!(R_A > 0))
+        return false;
+    return corotation_radius(M_star_msun, lambda) / R_A >= FISSION_WINDOW_LO;
 }
 // PREDICTED low-spin hot-Jupiter fragment MASS — the accretion-pressure Hill-overflow lump.
 // At low spin the accretion heat vaporises rock and builds outward pressure, but the core can't

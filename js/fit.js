@@ -2075,6 +2075,14 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const M_pre = mass_from_budget(budget);
         if (!is_inverted_budget(M_pre)) {
             const r_snow_pre = irradiation_snow_line(M_pre);
+            // FISSION WINDOW (validated): fission requires the disc-locked crossing R_co ≈ 1.6 R_A — the
+            // spin range where the accretion-pressure overflow reaches R_A but the centrifugal fling is too
+            // weak to launch it to the disc. Too-high spin (R_co ≪ R_A) launches it → cascade (Sol/HR 8799);
+            // too-low spin is gated separately as inverted (above). Replaces the ad-hoc λ ≤ FRAG_SPIN_MAX.
+            const R_A_pre = (lambda != null && isFinite(lambda) && lambda > 0)
+                ? alfven_radius(M_pre, lambda) : 0;
+            const in_window = (lambda != null && isFinite(lambda) && lambda > 0)
+                && in_fission_window(M_pre, lambda, R_A_pre);
             // A LOW-SPIN core sheds essentially ONE close-in fission product (low angular momentum can't
             // fling it far): it lands at the close-fission separation a_bin = close_binary_separation(λ),
             // the SAME centrifugal radius the high-spin close binary uses (but at low λ). A gas giant
@@ -2093,21 +2101,22 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
                     outer_r = p.r;
             }
             let frag = null; // the single innermost qualifying candidate
-            for (const p of planets) {
-                if (p.core || p.kbo || p.fragment)
-                    continue;
-                const mo = p.observed || 0;
-                if (mo < FRAG_GIANT_MIN || mo >= M_STELLAR_BOUNDARY || !(p.r > 0))
-                    continue;
-                if (p.r >= r_snow_pre)
-                    continue; // cold giants = cascade slot-0 (e.g. HD 134987 c)
-                if (!(p.r < outer_r))
-                    continue; // outermost body = cascade barrier, spared
-                if (p.r > a_bin)
-                    continue; // beyond the close-fission reach ⇒ not a fragment
-                if (frag === null || p.r < frag.r)
-                    frag = p; // keep the INNERMOST qualifier
-            }
+            if (in_window)
+                for (const p of planets) {
+                    if (p.core || p.kbo || p.fragment)
+                        continue;
+                    const mo = p.observed || 0;
+                    if (mo < FRAG_GIANT_MIN || mo >= M_STELLAR_BOUNDARY || !(p.r > 0))
+                        continue;
+                    if (p.r >= r_snow_pre)
+                        continue; // cold giants = cascade slot-0 (e.g. HD 134987 c)
+                    if (!(p.r < outer_r))
+                        continue; // outermost body = cascade barrier, spared
+                    if (p.r > a_bin)
+                        continue; // beyond the close-fission reach ⇒ not a fragment
+                    if (frag === null || p.r < frag.r)
+                        frag = p; // keep the INNERMOST qualifier
+                }
             if (frag)
                 frag.fragment = true; // sub-stellar core fragment ⇒ a shared-core element
             // FORWARD low-spin fragment synthesis — predict the hot Jupiter from the INPUTS alone, with
@@ -2123,14 +2132,14 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             // Upsilon Andromedae b is predicted from core fragmentation with no observed planet defined.
             if (frag === null && outer_r === 0
                 && lambda != null && isFinite(lambda) && lambda > 0
-                && !core_fragments(lambda) && lambda <= FRAG_SPIN_MAX && isFinite(a_bin) && a_bin > 0) {
+                && !core_fragments(lambda) && in_window && isFinite(a_bin) && a_bin > 0) {
                 const m_frag = fragment_overflow_mass(M_pre, lambda);
                 if (m_frag >= FRAG_GIANT_MIN) {
                     // The fragment forms at the fission radius a_bin but migrates inward and STALLS at the
                     // inner-disc cavity / magnetospheric-truncation pile-up (~0.04·M^⅓ AU), NOT at a_bin
                     // (the old placement parked hot Jupiters out at the Alfvén-dam region). a_bin is kept as
                     // the formation seat (form_r); r is the close parked orbit.
-                    const r_park = hot_jupiter_park_radius(M_pre);
+                    const r_park = hot_jupiter_park_radius(M_pre, lambda);
                     planets = [...planets,
                         { name: "Hot Jupiter (predicted)", r: r_park, observed: m_frag, fragment: true }];
                 }

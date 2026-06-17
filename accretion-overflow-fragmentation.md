@@ -86,3 +86,50 @@ A massive fragment also carries an **instability zone**: it clears the cascade s
 1. Exact form of the overflow mass (full (1−f_disc) overflow vs the part exceeding Hill capacity).
 2. The spin-window edges — a single calibrated band (Sol no-fragment vs HD 134987 fragment) vs the two physical gates above.
 3. The multi-fission rule (how the overflow splits into b, c, …).
+
+---
+
+## Low-spin fragment CHAINS — the multi-fission rule (answers Open Q3)
+
+The single-fragment picture above (b, c) generalises: at low spin the overflow can fission into a **chain of small cores**, decreasing in mass toward the star. This is the same accretion-push overflow, recursive.
+
+### The mechanism is a *limit* of established disc formation, not new physics
+
+Mainstream disc formation IS "pushed out, then spun out": accretion pressure pushes material outward, and angular momentum flings it onto a rotationally-supported disc at the centrifugal radius R_c = j²/GM. The fragment chain is **the same push evaluated where the spin term collapses** — at low spin R_c is too small to absorb the push, so the surplus overflows the Hill boundary and fissions. Energy conservation *forces* this: L_acc = GMṀ/R must go to radiation + internal energy (support) + **P dV work (outward)**; when the radiate and spread-into-disc sinks are choked (optically thick + no extended disc), the P dV release leaves *as mass* (fission). Mainstream core-collapse theory uses the same accretion heat as inward support (Larson cores) and the same rock vaporisation as an inward-collapse trigger (H₂ dissociation → second collapse); this is the **outward reading** of those identical ingredients. Outcome resembles tidal downsizing (Nayakshin), but the *mechanism* is distinct (accretion-push overflow, not Toomre/GI — where heat *stabilises* and high AM drives fragmentation, the opposite of here).
+
+### The derived generator (calibrated on HD 69830, HD 219134, μ Arae)
+
+- **Fragment identification:** a fragment is a body the **cascade cannot build** (large positive dm), NOT the cascade-built giants. μ Arae: only **d** (+2743%) is fission; e/b/c (giants, ~0%) are cascade products. HD 69830: b, c (+300–700%) are fragments, d (−61%) is cascade. HD 219134: b,c,f,d,g are fragments, h (+0.3%) is cascade.
+- **Mass per fragment ≈ universal ~11 M⊕** — the inner-region Hill/isolation capacity. Inverting the observed chains gives Σ·r² ≈ 5 (Σ ∝ r⁻²) across all three systems / nine bodies. Every true fragment is a 4–16 M⊕ small core.
+- **Spacing ≈ 20–30 mutual Hill radii** — the *standard* dynamical-stability packing (Kepler median ~20), NOT a free parameter. **Decoupled from the mass constant** (feeding-zone C sets mass; K≈25 sets spacing; using C=15 for both over-packs).
+- **Count / reservoir = overflow = (budget − what the cascade captured)** — system-dependent, and it *should* be. μ Arae's cascade ate the giants (1272 M⊕) → little left → **1** fragment. HD 219134's cascade built almost nothing (small h) → much overflowed → **5** fragments. HD 69830 → 2. The single-fragment ↔ chain spectrum falls out of the leftover.
+- **Confinement (limited formation AU):** a low-spin fission product carries little specific angular momentum, so it **cannot be flung far** — its formation AU is severely capped, close-in. This is why the chains are compact and do **not** reach R_c (R_c overshoots by 7× for HD 219134, 94× for μ Arae). Same close-in confinement as the hot-Jupiter parking radius.
+
+### Solid vs open
+
+Solid (calibrated/grounded): the mechanism (energy-conservation push-overflow), fragment-by-under-build identification, ~11 M⊕ mass scale, ~25-mutual-Hill spacing, overflow = budget − cascade.
+Open (needs >3 systems + derivation, not a 3-point fit): the **a_max(λ) fling-limit law** (max fission formation AU vs spin) that sets the chain's outer extent; then wiring the chain detector (fragment = under-built body → ~11 M⊕ core, ~25-Hill-spaced, count from leftover) and a full-catalog over-flag check (must not fire on Sol / high-spin cascades).
+
+---
+
+## RESOLVED — placement is the corotation parking radius, gated by a spin WINDOW (wired in)
+
+The "a_max(λ) fling-limit law" above is **resolved, and it is NOT a fling law.** Calibrating the confirmed fission products (after removing two non-fission bodies — HD 134987 b = slot-4 cascade product; Beta Pic b at 9.66 AU = impossible for fission) showed **no mass or spin dependence in the placement** (m^0.11·λ^−0.15, both ≈0 over a 54× mass range): the products sit at a near-constant **0.04–0.11 AU**. That radius is each star's **magnetospheric truncation ≈ corotation radius** — they migrate in and stall at the **2:1 resonance interior to corotation**, exactly the hot-Jupiter pile-up.
+
+**Placement:** `a_park = 0.63 · R_co`, with `R_co = (GM/Ω²)^⅓` and Ω ∝ λ normalised to Sol's primordial T-Tauri rotation (≈6 d at λ=1). 0.63 = (½)^⅔ (the 2:1 resonance). Lands the catalogue's fission products at 0.04–0.11 AU with the literature 6-d period — not tuned.
+
+**Fission is a spin WINDOW, not a monotonic trend** — bounded by two different physics at the two edges, expressed through R_co vs R_A (R_co decreases with spin ∝Ω^−⅔; R_A increases with spin → they CROSS, and the crossing IS the window):
+
+| edge | condition | what happens |
+|---|---|---|
+| too high spin | R_co ≪ R_A | centrifugal fling LAUNCHES material to the disc → **cascade** |
+| **fission window** | **R_co ≈ 1.6 R_A** | material reaches R_A but can't be launched → clumps, 2:1 parking at 0.63 R_co lands on R_A |
+| too low spin | R_co ≫ R_A | parking sits above the magnetosphere → **inverted mound** (gated separately as R_A ≥ R_disc) |
+
+**Catalogue test (R_co with 6-d Sol period vs the model's R_A):** cascade Sol 0.32, HR 8799 0.25, Alpha Cen 0.10 (all ≪1.6 ✓); fission ups And 1.59, μ Arae 1.47, HD 219134 1.67, 55 Cnc 1.22, HD 134987 1.33, Beta Pic 1.06 (all ≈1–1.7 ✓); inverted TRAPPIST 6.12 (≫1.6 ✓). **The regimes separate cleanly on the upper edge.**
+
+**Wired in (budget.ts / fit.ts):** `corotation_radius(M,λ)`, `in_fission_window(M,λ,R_A)` (R_co/R_A ≥ FISSION_WINDOW_LO), `hot_jupiter_park_radius = 0.63·R_co`. The forward synthesis and the fragment identification are both gated by `in_fission_window` (replacing the ad-hoc λ ≤ FRAG_SPIN_MAX). Result: 55 Cnc b + ups And b flag as fragments; HD 134987 b + Beta Pic b correctly drop out; no catalogue residual changes.
+
+**Known open:**
+1. **Lower edge (fission↔inverted) is murky:** HD 69830 (λ0.21, fission) has R_co/R_A = 7.31, overlapping TRAPPIST (6.12, inverted) and Kepler-90 (5.95, under-fed). R_co/R_A alone can't split them — the discriminator is the cascade UNDER-BUILD (HD 69830's planets are under-built → fission; Kepler-90's are built → cascade).
+2. **Small-core identification not yet wired:** the identification loop still has the FRAG_GIANT_MIN ≥30 floor, so the stripped/small-core fission products (μ Arae d, HD 69830/HD 219134 cores, <30 M⊕) aren't flagged. Needs the post-cascade under-build test (a body the cascade can't build, in-window, near 0.63 R_co), with a full-catalog over-flag check against Kepler-90's built super-Earths.
