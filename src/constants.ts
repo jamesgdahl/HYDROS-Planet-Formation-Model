@@ -378,20 +378,35 @@ const EARTH_RE_IN_AU = 4.2635e-5;  // Earth radius in AU (for R_body vs R_A comp
 // Butterworth filter damping, and inscribed-circle-to-diagonal ratios.
 const CASCADE_RATIO = 1.0 - Math.sqrt(Math.log(2.0)) / 2.0; // ~0.5837
 
-// HWHM / second-harmonic population (v7). A compact, dense disc is a high-Q Alfvén-wave
-// resonator: the echo off the inner wall (magnetosphere / steep stellar potential) survives the
-// round trip and the cavity rings on its SECOND HARMONIC (Maas & Lam wave attractor; MNRAS
-// reflection-trapping — reflection peaks at λ_struct≈λ/2, trapping ∝ density contrast). The 2nd
-// harmonic fills the fundamental's NODES — the HWHM interstitials at the geometric half-rung
-// r_n·ρ^½ — seating an extra, smaller planet between each full rung (Kepler-90's ~1.31× chain
-// vs Sol's ~1.71×). Strength h2 = Q/(Q+Q_HARMONIC_CRIT) from the disc solid surface-density
-// contrast Q = Σ/Σ☉; Sol (Q≈1) ⇒ h2≈0.01 (full-rung only), Kepler-90 (Q≈800) ⇒ h2≈0.89.
-const Q_HARMONIC_CRIT = 100.0;     // cavity-Q (Σ/Σ☉) at which the 2nd harmonic reaches half strength
-const SIGMA_SOL_SOLID = 5.88;      // Sol disc solid surface density (rock+ice)/R_disc² (M⊕/AU²) — Q normalizer
-const HARMONIC_SITE_THRESH = 0.15; // h2 above which the half-rung interstitials are seeded
-let COMP_HARMONIC = 0.0;           // parked 2nd-harmonic strength (0 = fundamental only); set per-fit
-function set_harmonic(h: number): void { COMP_HARMONIC = (h > 0) ? Math.min(1.0, h) : 0.0; }
-function reset_harmonic(): void { COMP_HARMONIC = 0.0; }
+// SUHL PARAMETRIC SUBHARMONIC (magnetic-resonance wavelength doubling). In a WEAK magnetic field the
+// cascade standing wave period-doubles: it decays to half its rung frequency, so the rungs space out
+// by 2× (the Suhl spin-wave / Faraday subharmonic — parametric instability only ever cascades DOWN in
+// frequency, never up; that retro-justifies why a 2nd HARMONIC was always wrong). It is a genuine
+// FEIGENBAUM period-doubling cascade in the cavity rung count N (the control parameter): the bifurcation
+// points N_k crowd geometrically toward an accumulation N_∞ with the universal ratio δ = 4.66920…, so
+// they are NOT independent free thresholds — δ ties the f/4 floor to the f/2 floor and N_∞. Each
+// doubling also needs the field below a DAMPING floor. This explains the otherwise-baffling interleaving
+// (muarae N=8.00→2×, hd134987 8.08→4×, 55 Cnc 8.13→2×, hd142 8.17→4×, Beta Pic 8.40→2×): the highest-N
+// system (Beta Pic) is NOT the deepest because it is PAST N_∞ — the cascade's accumulation/chaos onset.
+//
+// The 1×→2× onset is a 2-D FARADAY TONGUE, not a flat field threshold (a flat B_crit failed: 47 UMa
+// doubles at B=0.19 while HD 20794 stays 1× at B=0.10 — *lower* field, so no scalar B_crit separates
+// them). Faraday tongues are PERIODIC — a 2× resonance at each integer N/2 (the subharmonic seats an
+// integer number of rungs) — and the tongue WIDENS with cavity size (the resonator Q ∝ N), so the
+// field-tolerance OPENS from the tip: B_width(N) = WAVE_TONGUE_SLOPE·(N − N_MIN), N_MIN at N/2 = 3.5
+// (the first mode; rocky N<7 can't seat f/2). 47 UMa (N=8.6, N/2≈4.3) tolerates B=0.19; HD 20794 (N=7.6,
+// near the narrow tip) needs B<0.10, excluded. Crucially the tongue does NOT close: a wide cavity has a
+// wide tongue, so Alpha Cen (N=19.8, N/2≈10 — a higher resonance) DOUBLES even at B≈1, while Sol/HR 8799
+// (N≈9–10, modest tongue) are 1× because their strong field clears B_width. (1× wrongly invents a 6240 M⊕
+// phantom brown dwarf in Alpha Cen's slot 1 to absorb its over-budget; 2× is the parsimonious fit and the
+// residual just exposes the budget overestimate — orthogonal to the regime.) [docs: wavelength-doubling]
+const FEIGENBAUM_DELTA = 4.6692016091;   // universal period-doubling constant
+const WAVE_DOUBLING_N_MIN = 7.0;         // Faraday-tongue tip: N/2 = 3.5 first-mode crossing (rocky N<7 can't seat f/2)
+const WAVE_TONGUE_SLOPE = 0.155;         // tongue widens at this rate (Q∝N): field-tolerance B_width = slope·(N−N_MIN)
+const WAVE_DOUBLING_N_ACCUM = 8.32;      // N_∞: cascade accumulation point (chaos beyond — Beta Pic N=8.40 is past it)
+// 2×→4× bifurcation is δ-FIXED, not calibrated: N_2 = N_∞ − (N_∞ − N_1)/δ  (≈ 8.04, between muarae and hd134987)
+const WAVE_DOUBLING_N_MIN_4X = WAVE_DOUBLING_N_ACCUM - (WAVE_DOUBLING_N_ACCUM - WAVE_DOUBLING_N_MIN) / FEIGENBAUM_DELTA;
+const B_PARAMETRIC_CRIT_4X = 0.058;      // 2×→4× damping floor — the deeper bifurcation needs weaker damping
 
 // Assignment scoring
 const OVERPRED_PENALTY = 0.2;

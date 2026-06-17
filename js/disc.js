@@ -211,6 +211,17 @@ function alfven_radius(M_star, spin) {
         * (dynamo_core_radius(M_E, rock) / body_radius_earth(M_SUN_TO_EARTH))
         * Math.pow(Math.max(B_RA, 1e-9), 1.0 / 3.0);
 }
+// Relative dynamo field strength B/B☉ (the Alfvén-wave drive), from the conductor ladder organized
+// by spin — Sol = 1. This is the damping knob for the Suhl parametric subharmonic (wave doubling):
+// a strong field (Sol/HR 8799 ≈ 1) suppresses the parametric decay; a weak field (≪ 1, low-spin
+// stars) lets a strongly-driven cascade period-double. Composition comes from the parked context.
+function dynamo_field_strength(M_star, spin) {
+    const M_E = M_star * M_SUN_TO_EARTH;
+    const rock = M_E * COMP_Z * COMP_F_ROCK;
+    const H = M_E * (1.0 - COMP_Z);
+    const B_REL_SOL = Math.pow(M_SUN_TO_EARTH / M_SUN_EARTH, DYNAMO_SAT_EXP);
+    return dynamo_field_rel(M_E, rock, H, spin) / B_REL_SOL;
+}
 // Radius (R⊕) of the conducting DYNAMO CORE — the length scale of the Alfvén Dam.
 // A star conducts throughout (plasma), so its core is the whole body. A sub-stellar
 // body's field is generated in its deep conductive core (iron/rock seed + metallic-H

@@ -792,11 +792,11 @@ function wrapTip(lines, maxChars) {
   return out;
 }
 
-// Alfvén–Maas Superposition chart. Plots the component waveforms (1st Maas / Alfvén / 2nd Maas
-// harmonic) and their NET superposition by calling the SAME cascade.js functions the fit uses
-// (maas_component / alfven_component / harmonic_component / superposition_amplitude), so the chart
-// is the model, not a parallel reimplementation. Dam weights are the cascade.ts see-saw; h₂ is the
-// fit's value (budget_harmonic_h2). EXPLORATORY: the component amplitudes are not yet calibrated.
+// Alfvén–Maas Superposition chart. Plots the component waveforms (Maas / Alfvén) and their NET
+// superposition by calling the SAME cascade.js functions the fit uses (maas_component /
+// alfven_component / superposition_amplitude), so the chart is the model, not a parallel
+// reimplementation. Dam weights are the cascade.ts see-saw. EXPLORATORY: the component amplitudes
+// are not yet calibrated.
 function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
   window._wf = { fit, R_disc, R_A, r_snow, hwInner, hwOuter };
   const el = document.getElementById("waveform");
@@ -807,19 +807,18 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
   if (!slots.length || !isFinite(R_disc) || !isFinite(R_A) || R_A <= 0) { el.innerHTML = ""; return; }
 
   // SINGLE SOURCE OF TRUTH: the chart plots the SAME cascade.js component waveforms the FIT uses
-  // (maas_component / alfven_component / harmonic_component / superposition_amplitude), so the
-  // waveform can never drift from the model. h₂ is the EXACT value the fit used (budget_harmonic_h2);
-  // set_harmonic primes the global the components read. The Alfvén trace is the single magnetospheric
-  // comb the fit uses (not a per-core binary sum — the fit's superposition_amplitude is single-Alfvén).
+  // (maas_component / alfven_component / superposition_amplitude), so the waveform can never drift
+  // from the model. The Alfvén trace is the single magnetospheric comb the fit uses (not a per-core
+  // binary sum — the fit's superposition_amplitude is single-Alfvén).
   const cb = window.CURRENT_BUDGET || {};
   const C = R_A / R_disc;
   const dw = dam_weights(R_disc, R_A);
   const wM = dw.wM, wA = dw.wA;
-  const h2 = (cb.budget_harmonic_h2 != null && isFinite(cb.budget_harmonic_h2)) ? cb.budget_harmonic_h2 : 0;
-  set_harmonic(h2);                                            // prime the components' COMP_HARMONIC global
+  // Prime the Suhl parametric subharmonic order the FIT used (budget_wave_doubling): the component
+  // functions read COMP_WAVE_DOUBLING via cascade_alpha_eff, so a doubled disc plots its α/2 wave.
+  set_wave_doubling((cb.budget_wave_doubling >= 1) ? cb.budget_wave_doubling : 1);
   const maas   = r => maas_component(r, R_disc, R_A);          // Maas wave: Davis-Dam (R_disc) echo, attenuates inward
   const alfven = r => alfven_component(r, R_disc, R_A);        // Alfvén comb: Maas reflected off R_A, 180° flipped (negative)
-  const harm   = r => harmonic_component(r, R_disc, R_A);      // retired (0) — kept for call-signature parity
   const sup    = r => superposition_amplitude(r, R_disc, R_A); // NET = maas + alfven (the model's value)
 
   // ---- Chart.js render (the custom SVG couldn't handle the waveform's symlog dynamic range
@@ -847,7 +846,7 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     if (isFinite(f.clear_hi) && f.clear_hi > 0) rs.push(f.clear_hi);
   }
   const rmin = Math.min(Math.min(...rs) * 0.82, R_A * 0.92), rmax = Math.max(...rs) * 1.18;  // extend to R_A so the negative terminus is visible
-  const aLim = Math.max(1.05, wM * (1 + h2) + wA) * 1.05;
+  const aLim = Math.max(1.05, wM + wA) * 1.05;
   // SYMLOG y: the amplitude decays steeply inward, so a linear axis collapses the inner
   // antinodes onto zero; signed-log keeps them visible and resolves the sign flips.
   const symlin = aLim * 0.005;
@@ -954,7 +953,6 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     label: `Alfvén (w=${wA.toFixed(2)})`,
     data: sample(alfven), borderColor: '#e6695a', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.25, order: 3
   });
-  // (the additive 2nd-harmonic trace is retired — compression now shifts the fundamental wavelength)
   if (r_snow > rmin && r_snow < rmax) datasets.push(vline(r_snow, '#3cb371', [5, 3], `snow line ${r_snow.toFixed(2)} AU`));
   datasets.push({
     label: 'migration', data: migr, showLine: true, spanGaps: false,

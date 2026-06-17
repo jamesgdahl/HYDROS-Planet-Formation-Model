@@ -12,6 +12,14 @@ let CASCADE_INNER_DAM: number | null = null;
 function set_cascade_inner_dam(r: number): void { CASCADE_INNER_DAM = (r > 0) ? r : null; }
 function reset_cascade_inner_dam(): void { CASCADE_INNER_DAM = null; }
 
+// SUHL PARAMETRIC SUBHARMONIC order m = 2ᵏ (1 = fundamental). When a weak-field disc period-doubles
+// (see B_PARAMETRIC_CRIT), the standing wave runs at half the rung frequency: α_eff = CASCADE_ALPHA/m,
+// so the rungs space out by m×. budgetFit sets this per fit (decided forward, from the field and the
+// gas-giant pump); single-pass FWHM systems leave it at 1. (docs: wavelength-doubling)
+let COMP_WAVE_DOUBLING = 1;
+function set_wave_doubling(m: number): void { COMP_WAVE_DOUBLING = (m >= 1) ? m : 1; }
+function reset_wave_doubling(): void { COMP_WAVE_DOUBLING = 1; }
+
 function cascade_slot_positions(M_star: number, spin: number,
                                 min_slots: number = 0,
                                 omega?: number, f_disc?: number): number[] {
@@ -61,11 +69,10 @@ function cascade_slot_positions(M_star: number, spin: number,
   // Ladder terminates at the inner Alfvén Dam.
   // SLOTS = ANTINODES OF THE NET SUPERPOSITION (the single source of truth). Scan |amplitude|
   // over [R_A, R_disc] and take every LOCAL MAXIMUM — that is where the standing wave actually
-  // piles matter. No geometric ρ-ladder, no snap, no dip-filter: for the fundamental alone (low-Q,
-  // Sol) the maxima land on the ρ-rungs (full-rung spacing); for a high-Q disc the 2nd harmonic
-  // adds half-rung maxima, and a near-zero DIP between two peaks (a suppressed rung) is simply not
-  // a maximum ⇒ not a slot. The phase shift, the Alfvén comb, the envelope and the 2nd harmonic
-  // are all already baked into superposition_amplitude.
+  // piles matter. No geometric ρ-ladder, no snap, no dip-filter: the maxima land on the ρ-rungs
+  // (full-rung spacing), and a near-zero DIP between two peaks (a suppressed rung) is simply not
+  // a maximum ⇒ not a slot. The phase shift, the Alfvén comb and the envelope are all already
+  // baked into superposition_amplitude.
   const NS = 1200;
   const logHi = Math.log(R_disc), logLo = Math.log(R_A_phys);
   const rAt = (i: number) => Math.exp(logHi - (logHi - logLo) * i / NS);
@@ -124,7 +131,8 @@ function cascade_alpha_eff(R_disc: number, R_A: number): number {
   // ρ off its universal value and degraded Sol's terrestrials (Mercury/Venus/Earth/Mars 0%→−3..−10%). So
   // α is the fixed CASCADE_ALPHA, independent of R_A. (span/R_A kept in the signature, now unused.)
   void span; void R_A;
-  return CASCADE_ALPHA;
+  // Suhl parametric subharmonic: a doubled disc runs at half the rung frequency (α/2, α/4, …).
+  return CASCADE_ALPHA / COMP_WAVE_DOUBLING;
 }
 
 // Net (signed) Alfvén–Maas standing wave at radius r — THE SOURCE OF TRUTH for slot positions
@@ -132,12 +140,10 @@ function cascade_alpha_eff(R_disc: number, R_A: number): number {
 // radiates from the Davis Dam (R_disc) attenuating inward; the Alfvén wave radiates from the
 // Alfvén Dam (R_A, single-star comb centred at the star) attenuating outward.
 // COMPONENT waveforms — the SINGLE SOURCE OF TRUTH for both the fit (superposition_amplitude, below)
-// AND the index.html chart, so the two can never drift. ONE Maas + ONE Alfvén wave, both at the
-// compression-set frequency cascade_alpha_eff() — no separate harmonic term (the "2nd harmonic" is now
-// the SAME fundamental at the compressed wavelength, see cascade_alpha_eff).
+// AND the index.html chart, so the two can never drift. ONE Maas + ONE Alfvén wave at the fixed
+// fundamental frequency CASCADE_ALPHA (ρ = 0.5837).
 
-// Maas wave: radiates from the Davis Dam (R_disc), attenuates INWARD. Frequency α_eff rises with
-// compression (ρ→ρ^g), so a compressed disc's rungs pack tighter (Kepler-90's "half-rung" ladder).
+// Maas wave: radiates from the Davis Dam (R_disc), attenuates INWARD.
 function maas_component(r: number, R_disc: number, R_A: number): number {
   const { wM } = dam_weights(R_disc, R_A);
   const ampM = Math.pow(Math.min(r / R_disc, 1), CASCADE_DECAY);
@@ -158,15 +164,10 @@ function alfven_component(r: number, R_disc: number, R_A: number): number {
   const ampA = Math.pow(Math.min(R_A / dA, 1), CASCADE_DECAY);
   return -wA * ampA * Math.cos(cascade_alpha_eff(R_disc, R_A) * Math.log(dA / R_A));
 }
-// Retired: the additive 2nd-harmonic term. Compression now shifts the FUNDAMENTAL wavelength (α_eff)
-// rather than adding a subharmonic, so this returns 0 (kept for the chart's call signature).
-function harmonic_component(_r: number, _R_disc: number, _R_A: number): number {
-  return 0;
-}
-// Net (signed) Alfvén–Maas standing wave = the three components. THE SOURCE OF TRUTH for slot positions
+// Net (signed) Alfvén–Maas standing wave = Maas + Alfvén. THE SOURCE OF TRUTH for slot positions
 // (its antinodes) and masses (its amplitude).
 function superposition_amplitude(r: number, R_disc: number, R_A: number): number {
-  return maas_component(r, R_disc, R_A) + alfven_component(r, R_disc, R_A) + harmonic_component(r, R_disc, R_A);
+  return maas_component(r, R_disc, R_A) + alfven_component(r, R_disc, R_A);
 }
 
 // Snap a geometric-ladder guess to the nearest TRUE antinode (local |amplitude| max) of the

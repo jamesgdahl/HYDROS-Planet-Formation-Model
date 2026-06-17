@@ -780,7 +780,17 @@ function slot_aware_fit(planets: Planet[], M_star: number,
     // BOTH derived forward from λ + budget, not copied from the observed body. (External ⇒ outside
     // the residual target, so this is a pure diagnostic: predicted vs observed mass/position.)
     const frag_pred = is_frag ? fragment_overflow_mass(M_star, spin) : m_obs;
-    const frag_abin = is_frag ? close_binary_separation(spin, M_star) : p.r;
+    // PLACEMENT depends on how hot the core ran. DEEP fission (T_core ≫ boiling, low spin) parks the
+    // lump close-in at a_bin. THRESHOLD-EDGE fission (T_core just above silica boiling, spin near the
+    // threshold — 47 UMa) flings it FAR OUT, by the same centrifugal stretch that enlarges it, to the
+    // log-midpoint √(a_bin·R_c) between the close fission scale and the centrifugal dam. Both forward.
+    let frag_pos = close_binary_separation(spin, M_star);
+    if (is_frag && COMP_MDOT > 0
+        && core_accretion_temperature(M_star, spin, COMP_MDOT) < 2.0 * T_SILICA_BOIL
+        && core_accretion_temperature(M_star, spin, COMP_MDOT) > T_SILICA_BOIL) {
+      frag_pos = Math.sqrt(frag_pos * centrifugal_radius(M_star, spin));
+    }
+    const frag_abin = is_frag ? frag_pos : p.r;
     const frag_err = (is_frag && frag_pred > 0) ? (m_obs - frag_pred) / frag_pred * 100 : 0;
     results.push({
       slot_n: -1, slot_r: p.r, r_used: p.r,
@@ -1958,7 +1968,7 @@ interface BudgetFitResult extends BruteFitResult {
   // Binary only: the outermost core element's Alfvén Dam (the cascade's inner terminus); equals
   // budget_R_A for a single star.
   budget_R_A_outer: number;
-  budget_harmonic_h2: number;
+  budget_wave_doubling: number;   // Suhl parametric subharmonic order m (1 = fundamental, 2 = doubled); the chart primes set_wave_doubling(m)
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2145,7 +2155,7 @@ function budgetFit(planets: Planet[], budget: Budget,
   const Z = metallicity_from_budget(budget);
   const f_rock = f_rock_from_budget(budget);
   let inverted = is_inverted_budget(M);   // refined to the magnetopause regime in the physics-dam path
-  let harmonic_h2 = 0;                     // HWHM 2nd-harmonic strength used this fit (exposed for the chart)
+  let budget_wave_doubling = 1;           // Suhl parametric subharmonic order m used this fit (1 = fundamental; exposed for the chart)
   set_composition(Z, f_rock);
   try {
     // Interior fit population: slot products only — core components (co-primary
@@ -2221,15 +2231,6 @@ function budgetFit(planets: Planet[], budget: Budget,
       R_disc_phys = disc_radius(M, omega as number, omega as number);   // Davis = outward pressure ⇄ density
       R_A_mag = alfven_radius(M, omega as number);                      // Alfvén = magnetic field reach
       spin = omega as number;                                           // real spin everywhere — no fake geometry spin
-      // HWHM second-harmonic strength from the disc solid surface-density contrast (cavity Q).
-      // NORMAL stellar regime only: inverted M-dwarfs run the factory (no slot cascade) and
-      // sub-cascades (moons) are a separate resonator. Sol (Q≈1)⇒~0.01, Kepler-90 (Q≈800)⇒~0.89.
-      if (!parent && !is_inverted_budget(M) && R_A_mag < R_disc_phys) {
-        const Sigma = (budget.rock + budget.ice) / Math.max(R_disc_phys * R_disc_phys, 1e-12);
-        const Q = Sigma / SIGMA_SOL_SOLID;
-        harmonic_h2 = Q / (Q + Q_HARMONIC_CRIT);
-        set_harmonic(harmonic_h2);
-      } else { reset_harmonic(); }
       const M_E_body = M * M_SUN_TO_EARTH;
       // DERIVED f_disc — dam reservoir: self-similar nebula mass (LBP γ=1) between the two
       // dams over the disc profile-scale R_c. From spin + budget alone; bare ≡ populated disc.
@@ -2286,6 +2287,52 @@ function budgetFit(planets: Planet[], budget: Budget,
       ? Math.max(pile_snow_line(M, fd, alfven_radius(M, SNOW_REF_SPIN), SNOW_REF_SPIN),
                  irradiation_snow_line(M))
       : mulders_snow_line(M, Mdot_of(fd));
+    // FORWARD THRESHOLD-EDGE FISSION (47 UMa). The top-of-budgetFit detector catches the DEEP-fission
+    // close-in hot Jupiters; this catches the THRESHOLD-EDGE case, predicted from λ + accretive heating
+    // (Ṁ is known here). If the core boils but only just — T_SILICA_BOIL < T_core(λ,Ṁ) < 2·T_SILICA_BOIL
+    // — the overflow is large (enhanced) and flung far to √(a_bin·R_c). That is a PREDICTION from inputs;
+    // the observed giant matching it in BOTH position and mass IS that product, so it's flagged like a
+    // fission sibling (NOT hand-flagged). No match ⇒ a prediction of an unobserved giant. (docs: fission-threshold)
+    if (parent == null && primaryMass != null && !inverted && f_disc_derived != null
+        && lambda != null && isFinite(lambda) && lambda > 0) {
+      const Mdot_fe = Mdot_of(f_disc_derived);
+      const T_core_fe = core_accretion_temperature(M, lambda, Mdot_fe);
+      if (T_core_fe > T_SILICA_BOIL && T_core_fe < 2.0 * T_SILICA_BOIL) {
+        set_mdot(Mdot_fe);                                            // engage the overflow-mass enhancement
+        const m_pred = fragment_overflow_mass(M, lambda);            // enhanced overflow mass
+        const reservoir = f_disc_derived * M * M_SUN_TO_EARTH;       // disc mass available to source it
+        // AVAILABILITY (amplitude-allocation law): the enhanced overflow must fit within the disc
+        // reservoir. Near the threshold the enhancement diverges; a metal-poor / low-mass disc (e.g.
+        // HD 20794: predicts 2278 M⊕ but reservoir only 1446) cannot source it ⇒ no giant fissions.
+        // Only a disc that can actually supply it (47 UMa: 808 ≪ 3389) produces the body.
+        if (m_pred >= FRAG_GIANT_MIN && m_pred <= reservoir) {
+          const pos = Math.sqrt(close_binary_separation(lambda, primaryMass)
+                                * centrifugal_radius(M, lambda));     // √(a_bin·R_c) — the threshold-edge fling
+          let outer_r = 0;
+          for (const p of planets) {
+            if (p.core || p.kbo) continue;
+            const mo = p.observed || 0;
+            if (mo > 0 && mo < M_STELLAR_BOUNDARY && p.r > outer_r) outer_r = p.r;
+          }
+          // The product is PREDICTED from inputs. If an observed giant matches it (position AND mass),
+          // that body IS it (flag like a fission sibling). If none does — e.g. all planets stripped for
+          // a forward test — EMIT it as a predicted body, so the prediction stands on the inputs alone.
+          let matched = false;
+          for (const p of planets) {
+            if (p.core || p.kbo || p.fragment) continue;
+            const mo = p.observed || 0;
+            if (mo < FRAG_GIANT_MIN || mo >= M_STELLAR_BOUNDARY || !(p.r > 0) || !(p.r < outer_r)) continue;
+            if (Math.abs(Math.log(p.r / pos)) > 0.405) continue;      // position match (±~1.5×)
+            if (Math.abs(mo - m_pred) / m_pred > 0.5) continue;       // mass match (±50%)
+            p.fragment = true; matched = true; break;
+          }
+          if (!matched) {
+            planets = [...planets,
+              { name: "Hot Jupiter (predicted)", r: pos, observed: m_pred, fragment: true }];
+          }
+        }
+      }
+    }
     // BINARY: the circumbinary ladder bottoms out at the OUTERMOST core element's Alfvén Dam, not
     // the combined R_A at the barycentre — no slot forms inside the cores' mutual orbit. Each
     // element's dam reaches to its apastron-from-barycentre + its own R_A; take the widest (incl.
@@ -2342,6 +2389,31 @@ function budgetFit(planets: Planet[], budget: Budget,
       reset_pebble_flux_budget();                               // sub-cascade → legacy disc-ice flux
       reset_kbo_budget();
       reset_si_retention();                                     // sub-cascade moons: no KBO-style decline
+    }
+    // SUHL PARAMETRIC SUBHARMONIC (wavelength doubling) — set the cascade-wave order FORWARD, from the
+    // cavity geometry and the field, never from observed planets. The 1×→2× onset is a 2-D FARADAY
+    // TONGUE: doubling fires when the cavity is past the tongue tip (N > WAVE_DOUBLING_N_MIN) AND the
+    // dynamo field is below the tongue's field-tolerance there, B < B_width(N) = WAVE_TONGUE_SLOPE·(N −
+    // N_MIN) — the tongue opens linearly from the tip, so a wide cavity (47 UMa, N=8.6) tolerates a
+    // moderate field (B=0.19) while a near-tip one (HD 20794, N=7.6) needs a weak field and stays 1×.
+    // (A flat B_crit can't separate them — 47 UMa doubles at HIGHER field.) The 2×→4× depth is the
+    // δ-spaced Feigenbaum floor (constants), still a flat damping floor. (docs: wavelength-doubling)
+    reset_wave_doubling();
+    if (f_disc_derived != null && !inverted && !parent
+        && R_disc_phys != null && R_A_mag != null && R_A_mag > 0) {
+      const N_rungs = CASCADE_ALPHA * Math.log(R_disc_phys / R_A_mag) / Math.PI;
+      const B_field = dynamo_field_strength(M, omega as number);
+      const B_tongue = WAVE_TONGUE_SLOPE * (N_rungs - WAVE_DOUBLING_N_MIN);   // Faraday tongue field-tolerance at this N
+      let m = 1;
+      // Faraday tongues are PERIODIC (one 2× resonance at each integer N/2), and the tongue WIDENS with
+      // cavity size (Q ∝ N): B_width grows with N, so a huge cavity doubles even at a strong field. The
+      // tip is N_MIN (N/2 = 3.5, first mode). Sol/HR 8799 (N≈9–10) have a strong field above their modest
+      // B_width → 1×; Alpha Cen (N=19.8, N/2≈10) has a wide tongue (B_width≈2) → 2× despite B≈1.
+      if (N_rungs > WAVE_DOUBLING_N_MIN && B_field < B_tongue) {
+        m = 2;
+        if (N_rungs > WAVE_DOUBLING_N_MIN_4X && B_field < B_PARAMETRIC_CRIT_4X) m = 4;
+      }
+      if (m > 1) { set_wave_doubling(m); budget_wave_doubling = m; }
     }
     let f: number;
     let fit: FitResult;
@@ -2514,7 +2586,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       budget_hw_inner: hw_in, budget_hw_outer: hw_out,
       budget_R_disc: R_disc_final, budget_dam_align: dam_align,
       budget_R_A_outer: cascade_inner_dam != null ? cascade_inner_dam : alfven_radius(M, om_eff),
-      budget_harmonic_h2: harmonic_h2,
+      budget_wave_doubling,
       // CONDUCTOR-LADDER magnetosphere classification (exposed, non-driving for now):
       // does the dynamo field project beyond the body → exterior Alfvén Dam, or is it
       // BURIED (single-body infall)? Then magnetized → normal / inverted by R_A vs R_disc.
@@ -2529,5 +2601,5 @@ function budgetFit(planets: Planet[], budget: Budget,
         return { budget_field_G: B_G, budget_R_A_mag: R_A_m, budget_R_body_AU: R_body_AU, budget_regime: regime };
       })(),
     };
-  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); reset_hill_radius(); reset_harmonic(); reset_wide_dam(); }
+  } finally { reset_composition(); reset_r_disc_norm(); reset_snow_line(); reset_mdot(); reset_form_spin(); reset_fragmenting(); reset_dam_inputs(); reset_hill_radius(); reset_wide_dam(); reset_wave_doubling(); }
 }

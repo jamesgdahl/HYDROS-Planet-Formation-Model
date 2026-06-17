@@ -197,8 +197,48 @@ function in_fission_window(M_star_msun, lambda, R_A) {
 // disc spreads this mass into the cascade instead of lumping it, so the gate — not the formula —
 // is what keeps Jupiter from being read as an overflow fragment.
 const FRAG_OVERFLOW_COEF = 0.305;
+// THRESHOLD-EDGE ENHANCEMENT. The base K·β·M is the LINEAR overflow, calibrated on the deep-fission
+// hot Jupiters (ups And b, 55 Cnc b at λ≈0.42–0.52 ⇒ E≈1). But near the silica-boiling threshold the
+// SAME centrifugal stretching that flings the lump far out also unbinds far more of the LOOSELY-BOUND
+// vapour envelope (the boiled iron/silicate layer — not the dense core, which is barely deformed at
+// β≈0.004). So the shed mass diverges as the core's accretion temperature approaches boiling:
+//   E = 1 + FRAG_ENHANCE_COEF / (T_core/T_BOIL − 1)²   — →1 for super-heated cores, →∞ at the threshold.
+// Pinned on 47 UMa b (the unique threshold-edge system): 440 M⊕ → 804 M⊕ (E≈1.83). Needs Ṁ
+// (COMP_MDOT, set during the fit); without it E=1 (deep-fission lone hot Jupiters are E≈1 regardless).
+const FRAG_ENHANCE_COEF = 0.072;
 function fragment_overflow_mass(M_star, lambda) {
-    return FRAG_OVERFLOW_COEF * rotational_beta(lambda) * m_star_earth(M_star);
+    const base = FRAG_OVERFLOW_COEF * rotational_beta(lambda) * m_star_earth(M_star);
+    if (COMP_MDOT > 0) {
+        const x = core_accretion_temperature(M_star, lambda, COMP_MDOT) / T_SILICA_BOIL - 1.0;
+        if (x > 0)
+            return base * (1.0 + FRAG_ENHANCE_COEF / (x * x));
+    }
+    return base;
+}
+// ── PHYSICAL FISSION THRESHOLD: core accretion temperature vs rock/iron boiling ──────────────────
+// The accretion-overflow that pinches off a fission product is driven by ROCK VAPOUR PRESSURE: the
+// accreting core's surface boils, and the vapour pushes material past the Hill radius. Iron (3134 K)
+// and silica (~3130 K) boil within ~50 K of each other, so the whole iron+silicate core de-vaporises
+// as a UNIT at T_BOIL ≈ 3130 K. Above it the saturated silica vapour pressure (Visscher & Fegley 2013)
+// is ≳1 bar (strong overflow); below it the pressure collapses ~10× per 300 K (∝ 10^(−25899/T)), so the
+// overflow shuts off SHARPLY — which is why the spin threshold reads like a clean cutoff.
+const T_SILICA_BOIL = 3130.0; // K — SiO2 1-bar boiling (Visscher & Fegley 2013)
+const T_IRON_BOIL = 3134.0; // K — Fe boiling; coincident with silica ⇒ core boils as one unit
+// Saturated molten-silica vapour pressure (bar), valid 2000–6000 K — the fission DRIVE.
+function silica_vapor_pressure(T_K) {
+    return Math.pow(10, 8.203 - 25898.9 / Math.max(T_K, 1e-3));
+}
+// CORE ACCRETION TEMPERATURE — Mulders viscous heating applied to the accreting core. The viscous
+// (accretion-dominated) disc midplane follows T ∝ r^(−9/10) — the SAME law whose 160 K crossing is the
+// Mulders snow line. Evaluated at the magnetospheric radius R_A (where disc-fed material lands and
+// shocks onto the core), it is the core's accretion temperature. R_A GROWS with spin (B ∝ Ω, dynamo),
+// so faster spin ⇒ material lands farther out ⇒ COOLER core ⇒ T_core falls with λ. The fission spin
+// threshold is the PHYSICAL crossing T_core(λ) = T_SILICA_BOIL — no round number: it lands between
+// 47 UMa (≈4050 K, just boiling ⇒ fissions, max-fission edge) and Sol (≈1680 K ⇒ no fission, cascade).
+function core_accretion_temperature(M_star, lambda, Mdot_msun_yr) {
+    const R_SL = mulders_snow_line(M_star, Mdot_msun_yr);
+    const R_A = alfven_radius(M_star, lambda);
+    return 160.0 * Math.pow(R_SL / Math.max(R_A, 1e-9), 0.9);
 }
 function three_budget_split(b, lambda) {
     const M = mass_from_budget(b);
