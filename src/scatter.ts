@@ -414,7 +414,7 @@ function apply_scattering(results: FitSlot[], M_star: number, R_A_now: number,
         const impactNote = ct
           ? `${sc.inward.mass.toFixed(3)} M⊕ flung inward → impacts ${ct.name} at ~${ct.slot_r.toFixed(2)} AU`
           : `${sc.inward.mass.toFixed(3)} M⊕ flung inward (no inner target)`;
-        target.interpretation = `destroyed (slot's ${sc.allocation.toFixed(2)} M⊕ planet scattered by ${perturberName} → ${sc.outward.mass.toFixed(2)} M⊕ outward primary struck ${o.name}, ${impactNote}, ${sc.belt.mass.toFixed(3)} M⊕ left as a ${sc.belt.type}-type debris belt at ${sc.formation_au.toFixed(2)} AU)`;
+        target.interpretation = `destroyed (slot's ${sc.allocation.toFixed(2)} M⊕ planet scattered by ${perturberName} → ${sc.outward.mass.toFixed(2)} M⊕ primary scattered outward to strike ${o.name}, ${impactNote}, ${sc.belt.mass.toFixed(3)} M⊕ left as a ${sc.belt.type}-type debris belt at ${sc.formation_au.toFixed(2)} AU)`;
       }
     }
   }
@@ -452,6 +452,6 @@ function apply_scattering(results: FitSlot[], M_star: number, R_A_now: number,
     target.destroyed = true;
     const sc = target.scatter!;
     const impactNote = ct ? `impacts ${ct.name} at ~${ct.slot_r.toFixed(2)} AU` : 'inward impactor';
-    target.interpretation = `${base} (obliterated by simultaneous scattering: ${perturberNames} → ${sc.belt.mass.toFixed(3)} M⊕ ${sc.belt.type}-type debris belt at ${sc.formation_au.toFixed(2)} AU; ${sc.outward.mass.toFixed(2)} M⊕ primary struck ${o.name}, ${sc.inward.mass.toFixed(3)} M⊕ ${impactNote})`;
+    target.interpretation = `${base} (obliterated by simultaneous scattering: ${perturberNames} → ${sc.belt.mass.toFixed(3)} M⊕ ${sc.belt.type}-type debris belt at ${sc.formation_au.toFixed(2)} AU; ${sc.outward.mass.toFixed(2)} M⊕ primary scattered outward to strike ${o.name}, ${sc.inward.mass.toFixed(3)} M⊕ ${impactNote})`;
   }
 }
