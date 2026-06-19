@@ -86,6 +86,81 @@ function disc_radius(M_star, spin, omega, f_disc) {
     }
     return R_density;
 }
+// EQUILIBRIUM GAS PRESSURE P — the MASTER variable of the gas disc. It is the disc gas pressure
+// (∝ Σ_gas = f_disc·M/(π R_disc²)) that balances the stellar-wind ram at the inner edge. ONE P does
+// THREE things at once: (1) sets the inner edge R_inner = √(GAS_EDGE_K·W/P) — lower P ⇒ edge further
+// out; (2) IS the gas density a planet's Hill zone captures — higher P ⇒ more gas; (3) sets the
+// stellar H-consumption rate Ṁ_* ∝ W·P (the wind strips H's angular momentum so it falls in —
+// higher P, faster eating). As the star eats the H, P falls, marching R_inner out, thinning the
+// planet supply, and slowing its own consumption. The radius is just a readout of P.
+function equilibrium_pressure(M_star, R_disc, f_disc) {
+    const fd = (f_disc > 0) ? f_disc : 1e-6;
+    return fd * m_star_earth(M_star) / (Math.PI * Math.max(R_disc * R_disc, 1e-12)); // ∝ Σ_gas
+}
+// The dam-setting wind flux W (≡ COMP_FLUX ∝ M⋆^3.54; falls back to M⋆^3.54 off the budget path).
+function wind_flux(M_star) {
+    return (COMP_FLUX > 0) ? COMP_FLUX : Math.pow(Math.max(M_star, 1e-9), 3.54);
+}
+// (1) GAS-DISC INNER EDGE = the wind-ram ⇄ gas-pressure equilibrium: W/r² = P ⇒ R_inner = √(W/P)
+// (scaled by GAS_EDGE_K so Sol ⇒ ~3 AU). Inside it the wind strips the gas to the star (rocky);
+// outside, the gas holds and envelopes form. Bounded to [0, R_disc]; marches outward as P decays.
+function gas_inner_edge(M_star, R_disc, f_disc) {
+    const P = equilibrium_pressure(M_star, R_disc, f_disc);
+    const R_inner = Math.sqrt(GAS_EDGE_K * wind_flux(M_star) / Math.max(P, 1e-30));
+    return Math.min(R_inner, R_disc);
+}
+// CONSUMPTION FRONT — the magnetic-braking inner edge (see memory ram-pressure-is-magnetic-braking).
+// The magnetized wind torques the disc gas (lever arm R_A), strips its angular momentum, and consumes
+// it onto the star INSIDE-OUT; the SAME torque spins the star down. We integrate the coupled front
+// position R_inner(t) and stellar spin Ω(t) forward and return tedge(r) = the time the front reaches
+// radius r (a planet captures gas/pebbles only until then). With the MMSN slope p=1.5 the per-radius
+// march factor is flat, so at fixed Ω the front moves at constant speed; the spin-down (Ω falls → R_A
+// shrinks → torque drops) is what DECELERATES it — fast early (clears slot 4 → rocky), slow late
+// (Jupiter sits in gas for Myr). Returns { tedge, r0 } with r0 = the initial front position (=R_A).
+function consumption_front(M_star, omega, f_disc) {
+    const fd = (f_disc > 0) ? f_disc : F_DISC_REF;
+    const disc_scale = (fd / F_DISC_REF) * M_star; // MMSN Σ normalization (more gas ⇒ slower front)
+    const r0 = alfven_radius(M_star, omega); // the front starts at the magnetosphere edge
+    let R_inner = r0;
+    let Om = omega;
+    // DERIVED wind torque J̇ = Ṁ_wind·Ω·r_A,wind² and spin-down dΩ/dt = −J̇/I (I = k·M·R*²). All Sol-
+    // relative: Ṁ_wind ∝ M, the moment of inertia ∝ M·R*². As the star brakes, B drops ⇒ r_A,wind shrinks
+    // ⇒ torque falls ⇒ the front decelerates — the deceleration is now the real magnetic-braking law,
+    // not a free SPIN coefficient. FRONT_SPIN_COEF/FRONT_MARCH_COEF carry only the Sol unit anchor.
+    const Mdot_w_rel = Math.max(M_star, 1e-6); // Ṁ_wind ∝ Ṁ_acc ∝ M (accretion–outflow)
+    const R_rel = body_radius_earth(M_star * M_SUN_TO_EARTH) / body_radius_earth(M_SUN_TO_EARTH);
+    const I_rel = Math.max(M_star * R_rel * R_rel, 1e-9); // stellar moment of inertia ∝ M·R*² (k folded)
+    const traj = [[0, R_inner]];
+    const dt = 0.005; // Myr (fine — the Ω⁵ torque collapse is abrupt)
+    const T_MAX = 60.0;
+    for (let t = dt; t <= T_MAX; t += dt) {
+        const rA = wind_alfven_radius_rel(M_star, Om); // WIND Alfvén radius (lever arm), Ω-dependent via B
+        const Jdot = Mdot_w_rel * Om * rA * rA; // J̇ = Ṁ_wind·Ω·r_A²  (the wind torque)
+        R_inner += FRONT_MARCH_COEF * Jdot / Math.max(disc_scale, 1e-6) * dt; // consumption-driven march
+        Om = Math.max(Om - FRONT_SPIN_COEF * Jdot / I_rel * dt, 1e-6); // dΩ/dt = −J̇/I (DERIVED spin-down)
+        traj.push([t, R_inner]);
+        if (R_inner > 200)
+            break;
+    }
+    const tedge = (r) => {
+        if (r <= traj[0][1])
+            return 0; // already inside the front (in the magnetosphere)
+        for (let i = 1; i < traj.length; i++) {
+            if (traj[i][1] >= r) {
+                const t0 = traj[i - 1][0], r_0 = traj[i - 1][1], t1 = traj[i][0], r_1 = traj[i][1];
+                return t0 + (t1 - t0) * (r - r_0) / Math.max(r_1 - r_0, 1e-12);
+            }
+        }
+        return Infinity; // front stalled before reaching r ⇒ stays in gas
+    };
+    return { tedge, r0 };
+}
+// (3) STELLAR HYDROGEN-CONSUMPTION RATE Ṁ_* ∝ W·P — the wind (W) strips angular momentum from the
+// gas (at pressure P) so it accretes; higher equilibrium pressure ⇒ faster eating. The H reservoir
+// drains at this rate, which is what makes P decay (and R_inner march out, the disc clear inside-out).
+function stellar_hydrogen_rate(M_star, R_disc, f_disc) {
+    return STELLAR_EAT_COEF * wind_flux(M_star) * equilibrium_pressure(M_star, R_disc, f_disc);
+}
 // Invert the wind-balance R_disc: the geometry/density dial `spin`
 // (D = spin^1.5) that puts the Davis Dam at R_target. Replaces the old
 // (30.07·M/R)^2 anchor inversions everywhere. base = 30.07·(M/M_sol)^0.925.
@@ -221,6 +296,43 @@ function dynamo_field_strength(M_star, spin) {
     const H = M_E * (1.0 - COMP_Z);
     const B_REL_SOL = Math.pow(M_SUN_TO_EARTH / M_SUN_EARTH, DYNAMO_SAT_EXP);
     return dynamo_field_rel(M_E, rock, H, spin) / B_REL_SOL;
+}
+// MAGNETIC LEVER ARM λ of the STELLAR WIND (Blandford–Payne / Réville) — a property of the STAR.
+// The wind's Alfvén radius r_A = R*·η*^¼ from the wind magnetization η* = B*²R*²/(Ṁ_wind·v∞); the
+// lever arm λ = (r_A/r₀)² ∝ η*^½. We work Sol-relative (Sol → λ = LEVER_ARM_SOL): B from the dynamo,
+// R* from the mass–radius relation, v∞ ∝ v_esc = √(M/R*), Ṁ_wind ∝ the accretion rate (accretion–
+// outflow connection) ∝ M. The SAME λ governs the spin-down torque AND the gas density slope.
+function wind_lever_arm(M_star, spin) {
+    const M_E = M_star * M_SUN_TO_EARTH;
+    const B_rel = dynamo_field_strength(M_star, spin); // B*/B☉  (Sol=1)
+    const R_rel = body_radius_earth(M_E) / body_radius_earth(M_SUN_TO_EARTH); // R*/R☉  (Sol=1)
+    const Mdot_rel = Math.max(M_star, 1e-6); // Ṁ_wind ∝ Ṁ_acc ∝ M  (Sol=1)
+    const v_rel = Math.sqrt(Math.max(M_star, 1e-9) / Math.max(R_rel, 1e-9)); // v∞ ∝ v_esc=√(M/R*)  (Sol=1)
+    const eta_rel = (B_rel * B_rel * R_rel * R_rel) / (Mdot_rel * v_rel); // η*/η*☉  (Sol=1)
+    // λ − 1 ∝ η*^½ (since λ=(r_A/r₀)² ∝ η*^½), anchored so Sol (η_rel=1) gives LEVER_ARM_SOL.
+    const lambda = 1.0 + (LEVER_ARM_SOL - 1.0) * Math.sqrt(Math.max(eta_rel, 0));
+    return Math.min(Math.max(lambda, LEVER_ARM_MIN), LEVER_ARM_MAX);
+}
+// WIND ALFVÉN RADIUS, relative to Sol (Sol=1): r_A,wind = R*·η*^¼, η* = B*²R*²/(Ṁ_wind·v∞). This is
+// the magnetic-braking lever arm — the SAME radius that sets the spin-down torque J̇ = Ṁ_wind·Ω·r_A²
+// and the lever arm λ. Ω-dependent through the dynamo field B*(Ω): as the star brakes, B drops, r_A
+// shrinks, the torque falls, and the consumption front decelerates.
+function wind_alfven_radius_rel(M_star, spin) {
+    const M_E = M_star * M_SUN_TO_EARTH;
+    const B_rel = dynamo_field_strength(M_star, spin);
+    const R_rel = body_radius_earth(M_E) / body_radius_earth(M_SUN_TO_EARTH);
+    const Mdot_rel = Math.max(M_star, 1e-6); // Ṁ_wind ∝ Ṁ_acc ∝ M
+    const v_rel = Math.sqrt(Math.max(M_star, 1e-9) / Math.max(R_rel, 1e-9)); // v∞ ∝ v_esc
+    const eta_rel = (B_rel * B_rel * R_rel * R_rel) / (Mdot_rel * v_rel);
+    return R_rel * Math.pow(Math.max(eta_rel, 1e-12), 0.25);
+}
+// DERIVED gas surface-density slope n: Σ ∝ r^n, n = (2λ−3)/(2(λ−1)) (wind-driven disc, Tabone/Lesur).
+// λ<3/2 ⇒ n<0 (gas denser INWARD — the infall concentration); λ>3/2 ⇒ n>0 (inner cavity). Replaces
+// the constant GAS_INFALL_SLOPE: the capture density is weighted ∝ r^n with this DERIVED n.
+function wind_density_slope(M_star, spin) {
+    const lambda = wind_lever_arm(M_star, spin);
+    const n = (2.0 * lambda - 3.0) / (2.0 * (lambda - 1.0));
+    return Math.min(Math.max(n, -3.0), 1.0);
 }
 // Radius (R⊕) of the conducting DYNAMO CORE — the length scale of the Alfvén Dam.
 // A star conducts throughout (plasma), so its core is the whole body. A sub-stellar
@@ -390,17 +502,15 @@ function snow_line_pileup(r, M_star, f_disc) {
     const sigma = SNOW_PILEUP_WIDTH_FRAC * rs;
     return amp * Math.exp(-((r - rs) ** 2) / (2 * sigma ** 2));
 }
-function gas_dispersal_time(M_star, f_disc) {
-    const disc_mass = f_disc * m_star_earth(M_star);
-    const sol_disc_mass = 0.01 * m_star_earth(SOL_M_PRIMORDIAL);
-    // Lifetime ∝ (disc mass)^1.5 — the disc persists until its outermost body has
-    // assembled, and the formation clock (t_form ∝ 1/Ṁ) runs slow in a massive,
-    // dilute, extended disc. A √-law (exp 0.5) was far too shallow: it gave Alpha
-    // Centauri's 37×-Sol disc only ~32 Myr while its dam-slot needs ~1.2 Gyr. Exp
-    // 1.5 makes the two consistent (Alpha Cen ≈ 1.35 Gyr) and also sharpens Sol's
-    // gas window enough to recover Jupiter's correct ~1.6 Myr formation time; the
-    // gas-capture efficiency (GAS_CAPTURE_EFF) is re-anchored to that window.
-    return T_DISC_DISPERSAL_MYR * Math.pow(disc_mass / sol_disc_mass, 1.5);
+// GAS CONSUMPTION TIME [Myr]. The disc gas is CONSUMED, not "dispersed" on a timer — it drains
+// onto the star (the dominant sink) at the accretion rate Ṁ. The gas-rich phase lasts exactly as
+// long as the supply: T = M_gas_disc / Ṁ. When the star has drunk the disc, the gas is gone — no
+// lifetime anchor, nothing "expires". (Replaces the old T_DISC_DISPERSAL_MYR·disc_mass^1.5 fiction.)
+// M_star and the disc gas are in M⊙; Ṁ = COMP_MDOT (M⊙/yr), the stellar accretion set during the fit.
+function gas_consumption_time(M_star, f_disc) {
+    const disc_gas_msun = f_disc * M_star; // disc gas mass (M⊙)
+    const Mdot = COMP_MDOT > 0 ? COMP_MDOT : 1e-8; // M⊙/yr — the star draining the disc
+    return disc_gas_msun / Mdot / 1e6; // Myr
 }
 // Runaway gas-accretion GATE: the core mass at which the Kelvin-Helmholtz
 // envelope-contraction timescale (Ikoma, Nakazawa & Emori 2000, τ_KH ∝ M^−2.5·κ)
@@ -412,7 +522,7 @@ function gas_dispersal_time(M_star, f_disc) {
 // Sol → 2.93 M⊕ (≈ the legacy THRESHOLD_GAS=3); gas-poor discs read HIGHER
 // (giants harder, e.g. TRAPPIST 4.4), gas-rich LOWER (Beta Pic 1.5).
 function runaway_core_mass(M_star, f_disc) {
-    const tau_disc = Math.max(gas_dispersal_time(M_star, f_disc), 0.01);
+    const tau_disc = Math.max(gas_consumption_time(M_star, f_disc), 0.01);
     return Math.pow(TAU_KH0_MYR * GRAIN_OPACITY / tau_disc, 1.0 / 2.5);
 }
 // Wind-competition gas threshold: the core mass whose gravity wins H/He against
@@ -424,9 +534,24 @@ function runaway_core_mass(M_star, f_disc) {
 // (Sol ≈3 AU). Combined with the τ_KH cooling floor via max(): a core must BOTH
 // out-pull the local wind AND contract fast enough to run away. One wind, two
 // jobs — it positions the dam and sets the gas threshold at every radius.
+// Disc aspect ratio H/r (flared, irradiated): H/r ∝ r^¼ (c_s∝r^−¼, Ω∝r^−3/2 ⇒ H=c_s/Ω∝r^5/4).
+function aspect_ratio(r) {
+    return ASPECT_1AU * Math.pow(Math.max(r, 1e-6), 0.25);
+}
+// PEBBLE ISOLATION MASS [M⊕] — the runaway-gas TRIGGER (Lambrechts 2014 / Bitsch 2018): a core runs
+// away on gas only once it reaches M_iso = M_ISO_COEF·(H/r / 0.05)³·(M*/M☉). Since H/r grows outward,
+// M_iso RISES with distance — the inner giants reach it (→ runaway gas giants) while the ice giants
+// never do (core < M_iso ⇒ they keep eating pebbles and hold only a thin hydrostatic envelope).
+function pebble_isolation_mass(r, M_star) {
+    const hr = aspect_ratio(r);
+    return M_ISO_COEF * Math.pow(hr / 0.05, 3.0) * M_star;
+}
 function gas_threshold_mass(r, M_star, f_disc) {
     const R_disc = COMP_R_DISC > 0 ? COMP_R_DISC : disc_radius(M_star, 1.0);
-    const ratio = GAS_DIVIDE_FRAC * R_disc / Math.max(r, 1e-12);
+    // Rocky→gassy divide = the gas-disc inner edge (wind-ram ⇄ gas-pressure equilibrium), NOT the
+    // GAS_DIVIDE_FRAC·R_disc kludge. Inside it the wind strips the gas (M_crit rises steeply), outside
+    // a modest core wins gas. M_crit(r) = THRESHOLD_GAS·(R_inner/r)².
+    const ratio = gas_inner_edge(M_star, R_disc, f_disc) / Math.max(r, 1e-12);
     const wind_gate = THRESHOLD_GAS * ratio * ratio;
     return Math.max(wind_gate, runaway_core_mass(M_star, f_disc));
 }

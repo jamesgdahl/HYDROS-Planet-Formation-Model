@@ -482,7 +482,7 @@ function calculate() {
   const r_snow = snow_line(M_star, f_disc);
   const sl = slope(M_star, f_disc);
   const a = intercept(M_star, spin_geom);
-  const t_disc = gas_dispersal_time(M_star, f_disc);
+  const t_disc = gas_consumption_time(M_star, f_disc);
   // Inverted regime is MASS-based (is_inverted_budget — feeble M-dwarf wind +
   // dense disc), exposed by budgetFit as budget_inverted. It is NOT the geometric
   // C≥1 test: TRAPPIST-1 inverts (M-dwarf) at C≈0.46, while a high-spin solar star
@@ -1677,7 +1677,7 @@ function predictAll(planets, M_star, spin, f_disc) {
   const cb = planets.map(p => rock_allocation(p.r, M_star, spin, f_disc) +
                               ice_allocation(p.r, M_star, spin, f_disc));
   const W = planets.map(p => pebble_allocation_weight(p.r, M_star, f_disc));
-  const el = planets.map((p, i) => (cb[i] > gas_threshold_mass(p.r, M_star, f_disc) && p.t_form < gas_dispersal_time(M_star, f_disc)) ? i : -1).filter(i => i >= 0);
+  const el = planets.map((p, i) => (cb[i] > gas_threshold_mass(p.r, M_star, f_disc) && p.t_form < gas_consumption_time(M_star, f_disc)) ? i : -1).filter(i => i >= 0);
   const wsum = el.reduce((s, i) => s + W[i], 0) || 1;
   const PT = total_pebble_bonus_budget(M_star, f_disc);
   return planets.map((p, i) => {

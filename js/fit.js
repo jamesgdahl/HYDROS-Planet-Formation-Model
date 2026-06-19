@@ -156,7 +156,7 @@ function assign_planets_to_slots(planets, M_star, spin, f_disc, omega, clearings
 // scatter physics (scatter.ts) + the devoured-mass ledger + the void-interior remnant
 // binding. Operates on the final slot set in place. A distinct stage from the FIT — it
 // reads only predicted/formed quantities; observed planets are compared against, not fed in.
-function apply_post_formation(results, M_star, R_A_now, planet_by_slot, void_bodies, nearest_site_n) {
+function apply_post_formation(results, M_star, R_A_now, planet_by_slot, void_bodies, nearest_site_n, fragments) {
     // Post-formation SCATTERING (scatter.ts) — collision/bombardment remnants, mutual
     // eviction, Lissauer destabilisation, slot-dispersal scatter remnants + destroyed
     // slots. A distinct process from the fit; rewrites results in place.
@@ -262,6 +262,28 @@ function apply_post_formation(results, M_star, R_A_now, planet_by_slot, void_bod
     for (const p of void_bodies) {
         const m_obs = p.observed || 0;
         const is_small = m_obs > 0 && m_obs <= REMNANT_MAX_MASS;
+        // FISSION REMAINDER. A small void body interior to a sub-stellar core fragment is the
+        // residue of THAT fragment's fission, not a scattered cascade slot: when the over-spun
+        // core shed its overflow as the hot Jupiter (flung out to a_bin), the marginally-bound
+        // inner residue stayed under the Alfvén Dam. Attribute it to the fragment (a satisfied,
+        // diagnostic row — excluded from the target) rather than inventing a phantom slot parent
+        // to scatter inward. (55 Cnc e interior to b is the exemplar.)
+        const frag_parent = is_small
+            ? fragments.find(fr => fr.r > p.r && (fr.observed || 0) > m_obs) : undefined;
+        if (frag_parent) {
+            const pct = (m_obs / (frag_parent.observed || 1) * 100);
+            results.push({
+                slot_n: -1, slot_r: p.r, r_used: p.r,
+                filled: true, name: p.name,
+                rock: 0, ice: 0, pebble: 0, core: 0, t_form: 0, h_he: 0,
+                predicted: m_obs, observed: m_obs,
+                err_pct: 0, implied_dM: 0,
+                stripped: is_stripped(p, M_star), in_void: true, external: true, remnant: true,
+                primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: m_obs },
+                interpretation: `fission remainder of ${frag_parent.name}: the ${m_obs.toFixed(2)} M⊕ inner residue (~${pct.toFixed(1)}% of the ${(frag_parent.observed || 0).toFixed(0)} M⊕ fragment) left under the Alfvén Dam at ${p.r} AU when the over-spun core shed its overflow outward as ${frag_parent.name} — not a cascade slot (interior to R_A) and not a scattered slot parent`,
+            });
+            continue;
+        }
         let bound = null;
         if (is_small) {
             let best_d = Infinity;
@@ -445,13 +467,16 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // clear of cascade slots (fragment_clear_zone). Stellar co-primaries (observed ≥
     // M_STELLAR_BOUNDARY) are NOT included — they get the system-wide co-primary treatment
     // (barycentre / Holman-Wiegert / inner-dam), not this local clearing.
-    // Is any REAL planet observed interior to this fragment? (Exclude the fragment itself and KBOs.)
-    // If so, that body's survival proves the interior was NOT consumed → keep the symmetric clear.
-    // If nothing is interior, the low-spin core dragged its interior in → one-sided interior clear.
-    const has_interior_body = (frag) => planets.some(q => q !== frag && !q.kbo && (q.observed || 0) > 0 && q.r > 0 && q.r < frag.r);
+    // FORWARD interior clearing: a genuine low-spin fragment forms by dragging its interior inward
+    // into the collapsing core (low angular momentum ⇒ nothing left to seat planets sunward of it),
+    // so the clearing is always ONE-SIDED INTERIOR (sweep the inner edge → r_frag + R_sweep). That is
+    // the fragment's PHYSICAL formation mode (it IS the low-spin overflow), NOT gated on whether a
+    // planet happens to be observed interior to it — letting the observed set decide which predicted
+    // slots survive is the leak. The zone uses the fragment's FORWARD mass (fragment_overflow_mass),
+    // not its observed mass.
     const frag_clearings = core_bodies
         .filter(p => !!p.fragment && (p.observed || 0) > 0 && (p.observed || 0) < M_STELLAR_BOUNDARY && p.r > 0)
-        .map(p => fragment_clear_zone(p.r, p.observed || 0, M_star, !has_interior_body(p)));
+        .map(p => fragment_clear_zone(p.r, fragment_overflow_mass(M_star, spin), M_star, true));
     const slot_data = assign_planets_to_slots(disc_planets, M_star, spin, f_disc, omega, frag_clearings);
     const planet_by_slot = {};
     for (const s of slot_data) {
@@ -481,37 +506,32 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     const fit_r = (s) => s.slot_r;
     const sl = slope(M_star, f_disc);
     const pebble_total = total_pebble_bonus_budget(M_star, f_disc);
-    // Pebble bonus allocation across gas-eligible slots
-    const cores = {};
+    // UNIFIED PEBBLE-FLUX COMPETITION (see memory unified-reservoir-competition). The inward pebble
+    // flux is a reservoir drained by the SAME Hill-space competition as the gas, its drift gated by the
+    // gas density P(t). The seed core (in-situ rock+ice standing-wave allocation) sets each sink's
+    // starting Hill reach and its onset (formation_time); the runaway (capture → bigger Hill → more
+    // capture) and forming-first advantage let the inner cores gobble the flux before the outer ones
+    // switch on (pebble isolation). The leftover (gas-exhausted) flux freezes out as the KBO budget.
+    // Sinks = cores BEYOND the snow line only: the inward pebble flux is icy, and inside the snow line
+    // it sublimates (no solid capture) — and the giants intercept it first anyway (isolation). The
+    // terrestrials keep their direct in-situ rock, untouched by the drift.
+    const r_snow_peb = snow_line(M_star, f_disc);
+    const seeds = [];
     for (const s of slot_data) {
         const r = fit_r(s);
-        cores[s.slot_n] = rock_allocation(r, M_star, spin, f_disc, omega)
-            + ice_allocation(r, M_star, spin, f_disc, omega);
+        if (r <= r_snow_peb)
+            continue;
+        seeds.push({ n: s.slot_n, r, seed: rock_allocation(r, M_star, spin, f_disc, omega)
+                + ice_allocation(r, M_star, spin, f_disc, omega) });
     }
-    // PEBBLE CAPTURE is GRAVITATIONAL — captured by ANY core (no gas-eligibility gate) at ALL radii (no
-    // snow-line zero: icy pebbles freeze onto a cooled planet even inside the gas snow line — volatile
-    // delivery). The capture rate scales with the core's gravitational REACH (Hill space ∝ mass), so the
-    // MOST MASSIVE core — Jupiter, whose gas runaway gives it a gigantic Hill space, or a compact disc's
-    // outermost barrier — gobbles nearly all the inward flux (pebble isolation) and starves the rest.
-    // Weight ∝ mass² (steep, barrier-like dominance of the heaviest core); mass = core + gas-runaway
-    // envelope (so the gas giant's huge mass, not just its solid core, sets its Hill reach).
-    const gas_est = {};
-    for (const s of slot_data) {
-        const r = fit_r(s);
-        const tf = formation_time(r, cores[s.slot_n], M_star, f_disc);
-        gas_est[s.slot_n] = (cores[s.slot_n] > gas_threshold_mass(r, M_star, f_disc) && tf < gas_dispersal_time(M_star, f_disc))
-            ? hydrogen_capture(cores[s.slot_n], tf, spin, r, M_star, f_disc, omega) : 0;
-    }
-    const weights = {};
-    for (const s of slot_data) {
-        const m = cores[s.slot_n] + gas_est[s.slot_n];
-        weights[s.slot_n] = m * m;
-    }
-    const total_w = Object.values(weights).reduce((a, b) => a + b, 0);
+    const R_disc_peb = R_disc_local > 0 ? R_disc_local : disc_radius(M_star, spin, omega, f_disc);
+    const peb_result = (!inverted && pebble_total > 0)
+        ? pebble_competition(seeds, pebble_total, M_star, R_disc_peb, f_disc, omega)
+        : { cap: {}, residual: pebble_total };
     const pebble = {};
-    for (const s of slot_data) {
-        pebble[s.slot_n] = total_w > 0 ? pebble_total * weights[s.slot_n] / total_w : 0;
-    }
+    for (const s of slot_data)
+        pebble[s.slot_n] = peb_result.cap[s.slot_n] || 0;
+    const pebble_residual_to_kbo = peb_result.residual; // gas-exhausted leftover → KBO budget (TODO wire)
     // AVAILABILITY CAP — mass = min(accretion potential, availability). The AAF
     // (rock+ice) is the local accretion POTENTIAL; the standing wave concentrates
     // only so much MATERIAL at each slot (availability = the disc-solid budget
@@ -573,6 +593,10 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             rock *= cap_k;
             ice *= cap_k;
         }
+        // SEED core = the in-situ accretion-halo core (rock+ice, capped, PRE-pebble). This is when the
+        // accretion halo creates the planet, so it sets t_form — the pebble flux drifts in AFTER and adds
+        // mass but does NOT lengthen the formation clock (pebbles don't delay the planet's existence).
+        const seed_core = rock + ice;
         rock += peb_rock;
         if (retains_water)
             ice += peb_water; // else Type-II: delivered water destroyed, planet stays dry
@@ -584,68 +608,33 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         // reaches the gas threshold and an envelope is available (an inverted hot
         // Jupiter). So no special suppression: gas-eligible on core mass alone.
         const gas_eligible = (potential_core > gas_threshold_mass(r, M_star, f_disc));
-        // Strip detection: filled slots use observed mass as escape gate;
-        // lost slots use primordial core mass (what would have been there).
-        // Lost-slot predictions then reflect post-strip survival mass.
-        const mass_for_strip_gate = s.filled ? (planet_by_slot[n].observed || 0) : core;
-        const strip_r = s.filled ? planet_by_slot[n].r : r;
+        // Strip detection: FORWARD — always the PREDICTED core mass and PREDICTED slot position.
+        // (Filled slots previously used the observed mass/orbit as the escape gate, which let an
+        // observed planet rewrite its own predicted composition; that is the leak we're closing.)
+        const mass_for_strip_gate = core;
+        const strip_r = r;
         let stripped = is_stripped({ r: strip_r, observed: mass_for_strip_gate }, M_star);
         let t_form, h_he, total;
-        // Outward-migrant gas giants: t_form capped at the giant-pair
-        // destabilization window (~2 Myr).
-        const MIGRATION_T_FORM_CAP = 2.0;
-        const is_outward_migrant = s.filled
-            && R_disc_local > 0
-            && planet_by_slot[n]
-            && planet_by_slot[n].r > R_disc_local * 1.5;
-        const t_form_hi = is_outward_migrant ? MIGRATION_T_FORM_CAP : 50.0;
-        // Every filled, observed slot bisects t_form to the consensus fit.
-        const should_bisect_t_form = s.filled && observed > 0;
         if (!gas_eligible) {
             // Sub-threshold rocky: total = core, t_form from cascade (potential core).
-            t_form = formation_time(r, potential_core, M_star, f_disc);
+            t_form = formation_time(r, seed_core, M_star, f_disc);
             h_he = 0;
             total = core;
-        }
-        else if (should_bisect_t_form) {
-            // Bisect t_form to fit the FORMATION mass: observed minus any
-            // devour credit (meals are post-prediction mass — a migrant fit
-            // to its post-meal total would be an invalid formation).
-            const credit_n = (opts.devour_credit && s.filled
-                && opts.devour_credit[s.name]) || 0;
-            const target_mass = Math.max(core * 1.0001, observed - credit_n);
-            let lo = 0.01, hi = t_form_hi;
-            t_form = (lo + hi) / 2;
-            h_he = 0;
-            total = core;
-            for (let i = 0; i < max_iter; i++) {
-                h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
-                total = core + h_he;
-                const err = (total - target_mass) / target_mass;
-                if (Math.abs(err) < bisect_tol)
-                    break;
-                if (total > target_mass)
-                    lo = t_form;
-                else
-                    hi = t_form;
-                t_form = (lo + hi) / 2;
-            }
-            if (is_outward_migrant && t_form >= MIGRATION_T_FORM_CAP * 0.99) {
-                t_form = MIGRATION_T_FORM_CAP;
-                h_he = hydrogen_capture(core, t_form, spin, r, M_star, f_disc, omega);
-                total = core + h_he;
-            }
         }
         else {
-            // FORWARD (no fit): the clock runs on the potential core (full accretion time), so
-            // the gas window isn't artificially widened by the cap. Gas sits on the capped solid.
-            t_form = formation_time(r, potential_core, M_star, f_disc);
+            // FORWARD, observed-INDEPENDENT (no t_form bisection): the formation clock runs on the
+            // potential core (full accretion time) and the envelope captures over the DERIVED window, so
+            // the H/He mass is PREDICTED from (r, core, M, λ, f_disc) alone — it is NEVER tuned to the
+            // observed mass. Observed planets are matched to slots for SCORING only; they cannot move a
+            // predicted value. (Impact reconstruction on the observed outer giants lives in the
+            // impactors forensics — the one allowed observed-dependent exception.)
+            t_form = formation_time(r, direct, M_star, f_disc);
             h_he = hydrogen_capture(potential_core, t_form, spin, r, M_star, f_disc, omega);
             total = core + h_he;
         }
         // Snapshot PRIMORDIAL composition (with cascade-default t_form, no
         // bisection, no stripping) — used by classifier for diagnostic tags.
-        const t_form_p = formation_time(r, potential_core, M_star, f_disc);
+        const t_form_p = formation_time(r, direct, M_star, f_disc);
         const h_he_p = gas_eligible
             ? hydrogen_capture(potential_core, t_form_p, spin, r, M_star, f_disc, omega) : 0;
         const primordial = {
@@ -719,7 +708,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // distinct stage from the fit; rewrites the final slot set in place. DEFERRED when the
     // caller (budgetFit) will run gas conservation first — so scatter reads final masses,
     // not the pre-cap phantom envelopes. Otherwise (bestFit/bruteFit) it runs inline now.
-    const run_post_formation = () => apply_post_formation(results, M_star, R_A_now, planet_by_slot, void_bodies, nearest_site_n);
+    const run_post_formation = () => apply_post_formation(results, M_star, R_A_now, planet_by_slot, void_bodies, nearest_site_n, core_bodies.filter(p => !!p.fragment && (p.observed || 0) < M_STELLAR_BOUNDARY && p.r > 0));
     if (!opts.defer_post_formation)
         run_post_formation();
     // CORE COMPONENTS (catalog-flagged): central fragments / co-primaries, NOT
@@ -730,8 +719,9 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         const lam_break = breakup_spin(M_star);
         const is_frag = !!p.fragment && m_obs < M_STELLAR_BOUNDARY; // sub-stellar (planetary) fragment
         // The fragment's local clearing zone (Hill + Wisdom-1980 resonance-overlap chaos),
-        // exposed for the chart's exclusion span. Only for sub-stellar fragments.
-        const cz = is_frag ? fragment_clear_zone(p.r, m_obs, M_star, !has_interior_body(p)) : null;
+        // exposed for the chart's exclusion span. Only for sub-stellar fragments. Matches the
+        // slot-filtering zone above: forward mass (fragment_overflow_mass), one-sided interior clear.
+        const cz = is_frag ? fragment_clear_zone(p.r, fragment_overflow_mass(M_star, spin), M_star, true) : null;
         // PREDICTED low-spin fragment: its MASS is the centrifugal Hill-overflow K·β·budget
         // (fragment_overflow_mass), and its formation POSITION is the close-fission separation a_bin —
         // BOTH derived forward from λ + budget, not copied from the observed body. (External ⇒ outside
@@ -807,7 +797,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             // each product in turn — so each body's formation epoch is the disc dispersal time × the
             // fraction of the (factory) solid budget already swept up inward of it. Inner bodies are
             // the early vintage, outer the late. The mass itself is factory_product (one factory).
-            const disp_t = gas_dispersal_time(M_star, f_disc);
+            const disp_t = gas_consumption_time(M_star, f_disc);
             const sorted_in = [...kbo_bodies].sort((a, b) => a.r - b.r);
             const fp_solid = {};
             for (const p of sorted_in) {
@@ -869,7 +859,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
             const M_EXT_SOL = 0.00359;
             const sigma_dam = f_disc * m_star_earth(M_star) / (R_dam * R_dam);
             const m_at_dam = M_EXT_SOL * Math.pow(sigma_dam / SIGMA_SOL, 2);
-            const t_disc_myr = gas_dispersal_time(M_star, f_disc);
+            const t_disc_myr = gas_consumption_time(M_star, f_disc);
             const R_cliff = 1.6 * R_dam, BETA = 0.138;
             // assembly-line order: earliest vintage first (bigger product =
             // denser supply = earlier; onset ties resolve by mass descending)
@@ -1891,7 +1881,7 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc) {
 // term). NB: this is NOT planet destruction — in a multi-star system the
 // companions gravitationally obliterate the planet slots (the scattering/purge
 // diagnostics handle that separately). Conserves total H: captured+dispersed=reservoir.
-// Budget-share the gas-rich-gorging WANTS (s.predicted−s.core from hydrogen_capture) against the
+// Budget-share the gas-rich-capturing WANTS (s.predicted−s.core from hydrogen_capture) against the
 // finite disc reservoir. Two regimes fall out, no per-system knob:
 //   WINDOW-limited (Σwant ≤ budget): every giant keeps its full want — Sol's short-lived disc lets
 //     the planets eat only ~10%, the rest drains to the star (the "90% to Sol" emerges).
@@ -1995,9 +1985,12 @@ function core_barycentre(primaryMass, planets) {
         return 0;
     let m = primaryMass * 332946; // primary mass in M⊕, at r=0
     let mr = 0;
+    // Only STELLAR co-primaries (≥ M_STELLAR_BOUNDARY) shift the barycentre / drive the
+    // co-primary mechanics. A sub-stellar fragment (a hot Jupiter ~10⁻³ M☉) has a negligible
+    // mass ratio: it clears only its local Hill+resonance zone, not a Holman-Wiegert annulus.
     for (const p of planets) {
         const mo = p.observed || 0;
-        if ((p.core || p.fragment) && mo > 0) {
+        if ((p.core || p.fragment) && mo >= M_STELLAR_BOUNDARY) {
             m += mo;
             mr += mo * p.r;
         }
@@ -2170,7 +2163,10 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
     // closest approach (PERIASTRON a(1-e)). Circular pairs (e=0) reduce to a. Alpha Cen
     // (e≈0.52) ⇒ swept 3.4→86 AU, matching the full Holman-Wiegert eccentric polynomial
     // (vs 7→56 with bare a). e defaults to 0, so single stars / circular binaries are unchanged.
-    const co_cores = planets.filter(p => (p.core || p.fragment) && (p.observed || 0) > 0);
+    // STELLAR co-primaries only: the Holman-Wiegert instability annulus is a mass-ratio effect,
+    // so a sub-stellar fragment (μ ~ 10⁻³) has no real HW zone and doesn't anchor the circumbinary
+    // inner dam — it clears only its local Hill+resonance zone (fragment_clear_zone) above.
+    const co_cores = planets.filter(p => (p.core || p.fragment) && (p.observed || 0) >= M_STELLAR_BOUNDARY);
     const apo = co_cores.map(p => p.r * (1 + (p.e || 0))); // widest reach (P-type limiter)
     const peri = co_cores.map(p => p.r * (1 - (p.e || 0))); // closest approach (S-type limiter)
     const a_min = peri.length ? Math.min(...peri) : 0;
@@ -2413,7 +2409,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             const P_dam = Math.sqrt(Math.pow(R_disc_phys, 3) / Math.max(M, 1e-9)); // yr (model period convention)
             const t_drift = (1 + PEBBLE_STOKES * PEBBLE_STOKES) / (2 * PEBBLE_STOKES * PEBBLE_ETA)
                 * (P_dam / (2 * Math.PI)) / 1e6; // Myr (radial-drift time at the dam)
-            const t_disc = gas_dispersal_time(M, f_disc_derived); // Myr (gas-dispersal clock)
+            const t_disc = gas_consumption_time(M, f_disc_derived); // Myr (gas-dispersal clock)
             const eps_SI = inverted ? 1.0 : Math.min(1.0, t_drift / Math.max(t_disc, 1e-9));
             if (!inverted) {
                 // Normal stellar: the pebble flux drains inward (Act 1). KBOs are dam-edge SI seeds whose
@@ -2612,7 +2608,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
                 if (s.core_component || s.external)
                     continue;
                 if (s.slot_r > hw_in && s.slot_r < hw_out) {
-                    // KEEP the formation composition (core + any gorged H/He) — the body DID form, then the
+                    // KEEP the formation composition (core + any captured H/He) — the body DID form, then the
                     // binary instability ejected it. Flag it destroyed (excluded from the fit/score) but show
                     // the giant it was, rather than zeroing it to a bare nothing.
                     s.destroyed = true;

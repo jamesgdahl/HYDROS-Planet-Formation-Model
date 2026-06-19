@@ -114,7 +114,7 @@ function reset_si_retention() { COMP_SI_RETENTION = 1.0; }
 // in ~1.9 Myr (Neptune ~9.8 → ice giant). No ignition cap — the envelope keeps
 // growing after the star lights; t_form > disc lifetime ⇒ collapse-formed.
 let COMP_MDOT = -1.0; // budget gas accretion rate Ṁ [M⊙/yr], or <0
-const FORM_CLOCK_COEFF = 6.669e9; // t[Myr] = M_core·(r/R_disc)/(Z·Ṁ·FORM_CLOCK_COEFF)·spin
+const FORM_CLOCK_COEFF = 1.103e10; // Sol Jupiter rock+ice core → ~1.65 Myr
 const CLOCK_COEFF = FORM_CLOCK_COEFF; // legacy alias (unused; kept for safety)
 function set_mdot(md) { COMP_MDOT = md; }
 // Primordial SPIN factor on the accretion clock (≡1 at Sol, λ=1). Set per budget fit;
@@ -211,19 +211,36 @@ const INV_NEB_FRAC = 0.318;
 const NEB_CONC_HALF = 133.0;
 const NEB_CONC_STEEP = 0.174;
 // Universal physics
-// GAS_DIVIDE_FRAC: the rocky→gassy divide as a fraction of the Davis Dam — the
-// radius where the wind-competition gas threshold equals THRESHOLD_GAS. The
-// stellar wind competes for the H/He (ram pressure ∝1/r²), so the gravity
-// needed to win gas is M_crit(r) = THRESHOLD_GAS·(GAS_DIVIDE_FRAC·R_disc/r)²:
-// fierce close in (rocky planets), feeble far out (gas giants). Sol's divide
-// ≈ 3 AU = 0.10·30 AU (between Mars/asteroids and Jupiter).
+// GAS_DIVIDE_FRAC: legacy rocky→gassy divide as a fixed fraction of the Davis Dam — superseded by
+// gas_inner_edge() (the real wind-ram ⇄ gas-pressure equilibrium). Kept only as a fallback.
 const GAS_DIVIDE_FRAC = 0.10;
+// GAS-DISC INNER EDGE calibration: the rocky→gassy divide is the radius where the stellar-wind ram
+// pressure (∝ W/r², W = the dam-setting wind flux) equals the disc GAS pressure (∝ Σ_gas). Setting
+// W/r² = K·Σ_gas ⇒ R_inner = √(K·W/Σ_gas). GAS_EDGE_K is fixed so Sol's divide sits at ~3 AU
+// (Mars↔Jupiter); R_inner then marches OUTWARD as Σ_gas declines (the disc clears inside-out).
+const GAS_EDGE_K = 50.0;
+// STELLAR H-CONSUMPTION coefficient: Ṁ_* = STELLAR_EAT_COEF·W·P (the wind W strips H's angular
+// momentum at the equilibrium pressure P so it falls in). Sets how fast the star drains the disc H,
+// hence the rate P decays. Placeholder 1.0 — to be anchored when the depletion clock is wired.
+const STELLAR_EAT_COEF = 1900.0;
 // THRESHOLD_GAS: the giant-class MASS boundary used by the classifier
 // (rock/ice/gas giant). The runaway gas-accretion GATE is no longer this fixed
 // value — it is derived per system as runaway_core_mass() (Ikoma τ_KH = τ_disc),
 // which evaluates to ~2.9 M⊕ for Sol (so Sol is unchanged) but rises for
 // gas-poor discs and falls for gas-rich ones.
 const THRESHOLD_GAS = 3.0;
+// PEBBLE ISOLATION MASS = the runaway-gas TRIGGER (Lambrechts 2014 / Bitsch 2018): a core runs away
+// on gas only once it reaches M_iso = M_ISO_COEF·(H/r / 0.05)³·(M*/M☉) — there it opens a pressure
+// bump, traps the pebbles, solid accretion + its luminosity stop, the envelope contracts → runaway.
+// CRUCIALLY M_iso ∝ (H/r)³ and H/r GROWS outward (flared disc), so M_iso RISES with distance: the
+// inner giants reach it (→ gas giants) but the ice giants never do (→ keep only a thin envelope).
+// Anchored so Sol's cliff falls between Saturn (core>M_iso, runs away) and Uranus (core<M_iso, ice).
+const ASPECT_1AU = 0.025; // disc aspect ratio H/r at 1 AU; H/r = ASPECT_1AU·r^0.25 (flared)
+const M_ISO_COEF = 20.0; // M_iso prefactor [M⊕] at H/r=0.05 (Lambrechts)
+// Sub-isolation cores never run away — they hold only the HYDROSTATIC envelope a sub-critical core
+// supports against the disc (Mizuno), ≈ a fixed fraction of the core mass. Caps the ice-giant H/He
+// at the thin skin (Uranus ~2, Neptune ~3 of cores 13/15) instead of a competition-driven pile.
+const ENV_HYDROSTATIC_FRAC = 0.118;
 // GAS CAPTURE (core-accretion, derived — replaces the old fit constant
 // A_0·M_core²). The local Tanigawa-Watanabe (2002) disc-limited rate
 // (0.29·(M_p/M_*)^4/3·(H/r)^-2·Σ_gas·r²·Ω) hugely exceeds the disc gas SUPPLY at
@@ -237,20 +254,104 @@ const THRESHOLD_GAS = 3.0;
 // TAU_KH0_MYR = Ikoma, Nakazawa & Emori (2000) KH-contraction prefactor 10^8 yr.
 const GAS_CAPTURE_EFF = 0.0999; // legacy (old global runaway fraction; unused by the window model)
 const GAS_WINDOW_K = 0.691; // legacy (old exp window; unused by hydrogen_capture)
-// WINDOW-GORGING capture rate [M⊕/Myr]: a runaway giant accretes gas at this rate over its gas-rich
+// WINDOW-CAPTURE capture rate [M⊕/Myr]: a runaway giant accretes gas at this rate over its gas-rich
 // window (τ − t_form). Calibrated on Sol's Jupiter (H/He ≈ 304 M⊕, window ≈ 1.9 Myr ⇒ ~177).
-const GAS_CAPTURE_RATE = 170.0;
+const GAS_CAPTURE_RATE = 3750.0;
+const GAS_SELFLIMIT_C = 0.5;
+// MAGNETIC CAPTURE + GRAVITATIONAL RETENTION (the unified Sun/Jupiter capture model). H/He is NOT
+// captured gravitationally — it's captured MAGNETICALLY, the same angular-momentum theft the Sun's wind
+// does, by every magnetized body's particle flux (capture rate ∝ the body's conductive-mass dynamo, which
+// runs away as captured H→metallic conductor). Capture continues until the local gas is gone. The
+// CRITICAL GRAVITY threshold is then RETENTION, not capture: a body keeps H/He only if it can hold it
+// against thermal (Jeans/hydrodynamic) escape — λ = HHE_RETAIN_K·M^(2/3)/T_eq > 1 (v_esc²∝M^(2/3),
+// v_th²∝T). So a small body with a strong field CAPTURES H/He but can't RETAIN it (escapes) ⇒ stays rocky;
+// massive/cold bodies retain ⇒ giants. K=50 ⇒ Sol's 4 giant cores retain, Earth/Mars lose (rocky).
+const HHE_RETAIN_K = 50.0;
+// INWARD-CONCENTRATED GAS PROFILE Σ(r) ∝ r^(−GAS_SIGMA_SLOPE). The pre-existing H envelope is centrally
+// concentrated (collapse / Lynden-Bell), so most gas is in the dense INNER disc. Each body captures at
+// the inner edge of its OWN pressure differential: the STAR's domain is the inner disc [R_A, R_inner]
+// (which holds ~90% BECAUSE Σ is steep — this is what sets the slope, not a free knob), each planet's
+// domain is its TERRITORY (midpoints to neighbours), and no body reaches another's. Slope ≈ 2.4 puts
+// ~88% in the star's inner domain and feeds Jupiter/Saturn from theirs.
+const GAS_SIGMA_SLOPE = 2.4;
+// HILL-SPACE CAP on the magnetic capture. The conductive-mass dynamo runs away, but a planet cannot
+// capture gas beyond its HILL SPHERE — past it the star's tide strips the gas. So the effective capture
+// rate is min(magnetic, Hill-limited): magnetic-limited while the field's reach < R_Hill (small planets),
+// Hill-limited once the runaway pushes the reach past R_Hill (Jupiter). This caps Jupiter's runaway (its
+// magnetic reach blows past Hill) so Saturn isn't crushed — recovers the observed J:S ≈ 3.3:1.
+const GAS_HILL_CAP = 260000.0;
+const FEED_HILL = 7.0;
 // DAM-WIND suppression strength = the wind's partial angular-momentum-stripping efficiency.
 // wind_suppression = 1/(1 + GAS_WIND_K·W/r²), W = M⋆^3.54 (= COMP_FLUX, the dam-setting wind).
 // Suppresses inner capture most (Jupiter zapped, outer/far giants spared since 1/r² beats W).
 const GAS_WIND_K = 2.0;
+// PEBBLE-FLUX COMPETITION (the unified reservoir model — see memory unified-reservoir-competition):
+// the inward pebble flux is a reservoir drained by the SAME Hill-space competition as the gas, but
+// its inward DRIFT rate is gated by the gas density P(t) (gas drag drives the drift). Two knobs:
+//   PEBBLE_DRIFT_K  — drift conductance: fraction of the pebble reservoir released inward per Myr at
+//                     full gas density (P=1). Larger ⇒ pebbles delivered faster (while gas lasts).
+//   PEBBLE_CAPTURE_K — per-sink Hill capture conductance (the same form as GAS_CAPTURE_RATE); each
+//                     core captures its branching share kᵢ/K of the released flux, kᵢ ∝ R_Hill²·Ω.
+// When gas→0 the drift stops and the residual reservoir freezes out as KBOs.
+const PEBBLE_DRIFT_K = 1.0;
+const PEBBLE_CAPTURE_K = 5000.0;
+// PEBBLE PILE-UP + LEAK (traffic jam at the barrier; leaky dust trap). Uncaptured drift does NOT
+// drain away — it piles up at the gas inner edge / the innermost giant's pressure bump and waits, so
+// the growing planet eats the BANKED reservoir as it runs away (the missing inner-giant core mass).
+// A small fraction LEAKS inward each Myr (small grains coupled to the gas flow + snow-line vapor),
+// carrying solids further into the system rather than feeding the giant.
+const PEBBLE_LEAK_FRAC = 4.0;
+// WIND STAND-OFF (gas-envelope inner edge). Wind ram P_wind=Ṁ_wind·v_wind/(4πr²) balanced by the gas-
+// envelope pressure P_gas = M_gas/V (V = shell area between R_A and R_disc) at the stand-off radius
+// R_inner = √(Ṁ_wind·v_wind/(4π·P_gas)). WIND_MOMENTUM_COEF carries Ṁ_wind·v_wind (∝ wind_flux), Sol-
+// anchored so Sol's edge ≈ 4 AU. As gas is consumed P_gas falls ⇒ R_inner marches OUT (inside-out
+// clearing). Diffuse wide disc (low P_gas) ⇒ edge far + slow consumption; dense Sol ⇒ close + fast.
+const WIND_MOMENTUM_COEF = 281.0;
+// SPIN-COUPLED STAND-OFF (magnetic braking). The ram pressure that sets the inner edge is the stellar
+// WIND, which is powered by the star's SPIN. But consuming the gas brakes the star: every H molecule
+// the wind torques (lever arm R_A) carries off the star's angular momentum (Weber–Davis). So as P_gas
+// falls (gas eaten), the wind W∝Ω^WIND_SPIN_EXP falls IN STEP, and R_inner=√(W/P_gas) does NOT march
+// out — it advances fast early (full spin) then STALLS as the spin crashes. SPINDOWN_FRAC = the
+// fraction of the initial spin lost when the star eats the WHOLE reservoir (Ω → (1−SPINDOWN_FRAC)·Ω₀).
+const WIND_SPIN_EXP = 1.0; // W ∝ Ω^this (wind mass-loss ∝ spin)
+const SPINDOWN_FRAC = 0.7; // swept
+const PLANET_SPINDOWN = 20.0; // swept
+// CONSUMPTION FRONT (see memory ram-pressure-is-magnetic-braking). The gas inner edge is NOT a
+// radial pressure crossing — it is the magnetic-wind TORQUE extracting the gas's angular momentum
+// (magnetic braking), consuming the disc INSIDE-OUT from R_A. The front R_inner(t) marches out at a
+// rate ∝ the wind torque τ = Ω·R_A(Ω)² / (disc-gas normalization); the SAME torque spins the star
+// down (Ω falls), so the front DECELERATES — fast early (clears the inner slots → rocky), slow late
+// (the giants sit in gas for Myr). R_disc-INDEPENDENT; the scale is the wind torque, Sol-anchored.
+const F_DISC_REF = 0.010410; // Sol's f_disc — normalizes the MMSN disc-gas surface density
+// GAS INFALL CONCENTRATION: the H being consumed (angular momentum stripped by the wind) drains
+// INWARD and piles up at low AU, so the gas density steepens inward over the disc lifetime — denser
+// where the inflow accumulates (just outside the front), thin in the outer disc whose gas has drained
+// away. The local capture density is weighted ∝ r^−GAS_INFALL_SLOPE, so the outer giants (Uranus/
+// Neptune), whose local gas has flowed inward, are starved (stay ice) while the inner giants gorge.
+const GAS_INFALL_SLOPE = 1.0; // legacy fallback only — the slope is now DERIVED from the wind lever arm
+// MAGNETIC LEVER ARM (Blandford–Payne / Réville). The gas density slope is NOT a constant — it is set
+// by the wind's lever arm λ=(r_A,wind/r₀)², itself a property of the STAR via the wind magnetization
+// η* = B*²R*²/(Ṁ_wind·v∞): r_A=R*·η*^¼. The SAME λ sets the angular-momentum theft (spin-down) and the
+// surface-density slope n=(2λ−3)/(2(λ−1)) — λ<3/2 ⇒ n<0 (gas denser inward, the infall concentration);
+// λ>3/2 ⇒ n>0 (inner cavity, gas held out). Sol-anchored at λ=1.25 ⇒ n=−1 (Σ∝r⁻¹).
+const LEVER_ARM_SOL = 1.35;
+const LEVER_ARM_MIN = 1.04; // floor (λ→1 makes n→−∞); keeps the inward slope finite
+const LEVER_ARM_MAX = 3.0; // cap (very strong wind ⇒ deep inner cavity)
+// DAVIS-DAM GAS PILE-UP: the dam (R_disc) is the OUTER pressure maximum where the wind ram balances
+// the infalling nebula, so gas ALSO accumulates there. The capture density gets an outer bump ∝
+// (r/R_disc)^GAS_DAM_Q (peaks at the dam), feeding the outermost planet on it — the two-zone picture:
+// inner concentration (r^n) + outer dam pile, trough between.
+const GAS_DAM_WEIGHT = 0.015;
+const GAS_DAM_Q = 5.0;
+const FRONT_MARCH_COEF = 300.0;
+const FRONT_SPIN_COEF = 50.0;
 // DAM-TRICKLE gas clock: τ[Myr] = (R_disc³ / M) · GAS_TRICKLE_COEF. The Davis-Dam H/He pileup
 // drains INWARD onto the star by GRAVITY-driven drift, v ∝ g ∝ M/r², so the drain time
 // τ = ∫dr/v ∝ R_disc³/M — gravity ∝ 1/r² makes a far dam drain CUBICALLY slower. COEF anchors
 // Sol (R_disc≈30 AU) to the ~3.5 Myr disc lifetime ⇒ COEF = 3.5/30³ ≈ 1.296e-4. Gas/ice-giant
 // cliff falls between Saturn (3.1) and Uranus (6.5 Myr); HR 8799 (R_disc≈67) → τ≈30 Myr so its
 // wide giants stay pre-cliff; Alpha Cen (R_disc≈9000 AU) → effectively never drains (Proxima eons).
-const GAS_TRICKLE_COEF = 1.296e-4;
+const GAS_TRICKLE_COEF = 5.35e-5;
 // DAVIS-DAM H/He PILEUP (the ice-giant, post-cliff channel): M_pileup = GAS_PILEUP_EFF·M_gas·
 // (r/R_disc)^GAS_PILEUP_Q, peaked at the dam, tapering inward; Alfvén-ungated (diamagnetic H/He).
 const GAS_PILEUP_EFF = 5.9e-4; // Sol-anchored on Neptune's envelope (~2.35 M⊕ at R_disc)
@@ -272,7 +373,6 @@ const PEBBLE_ETA = 0.002;
 const ETA_ROCK = 0.78;
 const SNOW_PILEUP_FACTOR = 0.5;
 const SNOW_PILEUP_WIDTH_FRAC = 0.15;
-const T_DISC_DISPERSAL_MYR = 5.0;
 const ETA_ICE_DECAY_FRACTION = 0.80;
 // Grain-opacity parameter (paper §2): 0 = fully grain-grown (opacity-poor),
 // 1 = ISM-like small-grain-dominated (opacity-rich). Set to 0.75 → Sol snow
