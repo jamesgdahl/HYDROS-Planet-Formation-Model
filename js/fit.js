@@ -2087,7 +2087,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
             const R_A_pre = (lambda != null && isFinite(lambda) && lambda > 0)
                 ? alfven_radius(M_pre, lambda) : 0;
             const in_window = (lambda != null && isFinite(lambda) && lambda > 0)
-                && in_fission_window(M_pre, lambda, R_A_pre);
+                && in_low_spin_fission_window(lambda, M_pre, R_A_pre, f_rock_from_budget(budget));
             // A LOW-SPIN core sheds essentially ONE close-in fission product (low angular momentum can't
             // fling it far): it lands at the close-fission separation a_bin = close_binary_separation(λ),
             // the SAME centrifugal radius the high-spin close binary uses (but at low λ). A gas giant

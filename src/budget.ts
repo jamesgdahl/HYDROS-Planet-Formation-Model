@@ -126,8 +126,39 @@ const BETA_FRAG = BETA_SOL * 2.0 * 2.0;  // ≈0.0338: Boss 1999 collapse thresh
 function rotational_beta(lambda: number): number {
   return BETA_SOL * lambda * lambda;
 }
+// CORE-DENSITY (composition) CORRECTION on the fission parameter. Rotational fission is governed by
+// β = E_rot/|E_grav| ∝ Ω²/(Gρ), so the breakup spin ω_crit ∝ √(Gρ) (Chandrasekhar Maclaurin→Jacobi→
+// fission; asteroid spin barrier P_crit ≈ 3.3 h/√ρ). A denser refractory (rock/iron) core therefore
+// needs MORE spin to reach the same β and RESISTS fission; a low-density volatile (water-ice) core
+// fissions at lower spin. The core mean density is mass-weighted from the rock:ice split (C/O):
+//   1/ρ = f_rock/RHO_ROCK + (1−f_rock)/RHO_ICE.  ρ_ref = solar-composition core (F_ROCK) ⇒ Sol-anchored
+// (Sol/AlphaCen/47 UMa are f_rock≈0.22 ⇒ factor 1, unchanged); rock-rich cores (HD 142, 55 Cnc, f_rock
+// ≈0.78) get β suppressed ⇒ their fission is shut off / their overflow lump shrinks below the giant floor.
+const RHO_ROCK = 3.3;   // g/cm³ — refractory silicate (+iron) core material
+const RHO_ICE  = 1.0;   // g/cm³ — water-ice
+function core_mean_density(f_rock: number): number {
+  const fr = Math.min(1, Math.max(0, f_rock));
+  return 1.0 / (fr / RHO_ROCK + (1 - fr) / RHO_ICE);
+}
+const RHO_CORE_REF = 1.0 / (F_ROCK / RHO_ROCK + (1 - F_ROCK) / RHO_ICE);
+// β ∝ 1/ρ ⇒ density-corrected fission β. COMP_F_ROCK carries the per-system composition (set during the
+// fit; defaults to F_ROCK on the legacy path ⇒ factor 1). Used by the fission GATE + the overflow MASS.
+function fission_beta(lambda: number, f_rock: number = COMP_F_ROCK): number {
+  return rotational_beta(lambda) * (RHO_CORE_REF / core_mean_density(f_rock));
+}
 function core_fragments(lambda: number): boolean {
-  return rotational_beta(lambda) >= BETA_FRAG;
+  return fission_beta(lambda) >= BETA_FRAG;
+}
+// LOW-SPIN fission window — LOWER edge. The accretion-overflow hot-Jupiter channel needs the core spun
+// near enough to breakup to shed the lump; the density-corrected β must clear this floor. (in_fission_
+// window sets the UPPER edge — too-fast flings the lump to the cascade instead.) Because fission_beta
+// carries 1/ρ, the floor is a DENSITY-RAISED minimum spin: a rock-rich core (HD 142, λ=0.47) falls
+// below it and does NOT fission, while the same-composition 55 Cnc (λ=0.52) and water-rich ups And
+// (λ=0.42) clear it. Value sits in the HD 142 (0.00102) ↔ 55 Cnc (0.00124) gap.
+const FISSION_BETA_FLOOR = 0.00112;
+function in_low_spin_fission_window(lambda: number, M_star_msun: number, R_A: number,
+                                    f_rock: number = COMP_F_ROCK): boolean {
+  return fission_beta(lambda, f_rock) >= FISSION_BETA_FLOOR && in_fission_window(M_star_msun, lambda, R_A);
 }
 // Centrifugal radius = the Davis Dam. R_wind(M) carries the SIS M³ mass-scaling;
 // λ² carries the rotational dispersion. Sol (λ=1)→30 AU, Alpha Cen (λ≈5.7)→14k AU.
