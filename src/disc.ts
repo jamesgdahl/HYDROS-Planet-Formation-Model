@@ -500,8 +500,30 @@ function formation_time(r: number, core: number, M_star: number, f_disc: number)
   // cascade (r ∝ spin² at a slot ⇒ t ∝ r^1.5 ∝ P_orbit): the fast-spinning inner disc
   // forms fastest, the slow outer disc slowest. Distinct from orbital_period() below
   // (the raw period in yr); this is the Myr accretion clock that gates gas capture.
+  // MAGNETIC HALO ACCELERATION: the Accretion Halo is magnetically driven — viscous accretion heating
+  // (NOT bolometric; the viscous midplane easily exceeds the ~3130 K silica/iron boiling, core_accretion_
+  // temperature) VAPORIZES and thermally IONIZES the rock, and the magnetized wind flings that conducting
+  // vapor outward. So the march speed scales with the wind flux W=wind_flux (∝ M⋆^3.54, Sol-normed) raised
+  // to the wind MAGNETIZATION η ∝ B² ∝ Ω² (B∝Ω dynamo) — i.e. W^(Ω²), a DERIVED exponent (this system's
+  // spin²), not a fitted constant. ≡1 at Sol (Ω=1,W=1) so Sol is untouched; HR 8799 (Ω²=1.46, W≈4)
+  // advances its halo ~8× faster, letting its WIDE outer giants (b, c) form WITHIN the gas window and
+  // gorge to giant masses instead of starving on the closed-window ice-giant branch.
   if (COMP_MDOT > 0 && core > 0 && COMP_R_DISC > 0 && r > 0) {
-    return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF) / COMP_SPIN;
+    // The magnetic acceleration's efficiency scales with the wind MAGNETIZATION η* ∝ B² ∝ Ω² (B∝Ω,
+    // dynamo), so the ionized rock vapor is flung with the wind flux W raised to the spin² power —
+    // a DERIVED exponent (this system's Ω²), not a fitted constant. ≡1 at Sol (Ω=1, W=1).
+    const mag_accel = Math.pow(Math.max(wind_flux(M_star), 1e-9), COMP_SPIN * COMP_SPIN);
+    // SILICA-BOILING VISCOUS-VAPOR BONUS (second disc-spread channel, sub-~0.7 spin): when the viscous
+    // accretion heating reaches the rock/iron boiling point (T_core ≥ T_SILICA_BOIL), the rock vaporizes
+    // and provides a SECOND spread channel that speeds planet formation. Vapor supply is SATURATED
+    // (boiling is a phase transition — hotter ≠ more vapor), so the bonus scales only with the SPIN
+    // leverage Ω that flings it ⇒ it PEAKS at the highest spin that still boils (~0.7) and fades toward
+    // lower spin; OFF above ~0.7 (core too cool to boil — those rely on the magnetic channel). This is
+    // what lets the low-spin giant-formers (ups And, μ Arae, HD 142, 47 UMa) build fast enough.
+    const T_core = core_accretion_temperature(M_star, COMP_SPIN, COMP_MDOT);
+    const vapor_bonus = (T_core >= T_SILICA_BOIL)
+      ? (1 + VAPOR_BONUS_K * COMP_SPIN / Math.pow(Math.max(M_star, 1e-6), VAPOR_GRAV_EXP)) : 1.0;
+    return core * (r / COMP_R_DISC) / (COMP_Z * COMP_MDOT * FORM_CLOCK_COEFF) / COMP_SPIN / mag_accel / vapor_bonus;
   }
   return 0.10 * r / slope(M_star, f_disc);   // fallback: non-budget legacy systems
 }
@@ -548,7 +570,10 @@ function gas_consumption_time(M_star: number, f_disc: number): number {
 // (giants harder, e.g. TRAPPIST 4.4), gas-rich LOWER (Beta Pic 1.5).
 function runaway_core_mass(M_star: number, f_disc: number): number {
   const tau_disc = Math.max(gas_consumption_time(M_star, f_disc), 0.01);
-  return Math.pow(TAU_KH0_MYR * GRAIN_OPACITY / tau_disc, 1.0 / 2.5);
+  // Capped at the literature ISM ceiling (CRIT_CORE_CEILING): the τ_KH timescale gate over-inflates
+  // for compact discs, but the static critical core mass never exceeds ~10 M⊕ (and is lower for the
+  // enriched envelopes these warm discs have). Without the cap ups And c (core 14) is wrongly blocked.
+  return Math.min(CRIT_CORE_CEILING, Math.pow(TAU_KH0_MYR * GRAIN_OPACITY / tau_disc, 1.0 / 2.5));
 }
 
 // Wind-competition gas threshold: the core mass whose gravity wins H/He against

@@ -352,11 +352,44 @@ const FRONT_SPIN_COEF = 50.0;
 // cliff falls between Saturn (3.1) and Uranus (6.5 Myr); HR 8799 (R_disc≈67) → τ≈30 Myr so its
 // wide giants stay pre-cliff; Alpha Cen (R_disc≈9000 AU) → effectively never drains (Proxima eons).
 const GAS_TRICKLE_COEF = 5.35e-5;
+// GAS CAPTURE RADIUS fraction: reach = GAS_REACH_FRAC · R_c (centrifugal radius), apply_hydrogen_conservation.
+// ⚠️ MAGIC NUMBER — NOT derived. R_c IS the right scale (reach/R_c ≈ 0.08–0.11 across the catalogue, the
+// tightest invariant, unifies HR 8799), but the fraction's value is unexplained. Near 1/(4π)=0.0796
+// (solid-angle of the centrifugal sphere) but Sol needs 0.086. The "1/(4π) + magneto-centrifugal Ω^2.5"
+// form was tried and FAILED: a steep spin exponent sends the high-spin binaries' reach past their dam
+// (Alpha Cen, GJ 667 → star 100%, Proxima/C starve) — likely because R_c here uses the PRIMARY mass, so
+// a fragmenting binary's R_c is over-large; the spin term needs R_c on the TOTAL (fragmented) mass first.
+// TODO: resolve the R_c mass-normalization (primary vs total), THEN re-try the solid-angle + spin form.
+const GAS_REACH_FRAC = 0.0863;
+// SILICA-BOILING VISCOUS-VAPOR BONUS: for sub-~0.7-spin stars whose core accretion temperature reaches
+// the silica/iron boiling point, the vaporized rock opens a second disc-spread channel that speeds
+// planet formation by (1 + VAPOR_BONUS_K·Ω / M^VAPOR_GRAV_EXP) — saturated vapor × spin leverage Ω that
+// FLINGS it, divided by the stellar GRAVITY it must climb out of. A low-mass star's shallow well lets
+// the flung vapor spread far more, so the boost is intrinsically larger (the constant is NOT universal:
+// a flat K serves ~1.2 M⊙ giant-hosts at ≈5 but starves the ~0.8 M⊙ small-planet systems that need
+// ≈16 — the gravity term derives that split). Peaks at the highest spin that still boils (~0.7). M=1
+// (Sol) ⇒ the gravity term is unity, so Sol is untouched. Anchored: ups And (M=1.27, Ω=0.42) ⇒ 3.1×.
+const VAPOR_BONUS_K = 9.1;
+const VAPOR_GRAV_EXP = 2.5; // stellar-gravity (escape-energy ∝ M/R) exponent on the vapor-fling spread
+// MAGNETIC HALO ACCELERATION: the Accretion-Halo march speed scales with the dam-setting wind flux
+// W (∝ M⋆^3.54, Sol-normed to 1) raised to the system's Ω² (spin²) — the wind MAGNETIZATION η ∝ B² ∝
+// Ω² (B∝Ω, dynamo), so the ionized rock vapor is flung with efficiency W^(Ω²). DERIVED (no fitted
+// exponent): ≡1 at Sol (Ω=1,W=1); HR 8799 (Ω=1.21 ⇒ Ω²=1.46, W≈4) advances its halo ~8× faster so its
+// wide outer giants form within the gas window instead of starving on the closed-window ice branch.
+// (Wired in formation_time, disc.ts — uses COMP_SPIN² directly, no constant.)
 // DAVIS-DAM H/He PILEUP (the ice-giant, post-cliff channel): M_pileup = GAS_PILEUP_EFF·M_gas·
 // (r/R_disc)^GAS_PILEUP_Q, peaked at the dam, tapering inward; Alfvén-ungated (diamagnetic H/He).
 const GAS_PILEUP_EFF = 5.9e-4; // Sol-anchored on Neptune's envelope (~2.35 M⊕ at R_disc)
 const GAS_PILEUP_Q = 0.22; // inward GROWTH of the pileup (∝(R_disc/r)^q): Uranus ≳ Neptune
 const TAU_KH0_MYR = 100.0;
+// LITERATURE CEILING on the runaway critical core mass. The τ_KH=τ_disc gate over-inflates for
+// COMPACT discs (short τ_disc ⇒ M_crit ∝ τ_disc^−0.4 → 16–29 M⊕ for ups And/55cnc/kep90), but the
+// STATIC critical core mass never exceeds ~10 M⊕ even at interstellar grain opacity (Mizuno 1980;
+// Piso & Youdin 2014: ~8.5 M⊕ at 5 AU), and drops to a FEW M⊕ for the warm, low-opacity, heavy-
+// element-enriched envelopes these compact metal-rich discs actually have (Hori & Ikoma; ×3 lower
+// per 10× opacity drop). So cap M_crit at the ISM ceiling — this lets enriched inner giants (ups And
+// c) gorge while leaving every other system unchanged (cores that matter are already >10 M⊕).
+const CRIT_CORE_CEILING = 10.0;
 // ε_PA — fraction of the inward pebble FLUX the inner cores accrete (pebble-accretion efficiency,
 // a few % in the literature). The flux is now sourced from the OUTER reservoir (~10× the old
 // disc-ice pool), so this dropped from 0.40 (applied to the wrong, too-small pool) to ~0.03.

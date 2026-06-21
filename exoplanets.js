@@ -111,13 +111,14 @@ window.EXOPLANETS = [
     "id": "gj667",
     "name": "GJ 667 A",
     "ly": 23.62,
+    "comment": "Triple, a low-metallicity ([Fe/H]=-0.59) Alpha-Cen analogue: A (primary, 0.73 M☉) + B (close co-primary core fragment, 0.69 M☉ at a_bin=12.6 AU) + C (M-dwarf, 0.327 M☉, at ~230 AU). λ is OVER-DETERMINED at ≈4.63 by BOTH companions independently — the close fracture (a_bin=A_BIN_COEF·√M·λ²: B at 12.6 AU ⇒ λ=4.60) AND the wide Davis dam (R_wind·λ²: C at 230 AU ⇒ λ=4.63) — both comfortably past λ_frag=2 (β=BETA_SOL·λ²≈0.18 ≫ 0.034), so a >200 AU dam IS tearing spin, self-consistently. The old preset spin 59.9 was a stale super-breakup back-solve. (Masses/[Fe/H]: Anglada-Escudé 2013 arXiv:1306.6074, Delfosse 2013 arXiv:1202.2467.)",
     "budget": {"rock":510.416,"ice":1809.66,"hydrogen":613386.6},
     "star": 0.73,
-    "feh": -0.57,
+    "feh": -0.59,
     "cto": 0.55,
-    "spin": 59.9146,
+    "spin": 4.63,
     "planets": [
-      {"name":"GJ 667 B","r":12.6,"observed":229748},
+      {"name":"GJ 667 B","r":12.6,"observed":229748,"core":true},
       {"name":"GJ 667 C","r":230,"observed":108881}
     ]
   },

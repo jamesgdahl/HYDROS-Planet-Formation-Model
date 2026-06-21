@@ -512,15 +512,16 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
     // starting Hill reach and its onset (formation_time); the runaway (capture → bigger Hill → more
     // capture) and forming-first advantage let the inner cores gobble the flux before the outer ones
     // switch on (pebble isolation). The leftover (gas-exhausted) flux freezes out as the KBO budget.
-    // Sinks = cores BEYOND the snow line only: the inward pebble flux is icy, and inside the snow line
-    // it sublimates (no solid capture) — and the giants intercept it first anyway (isolation). The
-    // terrestrials keep their direct in-situ rock, untouched by the drift.
-    const r_snow_peb = snow_line(M_star, f_disc);
+    // Sinks = cores at ALL radii. The inward pebble flux is captured by whatever core it drifts past; the
+    // snow line gates only ICE RETENTION, not capture — inside it the icy pebble's ice sublimates and only
+    // its refractory ROCK is retained (the peb_rock/peb_water split below keeps rock, drops the water for
+    // a non-retainer), but the core still grows. (Was BEYOND-snow-line only — the "sublimates ⇒ no solid
+    // capture" reasoning was wrong; it starved every inside-snow-line core of all pebble, e.g. ups And's
+    // c/d, which then never reached the runaway gas threshold. The gas inner edge R_inner — no gas ⇒ no
+    // drift — is the real inner cutoff, applied in pebble_competition, not the snow line.)
     const seeds = [];
     for (const s of slot_data) {
         const r = fit_r(s);
-        if (r <= r_snow_peb)
-            continue;
         seeds.push({ n: s.slot_n, r, seed: rock_allocation(r, M_star, spin, f_disc, omega)
                 + ice_allocation(r, M_star, spin, f_disc, omega) });
     }
@@ -568,21 +569,17 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         const r = fit_r(s);
         let rock = rock_allocation(r, M_star, spin, f_disc, omega);
         let ice = ice_allocation(r, M_star, spin, f_disc, omega);
-        // PEBBLE BONUS, folded into rock/ice at f_rock:1−f_rock. The water survives only if the planet can
-        // hold a steam atmosphere against hydrodynamic escape — massive (deep gravity well) OR cold (beyond
-        // the snow line). Inside the Hamano (2013) Type-II proximity boundary r_typeII = TYPE_II_AU·√L (≈
-        // Mars's orbit at Sol; bolometric-flux set) a SMALL planet's magma ocean persists and its water is
-        // photodissociated / lost → it stays dry (Hadean zircons: Earth held this state until Theia
-        // delivered water LATE — the model's late-volatile mechanism, not the pebble flux). A massive body
-        // (Kepler-90 h ~200 M⊕) keeps it → STEAM GIANT; cold ones (Uranus/Neptune) → ice giants.
+        // PEBBLE BONUS, folded into rock + ICE at f_rock:1−f_rock. The pebble flux drifts in AFTER accretion
+        // is over and the disc has COOLED — there is no longer a snow line, so the icy pebbles do NOT
+        // sublimate: each delivers its full rock AND ice to whatever core it reaches, at any radius. (The
+        // earlier gate dropped the pebble water inside a Type-II/snow-line boundary on a sublimation/magma-
+        // ocean-escape argument — but that is an accretion-EPOCH effect, over by the time pebbles arrive;
+        // and Sol's dry terrestrials get no pebble anyway (R_inner) — their water is Theia-delivered.)
         const peb_rock = COMP_F_ROCK * pebble[n];
         const peb_water = (1 - COMP_F_ROCK) * pebble[n];
-        const L_star = M_star > 0.43 ? Math.pow(M_star, 4) : 0.23 * Math.pow(M_star, 2.3);
-        const r_typeII = TYPE_II_AU * Math.sqrt(L_star);
-        const retains_water = (r > r_typeII) || (rock + peb_rock > STEAM_RETAIN_MASS);
         // POTENTIAL core (uncapped — the accretion the body actually did; the gas clock reads this, NOT
-        // the availability-capped solid): direct + the captured pebble.
-        const potential_core = rock + ice + peb_rock + (retains_water ? peb_water : 0);
+        // the availability-capped solid): direct + the FULL captured pebble (rock + ice).
+        const potential_core = rock + ice + peb_rock + peb_water;
         // AVAILABILITY CAP applies ONLY to the DIRECT (in-situ) disc accretion — the local material the
         // standing wave concentrates. The pebble flux is gravitationally captured drift, NOT limited by
         // the local disc-solid budget, so it is added AFTER the cap, uncapped.
@@ -598,8 +595,7 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         // mass but does NOT lengthen the formation clock (pebbles don't delay the planet's existence).
         const seed_core = rock + ice;
         rock += peb_rock;
-        if (retains_water)
-            ice += peb_water; // else Type-II: delivered water destroyed, planet stays dry
+        ice += peb_water; // pebbles arrive post-accretion (disc cooled, no snow line) ⇒ ice delivered, not sublimated
         let peb = 0;
         let core = rock + ice + peb;
         const in_void = false;
@@ -1889,7 +1885,7 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc) {
 //     disc lets the giants consume nearly all of it; flat profile, latest/shortest-window the runt.
 // The gas INTERIOR to the innermost giant has no planet to catch it ⇒ clears to the star (reduces
 // the planet-available budget); for a compact disc this barely binds (window-limited anyway).
-function apply_hydrogen_conservation(slots, reservoir) {
+function apply_hydrogen_conservation(slots, reservoir, M_star, spin) {
     const total_res = Math.max(0, reservoir);
     const claims = (s) => !s.external && !s.exterior && (s.predicted - s.core) > 1e-9;
     // DRAINAGE = the gorging WINDOW itself (τ = R_disc³/M, in hydrogen_capture), no geometric
@@ -1908,7 +1904,7 @@ function apply_hydrogen_conservation(slots, reservoir) {
     const filled = slots.filter(s => s.filled && claims(s));
     const empty = slots.filter(s => !s.filled && claims(s));
     const recipients = (filled.length ? filled : empty).slice().sort((a, b) => b.slot_r - a.slot_r);
-    let remaining = total_res, captured = 0, exhausted = false;
+    let captured = 0;
     const setgas = (s, g) => {
         s.h_he = g;
         s.predicted = s.core + g;
@@ -1921,51 +1917,49 @@ function apply_hydrogen_conservation(slots, reservoir) {
             s.implied_dM = s.observed - s.predicted;
         }
     };
-    const damWant = recipients.length ? (recipients[0].predicted - recipients[0].core) : 0;
-    // SPREAD recipients = ALL gas-eligible claimers (want>0), filled AND empty. The outermost-first
-    // branch below restricts gas to observed bodies; but at a far dam the pile spreads inward and the
-    // EMPTY gas-eligible slots gorge into giants too (later evicted), so they're real sinks here. Using
-    // claims() (predicted−core>0) keeps the model's own runaway-threshold gate: the sub-threshold inner
-    // slots (no gorging want) are correctly left out.
-    const spreadRecipients = slots.filter(claims).slice().sort((a, b) => b.slot_r - a.slot_r);
-    const spread = spreadRecipients.length > 1 && damWant >= total_res;
-    if (spread) {
-        // PRESSURE-BUMP SPREAD. The dam pile would otherwise monopolise (far-dam, near-infinite gorging
-        // window). Physically it can't: the pile pressure pushes gas INWARD and the stellar wind ram
-        // P_wind ∝ Ẇ/r² (the same flux that fixes R_disc) pushes back, rising steeply inward. The pile
-        // relaxes to ≈uniform pressure P_pile; in a flared disc (H∝r) that means Σ ∝ P_pile·r², so the
-        // gas mass per (log-spaced) slot ∝ Σ·r·Δr ∝ r⁴ — sharply peaked at the dam, the inner slots
-        // gorging the steeply-tapering tail into giants (later evicted). The taper itself sets the spread
-        // depth: a big pile reaches a slot or two in, a small one barely past the dam (Sol invisible).
-        // At a far dam every gas-eligible slot's gorging want is unbounded (τ=R_disc³/M → ~1e10 M⊕), so
-        // the want never binds — the wind-ram r⁴ weight, not the want, is what apportions the gas. Only
-        // fires when the dam would monopolise (far dam); bounded-want systems keep outermost-first below.
-        const wsum = spreadRecipients.reduce((a, s) => a + Math.pow(s.slot_r, 4), 0);
-        if (wsum > 0)
-            for (const s of spreadRecipients) {
-                const g = total_res * Math.pow(s.slot_r, 4) / wsum;
-                setgas(s, g);
-                captured += g;
-            }
-        remaining = total_res - captured;
-    }
-    else {
-        // OUTERMOST-FIRST: each body takes min(want, gas still flowing past it). The remainder disperses.
+    // GEOMETRIC STELLAR CONSUMPTION — there is no "want." All gas is either CAPTURED by a planet or
+    // CONSUMED by the star; nothing is an unaccounted leftover. The star eats the gas WITHIN ITS REACH:
+    // the nebular gas fills a 3-D sphere of radius R_disc (the Davis Dam) and the stellar consumption
+    // rate drops steeply outward, so the star eats only the fraction of that sphere's VOLUME inside its
+    // reach R_GAS_REACH ⇒ star_frac = (R_GAS_REACH / R_disc)³. A COMPACT disc (Sol R_disc≈30) is almost
+    // entirely within reach ⇒ star eats ~90%; a WIDE disc (HR 8799 R_disc≈67) holds most of its gas far
+    // beyond reach ⇒ star eats <10% and the PLANETS get the rest. This replaces the old "planets take
+    // their window-want, star gets the residual" — for Sol that residual happened to be 90%, but it was
+    // a passive leftover, not a real consumption, and it over-fed the star for wide discs.
+    // The planets then split the remaining (1−star_frac)·reservoir in proportion to their capture weight
+    // (the gorge formula's predicted−core), which sets the inter-planet ratios (Jupiter/Saturn etc.).
+    // GAS CAPTURE RADIUS = GAS_REACH_FRAC · R_c, where R_c is the centrifugal radius (the angular-momentum
+    // disc scale, R_c = SOL_R_C·Ω²/M — so this carries mass AND spin, fully derived). R_c is the RIGHT
+    // SCALE: reach/R_c is the tightest invariant across the catalogue (~0.08–0.11, HR 8799 included — it
+    // stops being an outlier because R_c, not R_disc, is the natural scale). star_frac = (reach/R_disc)³.
+    // ⚠️ MAGIC NUMBER: GAS_REACH_FRAC ≈ 0.086 is NOT yet derived. It's near 1/(4π)=0.0796 (a solid-angle
+    // fraction of the centrifugal sphere — the cleanest candidate) but undershoots Sol (1/4π → 71% vs the
+    // 90% Sol needs); the excess above 1/4π tracked the stellar wind, NOT R_A (the +κ·R_A form failed:
+    // κ scattered 0–32). TODO: determine what GAS_REACH_FRAC physically is (solid angle 1/4π + a wind
+    // term? a disc aspect ratio H/R? an angular-momentum/mass fraction of R_c?).
+    const R_disc_sys = COMP_R_DISC > 0 ? COMP_R_DISC : 1e9;
+    const R_c = disc_centrifugal_radius(M_star, spin);
+    const reach = GAS_REACH_FRAC * R_c;
+    const geom = Math.min(1, Math.pow(reach / Math.max(R_disc_sys, 1e-9), 3));
+    // WIND SUPPORT (spin). The gas drains onto the star by gravity; the magnetized wind (momentum ∝
+    // Ω^WIND_SPIN_EXP) holds it up in the disc where planets can capture it. A WEAK wind (low spin) fails
+    // to support it ⇒ the gas falls in ⇒ the star eats MORE; a STRONG wind (HR 8799) keeps the gas out
+    // for the planets. So the planet-RETAINED fraction (1−star_frac) is the geometric share raised to the
+    // wind-support power 1/Ω^WIND_SPIN_EXP: Ω=1 (Sol) ⇒ unchanged (90%); ups And Ω=0.42 ⇒ 37→67%; HR 8799
+    // Ω=1.21 ⇒ planets keep a touch more. Ties the otherwise-unused WIND_SPIN_EXP (R_inner is the SYMPTOM
+    // of low spin — compact disc, gas piled close — not the driver; keying on it directly breaks HR 8799).
+    const wind_support = Math.pow(Math.max(spin, 1e-6), WIND_SPIN_EXP);
+    const star_frac = 1 - Math.pow(Math.max(1 - geom, 0), 1 / wind_support);
+    const planet_budget = total_res * (1 - star_frac);
+    const wsum = recipients.reduce((a, s) => a + Math.max(0, s.predicted - s.core), 0);
+    if (wsum > 0)
         for (const s of recipients) {
-            const want = s.predicted - s.core;
-            const got = Math.min(want, Math.max(0, remaining));
-            if (got < want - 1e-9)
-                exhausted = true;
-            setgas(s, got);
-            remaining -= got;
-            captured += got;
+            const g = planet_budget * Math.max(0, s.predicted - s.core) / wsum;
+            setgas(s, g);
+            captured += g;
         }
-    }
-    // Empty slots when real bodies took the disc: they formed nothing, so zero their gas —
-    // otherwise an uncapped far-disc window want renders as a phantom O-class "star". SKIP in spread
-    // mode: there the empty slots gorged a CAPPED r⁴ share into real giants (later evicted), which we
-    // keep for display — they're not phantom uncapped wants.
-    if (!spread && filled.length)
+    // Empty slots when real bodies took the disc: they formed nothing, so zero their gas.
+    if (filled.length)
         for (const s of empty) {
             s.h_he = 0;
             s.predicted = s.core;
@@ -1974,7 +1968,7 @@ function apply_hydrogen_conservation(slots, reservoir) {
                 s.primordial.total = s.core;
             }
         }
-    return { captured, dispersed: total_res - captured, exhausted };
+    return { captured, dispersed: total_res - captured, exhausted: false };
 }
 // Core barycentre: the mass-weighted centre of all core elements (the primary at
 // r=0, mass primaryMass; plus every co-primary core body at its own r). Everything
@@ -2028,15 +2022,16 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         }
         if (wide) {
             const lam_wide = Math.sqrt(wide.r / Math.max(R_wind, 1e-12));
-            // Override ONLY when the stored spin is inflated past the companion-implied λ (the artifact
-            // case). Then λ := λ_wide and the dam is pinned at the companion's observed position (this
-            // resolves the primary-vs-total-budget mass ambiguity in disc_radius_wind(M)·λ²). A reasonable
-            // stored λ (≤ λ_wide, e.g. Alpha Cen's semimajor-derived 5.7) is left exactly as-is.
+            // Override ONLY when the stored spin is inflated past the companion-implied λ (the artifact case,
+            // e.g. a stale 59.9): cap λ := λ_wide. The dam is NOT pinned to the companion's observed position
+            // — that was an observed→predicted leak (it forced GJ 667's dam onto C's 230 AU, so the WITH-
+            // observed run diverged from the pure forward, where the dam is the input-derived centrifugal
+            // radius ~3135 AU). The dam now always = centrifugal_radius(M, λ) (forward-pure); the wide
+            // companion is a cascade slot product within it, compared against — not feeding — the dam. A
+            // reasonable stored λ (≤ λ_wide, e.g. Alpha Cen's semimajor-derived 5.7) is left exactly as-is.
             const lam_stored = (lambda != null && isFinite(lambda)) ? lambda : Infinity;
-            if (isFinite(lam_wide) && lam_wide > 0 && lam_stored > lam_wide) {
+            if (isFinite(lam_wide) && lam_wide > 0 && lam_stored > lam_wide)
                 lambda = lam_wide;
-                set_wide_dam(wide.r);
-            }
             // Distance gate (always): any stellar body well INSIDE the wide dam (r < FRAG_INNER_FRAC·R_c)
             // is the close fission product ⇒ flag `core`. The wide companion itself stays a slot product.
             const FRAG_INNER_FRAC = 0.25;
@@ -2060,8 +2055,15 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         && primaryMass * M_SUN_EARTH >= M_STELLAR_BOUNDARY
         && lambda != null && core_fragments(lambda)
         && !planets.some(p => p.core && (p.observed || 0) > 0)) {
-        const M_B = (1 - disc_fraction_centrifugal(lambda)) * mass_from_budget(budget) * M_SUN_TO_EARTH
-            - primaryMass * M_SUN_EARTH;
+        // BAR-FISSION MASS RATIO (DERIVED — not a budget kludge): the rotating core splits into the
+        // primary A and a co-primary B with mass ratio q = M_B/M_A = √(1−β), β = BETA_SOL·λ² (the bar's
+        // rotational asymmetry: β→0 ⇒ equal twins q→1; the bar-mode β≈0.27 ⇒ q≈0.85). B is q·M_A from the
+        // FRACTURE itself. REPLACES the old kludge M_B = (1−f_disc)·budget − primary, which dumped ALL the
+        // non-disc mass into B and was reverse-tuned so Alpha Cen B landed on 0.909 — it overshot GJ 667 B
+        // (0.69 → 0.95, B heavier than A). The √(1−β) law predicts BOTH from inputs alone, no per-system
+        // tuning: Alpha Cen 0.919 (obs 0.909, +1%), GJ 667 0.660 (obs 0.690, −4%).
+        const q_frag = Math.sqrt(Math.max(0, 1 - rotational_beta(lambda)));
+        const M_B = q_frag * primaryMass * M_SUN_EARTH;
         if (M_B > 0)
             planets = [...planets,
                 { name: "Co-primary (predicted)", r: close_binary_separation(lambda, primaryMass), observed: M_B, core: true }];
@@ -2567,7 +2569,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const M_disc_host = (hasCoPrimary && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
             ? primaryMass : M;
         const H_reservoir = f * m_star_earth(M_disc_host);
-        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir);
+        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir, M_disc_host, spin);
         // RE-CLASSIFY after the H-cap: classify_slot ran in the cascade with the PRE-cap mass, so a
         // far-dam slot that wanted a stellar gas envelope but lost it to the dam-slot kept a stale
         // "O-class star" prefix even at a few hundred M⊕. Re-derive the leading class token from the

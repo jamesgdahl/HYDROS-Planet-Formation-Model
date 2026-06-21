@@ -193,6 +193,11 @@ function pebble_competition(sinks, M_peb0, M_star, R_disc, f_disc, omega) {
     // unobstructed flux; the residual freezes out once the gas (hence the drift) is gone.
     const k_star = STELLAR_EAT_COEF * W / (Math.PI * Math.max(R_disc * R_disc, 1e-12));
     const T_consume = 1.0 / Math.max(k_star, 1e-30);
+    // Drift conductance scales R_disc^-1.5 (Sol-anchored): the drift TIME to cross the disc is
+    // T_drift ~ R_disc/v_drift ∝ R_disc^1.5 (v_drift ∝ η·v_K ∝ √(M/R_disc)), while the gas lifetime
+    // 1/k_star ∝ R_disc². So the delivered fraction 1-exp(-K_eff/k_star) ∝ √R_disc — NOT R_disc² (a
+    // constant K gives R_disc², over-penalising compact discs by R_disc^2.5; e.g. ups And 2% vs Sol 78%).
+    const K_eff = PEBBLE_DRIFT_K * Math.pow(SOL_R_DISC / Math.max(R_disc, 1e-9), 1.5);
     // OUTSIDE-IN drift filter (see header): the outermost active core gets first crack.
     const front = consumption_front(M_star, omega, f_disc);
     const st = sinks.map(s => ({
@@ -209,15 +214,16 @@ function pebble_competition(sinks, M_peb0, M_star, R_disc, f_disc, omega) {
     for (let step = 0; step < N && (M_peb > M_peb0 * 1e-9 || pile > M_peb0 * 1e-6); step++) {
         const t = step * dt;
         const P = Math.exp(-k_star * t); // gas-density fraction (drives the drift)
-        const released = M_peb * (1.0 - Math.exp(-PEBBLE_DRIFT_K * P * dt)); // flux drifting inward this step
+        const released = M_peb * (1.0 - Math.exp(-K_eff * P * dt)); // flux drifting inward this step
         M_peb -= released; // it leaves the reservoir (drift is gas-driven)
         let flux = released; // enters at the dam, swept outer→inner
         let inner = null; // innermost ACTIVE core (eats the pile)
         for (const x of st) { // st is sorted outermost-first
             if (t < x.tcrit || t >= x.tedge)
                 continue; // outside [tcrit, tedge]: not formed / edge passed
-            if (x.r < R_inner)
-                continue; // INSIDE the gas inner edge: no gas ⇒ no drift ⇒ no capture
+            // The marching consumption front (tedge, spin-coupled via J̇=Ṁ·Ω·r_A²) is the inner cutoff. The
+            // old static R_inner=√(GAS_EDGE_K·W/P) gate was a DUPLICATE inner edge with no spin term — it
+            // over-vetoed inner cores in compact discs (55cnc 85→16%, ups And c). Front-only now.
             if (flux > 0) {
                 const eps = 1.0 - Math.exp(-PEBBLE_CAPTURE_K * Math.pow(x.M / (3 * M_star_E), 2.0 / 3.0));
                 const got = flux * eps;
