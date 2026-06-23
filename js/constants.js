@@ -255,8 +255,12 @@ const ENV_HYDROSTATIC_FRAC = 0.118;
 const GAS_CAPTURE_EFF = 0.0999; // legacy (old global runaway fraction; unused by the window model)
 const GAS_WINDOW_K = 0.691; // legacy (old exp window; unused by hydrogen_capture)
 // WINDOW-CAPTURE capture rate [M⊕/Myr]: a runaway giant accretes gas at this rate over its gas-rich
-// window (τ − t_form). Calibrated on Sol's Jupiter (H/He ≈ 304 M⊕, window ≈ 1.9 Myr ⇒ ~177).
-const GAS_CAPTURE_RATE = 3750.0;
+// window (τ − t_form). Sets the gorge WEIGHTS (the cap from star_frac is binding, so this controls the
+// J:S:U:N distribution, not the total). With the 3-D wind star_frac (0.901), rate 4500 ZEROES the two
+// clean giants — Jupiter +0.2%, Neptune −0.5% — leaving Uranus at +8% (its giant-impact/axis-tip
+// residual, a real anomaly, not a gas-model error). Rate steepens J vs the ice giants but TRADES
+// Jupiter against Neptune, so it can't lift both; 4500 is the balance that lands both at obs.
+const GAS_CAPTURE_RATE = 4500.0;
 const GAS_SELFLIMIT_C = 0.5;
 // MAGNETIC CAPTURE + GRAVITATIONAL RETENTION (the unified Sun/Jupiter capture model). H/He is NOT
 // captured gravitationally — it's captured MAGNETICALLY, the same angular-momentum theft the Sun's wind
@@ -352,15 +356,32 @@ const FRONT_SPIN_COEF = 50.0;
 // cliff falls between Saturn (3.1) and Uranus (6.5 Myr); HR 8799 (R_disc≈67) → τ≈30 Myr so its
 // wide giants stay pre-cliff; Alpha Cen (R_disc≈9000 AU) → effectively never drains (Proxima eons).
 const GAS_TRICKLE_COEF = 5.35e-5;
-// GAS CAPTURE RADIUS fraction: reach = GAS_REACH_FRAC · R_c (centrifugal radius), apply_hydrogen_conservation.
-// ⚠️ MAGIC NUMBER — NOT derived. R_c IS the right scale (reach/R_c ≈ 0.08–0.11 across the catalogue, the
-// tightest invariant, unifies HR 8799), but the fraction's value is unexplained. Near 1/(4π)=0.0796
-// (solid-angle of the centrifugal sphere) but Sol needs 0.086. The "1/(4π) + magneto-centrifugal Ω^2.5"
-// form was tried and FAILED: a steep spin exponent sends the high-spin binaries' reach past their dam
-// (Alpha Cen, GJ 667 → star 100%, Proxima/C starve) — likely because R_c here uses the PRIMARY mass, so
-// a fragmenting binary's R_c is over-large; the spin term needs R_c on the TOTAL (fragmented) mass first.
-// TODO: resolve the R_c mass-normalization (primary vs total), THEN re-try the solid-angle + spin form.
-const GAS_REACH_FRAC = 0.0863;
+// STELLAR CONSUMPTION = metallicity-set drain with a large-disc (3-D volume) dilution CEILING.
+// EMPIRICAL (apply_hydrogen_conservation): the observed planet-gas fraction (obs gas / H reservoir) is
+// NON-monotonic in disc size (Sol the minimum) and tracks TWO things:
+//   • METALLICITY — high Z ⇒ fat cores ⇒ planets run away and gorge ⇒ the star drains LESS. This sets the
+//     spread among compact discs (55 Cnc metal-rich keeps 45%, tauCeti metal-poor → star takes ~all).
+//   • LARGE-DISC 3-D VOLUME dilution — the wind fills the disc's 3-D volume; for a disc bigger than Sol's
+//     it is spread so thin it can't drain (HR 8799 R_disc≈67 ⇒ planets keep 82% DESPITE low metallicity).
+//     Gated by max(1,·): =1 below Sol's disc (compact systems are metallicity-ruled), dilutes only above.
+// Spin came out unresolved at n=18 (confounded with Z) and BROKE HR 8799 (its high spin over-drained), so
+// it is dropped — a monotonic spin²/R_disc³ wind saturated every compact disc to 100%. The big positive
+// residuals (47 UMa, ups And, 55 Cnc b, Beta Pic) are the FISSION / gravitational-instability systems:
+// their planet mass is NOT gas-captured, so a gas-capture drain correctly under-counts it. Fit ~10% (≈7%
+// excluding fission). Form:
+//   star_frac = STAR_CONSUME_K · (Z/STAR_Z_SOL)^−STAR_METAL_EXP / max(1, R_disc/STAR_DISC_REF)^STAR_VOL_EXP
+const STAR_CONSUME_K = 0.9037; // Sol anchor (Z=Z_sol, R_disc=ref ⇒ star_frac 0.9037 ⇒ Jup/Nep zeroed)
+const STAR_METAL_EXP = 0.4; // (Z/Z_sol)^−this — high metallicity ⇒ planets gorge ⇒ star drains less
+const STAR_Z_SOL = 0.014; // Sol disc metal fraction (rock+ice)/total — the Z normaliser
+const STAR_DISC_REF = 30.1; // AU — Sol's Davis Dam; the 3-D volume dilution gate (=1 below it)
+const STAR_VOL_EXP = 2.5; // dilution ∝ (R_disc/ref)^this above the gate (only large discs, HR 8799)
+// TWO-STAGE PLANET DISTRIBUTION. Stage 1 = window-wants (hydrogen_capture); stage 2 = whatever the wants
+// leave unclaimed is vacuumed up as core^Q by the biggest core. Sol's clock is alive ⇒ wants > budget ⇒ no
+// stage 2. A compact disc's clock is dead (τ→0) ⇒ ~all budget is leftover ⇒ the biggest core monopolises it
+// (55 Cnc's d → ~1000 M⊕, inner system starved). Q FALLS with disc size: compact ⇒ winner-take-all, wide ⇒
+// the giants share. Q = STAR_VACUUM_QB·(STAR_DISC_REF/R_disc)^STAR_VACUUM_QS (55 Cnc≈4.3, HR 8799≈1.3).
+const STAR_VACUUM_QB = 2.0; // vacuum exponent at Sol's disc size
+const STAR_VACUUM_QS = 0.5; // how fast winner-take-all weakens with disc size
 // SILICA-BOILING VISCOUS-VAPOR BONUS: for sub-~0.7-spin stars whose core accretion temperature reaches
 // the silica/iron boiling point, the vaporized rock opens a second disc-spread channel that speeds
 // planet formation by (1 + VAPOR_BONUS_K·Ω / M^VAPOR_GRAV_EXP) — saturated vapor × spin leverage Ω that

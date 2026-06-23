@@ -1885,7 +1885,7 @@ function apply_sign_modulation(slots, C, R_disc, R_A, M_star, f_disc) {
 //     disc lets the giants consume nearly all of it; flat profile, latest/shortest-window the runt.
 // The gas INTERIOR to the innermost giant has no planet to catch it ⇒ clears to the star (reduces
 // the planet-available budget); for a compact disc this barely binds (window-limited anyway).
-function apply_hydrogen_conservation(slots, reservoir, M_star, spin) {
+function apply_hydrogen_conservation(slots, reservoir, M_star, spin, f_disc) {
     const total_res = Math.max(0, reservoir);
     const claims = (s) => !s.external && !s.exterior && (s.predicted - s.core) > 1e-9;
     // DRAINAGE = the gorging WINDOW itself (τ = R_disc³/M, in hydrogen_capture), no geometric
@@ -1928,36 +1928,48 @@ function apply_hydrogen_conservation(slots, reservoir, M_star, spin) {
     // a passive leftover, not a real consumption, and it over-fed the star for wide discs.
     // The planets then split the remaining (1−star_frac)·reservoir in proportion to their capture weight
     // (the gorge formula's predicted−core), which sets the inter-planet ratios (Jupiter/Saturn etc.).
-    // GAS CAPTURE RADIUS = GAS_REACH_FRAC · R_c, where R_c is the centrifugal radius (the angular-momentum
-    // disc scale, R_c = SOL_R_C·Ω²/M — so this carries mass AND spin, fully derived). R_c is the RIGHT
-    // SCALE: reach/R_c is the tightest invariant across the catalogue (~0.08–0.11, HR 8799 included — it
-    // stops being an outlier because R_c, not R_disc, is the natural scale). star_frac = (reach/R_disc)³.
-    // ⚠️ MAGIC NUMBER: GAS_REACH_FRAC ≈ 0.086 is NOT yet derived. It's near 1/(4π)=0.0796 (a solid-angle
-    // fraction of the centrifugal sphere — the cleanest candidate) but undershoots Sol (1/4π → 71% vs the
-    // 90% Sol needs); the excess above 1/4π tracked the stellar wind, NOT R_A (the +κ·R_A form failed:
-    // κ scattered 0–32). TODO: determine what GAS_REACH_FRAC physically is (solid angle 1/4π + a wind
-    // term? a disc aspect ratio H/R? an angular-momentum/mass fraction of R_c?).
+    // STELLAR CONSUMPTION = metallicity-set drain × a large-disc 3-D-volume dilution CEILING (NOT a reach).
+    // METALLICITY (COMP_Z): high Z ⇒ fat cores ⇒ planets run away and gorge ⇒ the star drains less — this
+    // sets the compact-disc spread (55 Cnc metal-rich keeps its gas; tauCeti metal-poor ⇒ star takes ~all).
+    // 3-D VOLUME: the wind fills the disc volume; a disc BIGGER than Sol's is too dilute to drain (HR 8799
+    // keeps 82% despite low Z). Gated by max(1,·) so it is =1 below Sol's disc (compact = metallicity-ruled)
+    // and dilutes only large discs. Spin dropped (unresolved at n=18; a monotonic spin²/R_disc³ wind
+    // saturated every compact disc). Anchored so Sol (Z=Z_sol, R_disc=ref) ⇒ star_frac 0.901 (Jup/Nep zeroed).
     const R_disc_sys = COMP_R_DISC > 0 ? COMP_R_DISC : 1e9;
-    const R_c = disc_centrifugal_radius(M_star, spin);
-    const reach = GAS_REACH_FRAC * R_c;
-    const geom = Math.min(1, Math.pow(reach / Math.max(R_disc_sys, 1e-9), 3));
-    // WIND SUPPORT (spin). The gas drains onto the star by gravity; the magnetized wind (momentum ∝
-    // Ω^WIND_SPIN_EXP) holds it up in the disc where planets can capture it. A WEAK wind (low spin) fails
-    // to support it ⇒ the gas falls in ⇒ the star eats MORE; a STRONG wind (HR 8799) keeps the gas out
-    // for the planets. So the planet-RETAINED fraction (1−star_frac) is the geometric share raised to the
-    // wind-support power 1/Ω^WIND_SPIN_EXP: Ω=1 (Sol) ⇒ unchanged (90%); ups And Ω=0.42 ⇒ 37→67%; HR 8799
-    // Ω=1.21 ⇒ planets keep a touch more. Ties the otherwise-unused WIND_SPIN_EXP (R_inner is the SYMPTOM
-    // of low spin — compact disc, gas piled close — not the driver; keying on it directly breaks HR 8799).
-    const wind_support = Math.pow(Math.max(spin, 1e-6), WIND_SPIN_EXP);
-    const star_frac = 1 - Math.pow(Math.max(1 - geom, 0), 1 / wind_support);
+    const star_frac = Math.min(1, Math.max(0, STAR_CONSUME_K * Math.pow(Math.max(COMP_Z, 1e-9) / STAR_Z_SOL, -STAR_METAL_EXP)
+        / Math.pow(Math.max(1, R_disc_sys / STAR_DISC_REF), STAR_VOL_EXP)));
     const planet_budget = total_res * (1 - star_frac);
-    const wsum = recipients.reduce((a, s) => a + Math.max(0, s.predicted - s.core), 0);
-    if (wsum > 0)
-        for (const s of recipients) {
-            const g = planet_budget * Math.max(0, s.predicted - s.core) / wsum;
-            setgas(s, g);
+    // TWO-STAGE GAS DISTRIBUTION.
+    // STAGE 1 — window-wants: each planet captures its gorge want (predicted−core, from hydrogen_capture's
+    // timing window). This concentrates Sol's gas on early-forming Jupiter and correctly starves the late
+    // ice giants. If the wants already exceed the budget (Sol: meaningful clock ⇒ wants > budget), the
+    // budget is shared proportionally to want and there is NO leftover — Sol is governed entirely by stage 1.
+    // STAGE 2 — the vacuum: a COMPACT disc (55 Cnc) has a dead clock (τ=R_disc³/M ⇒ 0.015 Myr) so every want
+    // ≈ 0 and almost the whole budget is leftover. That leftover is vacuumed up as core^Q — the biggest core
+    // monopolises it (55 Cnc's d ⇒ ~1000 M⊕, inner system starved). Q FALLS with disc size: a compact disc is
+    // dominated by one giant's gravity (winner-take-all), a wide disc has well-separated giants that SHARE the
+    // leftover (HR 8799's four). Q = STAR_VACUUM_QB·(R_ref/R_disc)^STAR_VACUUM_QS (55 Cnc Q≈4.3, HR 8799 ≈1.3).
+    const wants = recipients.map(s => Math.max(0, s.predicted - s.core));
+    const wsum = wants.reduce((a, b) => a + b, 0);
+    if (wsum >= planet_budget) {
+        if (wsum > 0)
+            for (let i = 0; i < recipients.length; i++) {
+                const g = planet_budget * wants[i] / wsum;
+                setgas(recipients[i], g);
+                captured += g;
+            }
+    }
+    else {
+        const leftover = planet_budget - wsum;
+        const Q = STAR_VACUUM_QB * Math.pow(STAR_DISC_REF / Math.max(R_disc_sys, 1e-6), STAR_VACUUM_QS);
+        const cw = recipients.map(s => Math.pow(Math.max(0, s.core), Q));
+        const cwsum = cw.reduce((a, b) => a + b, 0);
+        for (let i = 0; i < recipients.length; i++) {
+            const g = wants[i] + (cwsum > 0 ? leftover * cw[i] / cwsum : 0);
+            setgas(recipients[i], g);
             captured += g;
         }
+    }
     // Empty slots when real bodies took the disc: they formed nothing, so zero their gas.
     if (filled.length)
         for (const s of empty) {
@@ -2569,7 +2581,7 @@ function budgetFit(planets, budget, lambda, parent, primaryMass) {
         const M_disc_host = (hasCoPrimary && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
             ? primaryMass : M;
         const H_reservoir = f * m_star_earth(M_disc_host);
-        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir, M_disc_host, spin);
+        const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir, M_disc_host, spin, f);
         // RE-CLASSIFY after the H-cap: classify_slot ran in the cascade with the PRE-cap mass, so a
         // far-dam slot that wanted a stellar gas envelope but lost it to the dam-slot kept a stale
         // "O-class star" prefix even at a few hundred M⊕. Re-derive the leading class token from the
