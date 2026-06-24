@@ -735,22 +735,29 @@ function slot_aware_fit(planets, M_star, spin, f_disc, opts) {
         }
         const frag_abin = is_frag ? frag_pos : p.r;
         const frag_err = (is_frag && frag_pred > 0) ? (m_obs - frag_pred) / frag_pred * 100 : 0;
+        // STELLAR-COMPOSITION split: a rotational-fission fragment is a chunk of the proto-star, so it carries
+        // the STAR's metallicity — metals = COMP_Z·mass (rock:ice by COMP_F_ROCK), H/He = (1−COMP_Z)·mass —
+        // NOT pure H/He. Split both the observed mass (chart marker) and the predicted overflow (primordial).
+        const frag_rock_obs = is_frag ? m_obs * COMP_Z * COMP_F_ROCK : 0;
+        const frag_ice_obs = is_frag ? m_obs * COMP_Z * (1 - COMP_F_ROCK) : 0;
+        const frag_hhe_obs = is_frag ? m_obs * (1 - COMP_Z) : 0;
+        const frag_rock_pred = is_frag ? frag_pred * COMP_Z * COMP_F_ROCK : 0;
+        const frag_ice_pred = is_frag ? frag_pred * COMP_Z * (1 - COMP_F_ROCK) : 0;
+        const frag_hhe_pred = is_frag ? frag_pred * (1 - COMP_Z) : 0;
         results.push({
             slot_n: -1, slot_r: p.r, r_used: p.r,
             filled: true, name: p.name,
-            // The fragment is gas-dominated (it qualified via mo > gas_threshold_mass) and interior to the
-            // snow line (no ice condenses), so its mass IS its H/He envelope. h_he carries the OBSERVED gas
-            // (the marker the chart sizes/colours), while `predicted` carries the forward overflow mass and
-            // `primordial` the predicted composition — so the gas-giant colour/tooltip and the predicted-vs-
-            // observed delta are both correct from the single source. A stellar co-primary keeps 0.
-            rock: 0, ice: 0, pebble: 0, core: 0, t_form: 0, h_he: is_frag ? m_obs : 0,
+            // The fragment carries the STAR's composition (stellar metallicity, see above): rock/ice/h_he hold
+            // the OBSERVED-mass split (the chart marker), `predicted` the forward overflow mass, `primordial`
+            // the predicted-mass split. A stellar co-primary (not is_frag) keeps 0 (its mass drives the dams).
+            rock: frag_rock_obs, ice: frag_ice_obs, pebble: 0, core: frag_rock_obs + frag_ice_obs, t_form: 0, h_he: frag_hhe_obs,
             predicted: is_frag ? frag_pred : m_obs, observed: m_obs, err_pct: frag_err, implied_dM: 0,
             stripped: false, in_void: true, external: true, core_component: true,
             core_fragment: is_frag,
             clear_r: cz ? cz.r_clear : undefined,
             clear_lo: cz ? Math.max(0, cz.lo) : undefined,
             clear_hi: cz ? cz.hi : undefined,
-            primordial: { rock: 0, ice: 0, pebble: 0, h_he: is_frag ? frag_pred : 0, core: 0, total: is_frag ? frag_pred : m_obs },
+            primordial: { rock: frag_rock_pred, ice: frag_ice_pred, pebble: 0, h_he: frag_hhe_pred, core: frag_rock_pred + frag_ice_pred, total: is_frag ? frag_pred : m_obs },
             interpretation: is_frag
                 ? `sub-stellar core fragment: predicted ${frag_pred.toFixed(0)} M⊕ (centrifugal Hill-overflow K·β·budget, β = BETA_SOL·λ²) forming at a_bin ≈ ${frag_abin.toFixed(3)} AU; observed ${m_obs.toFixed(0)} M⊕ at ${p.r} AU (${frag_err >= 0 ? '+' : ''}${frag_err.toFixed(0)}%). A low-spin (λ=${spin.toFixed(2)}) accretion-pressure overflow lump: accretion heat vaporises rock and builds outward pressure, but low spin can't spread it into the disc, so the would-be-stellar share overflows the core's Hill radius and breaks off as a hot Jupiter. Clears its local Hill+resonance zone ±${cz.r_clear.toFixed(3)} AU (R_Hill ${cz.r_hill.toFixed(4)}, R_sweep ${cz.r_sweep.toFixed(4)}) of cascade slots.`
                 : `core component (co-primary): ${(m_obs / 332946).toFixed(3)} M☉ at ${p.r} AU — a rotational-fragmentation sibling star (λ_break ≈ ${lam_break.toFixed(1)}), not a slot product. With the predicted main star, both masses drive the wind/field dams and the barycentre the products orbit.`,
@@ -1892,7 +1899,9 @@ function apply_hydrogen_conservation(slots, reservoir, M_star, spin, f_disc) {
     // (fission-predicted) mass is material removed from the system, so it is subtracted from the reservoir
     // BEFORE the star/planet split (conservation) and excluded from the recipient set (it doesn't draw gas).
     const is_frag = (s) => !!s.core_fragment;
-    const frag_budget = slots.filter(is_frag).reduce((a, s) => a + Math.max(0, s.predicted || 0), 0);
+    // Only the fragment's H/He part (1−COMP_Z of its stellar-composition mass) is drawn from the gas
+    // reservoir; its metals (COMP_Z·mass) come from the solid budget, not here.
+    const frag_budget = slots.filter(is_frag).reduce((a, s) => a + Math.max(0, (s.predicted || 0) * (1 - COMP_Z)), 0);
     const total_res = Math.max(0, total_res_gross - frag_budget);
     const claims = (s) => !s.external && !s.exterior && !is_frag(s) && (s.predicted - s.core) > 1e-9;
     // DRAINAGE = the gorging WINDOW itself (τ = R_disc³/M, in hydrogen_capture), no geometric
