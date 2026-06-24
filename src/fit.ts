@@ -1876,8 +1876,15 @@ function apply_sign_modulation(slots: FitSlot[], C: number,
 function apply_hydrogen_conservation(slots: FitSlot[], reservoir: number, M_star: number, spin: number,
                                     f_disc: number):
     { captured: number; dispersed: number; exhausted: boolean } {
-  const total_res = Math.max(0, reservoir);
-  const claims = (s: FitSlot) => !s.external && !s.exterior && (s.predicted - s.core) > 1e-9;
+  const total_res_gross = Math.max(0, reservoir);
+  // FISSION PRODUCTS take their budget OUT of the disc budget and do NOT gorge. A core/stellar-overflow
+  // fragment (core_fragment / fragment: 55 Cnc b, ups And b, 47 UMa b) is not a gas-capture planet — its
+  // (fission-predicted) mass is material removed from the system, so it is subtracted from the reservoir
+  // BEFORE the star/planet split (conservation) and excluded from the recipient set (it doesn't draw gas).
+  const is_frag = (s: FitSlot) => !!s.core_fragment;
+  const frag_budget = slots.filter(is_frag).reduce((a, s) => a + Math.max(0, s.predicted || 0), 0);
+  const total_res = Math.max(0, total_res_gross - frag_budget);
+  const claims = (s: FitSlot) => !s.external && !s.exterior && !is_frag(s) && (s.predicted - s.core) > 1e-9;
   // DRAINAGE = the gorging WINDOW itself (τ = R_disc³/M, in hydrogen_capture), no geometric
   // clamp. But the gas physically PILES AT THE DAM (R_disc) and drains INWARD toward the
   // star, so it is allocated OUTERMOST-FIRST — each body takes min(want, gas still flowing
