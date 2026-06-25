@@ -123,6 +123,77 @@ window.EXOPLANETS = [
     ]
   },
   {
+    "id": "gammacep",
+    "name": "Gamma Cephei (Errai)",
+    "ly": 44.98,
+    "comment": "Wide binary + planet, a NORMAL regime (NOT fragmentation) where the companion is the outermost cascade SLOT PRODUCT, not a core fragment. γ Cep A (primary, ~1.4 M☉ K1 III-IV subgiant) hosts the disc; γ Cep B (~0.4 M☉ red dwarf, 133200 M⊕, a_bin≈19 AU, e≈0.41) is simply the biggest body at the Davis Dam — a PLAIN slot (no core:true; that flag is the bar-mode fracture channel of Alpha Cen / GJ 667, which γ Cep did not undergo). The reservoir is budgeted for the FULL system nebula (~1.7 M☉ = A+B+planet) — B cannot be a slot product of a disc that doesn't contain its mass. Spin λ≈0.85 (≈2.7× Sol) is REQUIRED to set R_disc=19.2 AU so B lands at its observed separation; this is a forward PREDICTION consistent with γ Cep A's intermediate-mass A/F progenitor, which never had solar-type magnetic braking and so kept a fast primordial spin. The planet Ab (≈1.85 M_Jup ≈ 590 M⊕, a=2.05 AU, e≈0.05; Hatzes 2003) then falls on the ~4th interior comb tooth at 2.32 AU (position +13%); its mass is under-predicted (~100 vs 590) — the known deep-slot / stellar-scale under-build gap (same as Proxima 2×, GJ 667, HR 8799 giants), not a regime error.",
+    "budget": {"rock":3008.003,"ice":10664.739,"hydrogen":631576.606},
+    "star": 1.4,
+    "feh": 0.18,
+    "cto": 0.55,
+    "spin": 0.85,
+    "planets": [
+      {"name":"Gamma Cep B","r":19,"observed":133200,"e":0.41},
+      {"name":"Gamma Cep Ab","r":2.05,"observed":590,"e":0.05}
+    ]
+  },
+  {
+    "id": "51peg",
+    "name": "51 Pegasi",
+    "ly": 50.45,
+    "comment": "Prototype hot Jupiter (Mayor & Queloz 1995). HJ-ONLY system: the only known planet is 51 Peg b (m sin i≈0.46 M_Jup≈146 M⊕, a=0.0527 AU). A hot Jupiter IS a rotational-fission product, so the model FORWARD-PREDICTS it from the inputs: at the primordial T-Tauri spin λ=0.485 the system sits in the deep fission window (R_co/R_A≈1.3, P≈12.4 d — squarely in the calibrated fission cluster of 55 Cnc/ups And/μ Arae at λ 0.42–0.52), the core sheds one close-in fragment of fragment_overflow_mass≈261 M⊕ (obs 146 m sin i, a lower bound — honest forward residual ~1.8×). NOTE the spin is NOT derived from the parking radius: inverting 0.63·R_co=a_HJ gives λ≈0.715, which is TOO FAST (R_co/R_A≈0.57 < window) — there the overflow is flung to the disc and nothing fissions (an early build mis-set this and either emitted a phantom or matched the HJ to a bare cascade tooth). The observed close-in parking (0.053 AU) is the later evolved/magnetospheric pile-up, decoupled from the primordial fission spin. Also forward-predicts a Jupiter-class outer cascade (~600 M⊕ giants out to ~16 AU). Star 1.11 M☉, [Fe/H]+0.20 (G2-5V).",
+    "budget": {"rock":4113.22,"ice":5235.01,"hydrogen":411961.632},
+    "star": 1.11,
+    "feh": 0.20,
+    "cto": 0.55,
+    "spin": 0.485,
+    "planets": [
+      {"name":"51 Peg b","r":0.0527,"observed":146.2}
+    ]
+  },
+  {
+    "id": "hd209458",
+    "name": "HD 209458 (Osiris)",
+    "ly": 159,
+    "comment": "HJ-ONLY: the transiting hot Jupiter HD 209458 b (0.69 M_Jup≈219 M⊕, a=0.0475 AU) is the only known planet. The HJ is forward-predicted as a fission product: at the T-Tauri spin λ=0.483 the system is in the deep fission window (R_co/R_A≈1.3), shedding a close fragment of ≈266 M⊕ (obs 219 — forward residual ~+21%). Spin is the primordial fission-window value, NOT the parking inversion (0.63·R_co=a_HJ would give λ≈0.84, too fast to fission); observed parking (0.048 AU) is the evolved magnetospheric pile-up, decoupled. Also forward-predicts an outer giant cascade. Star 1.13 M☉, [Fe/H]=0.00 (G0V).",
+    "budget": {"rock":3963.05,"ice":2041.57,"hydrogen":422896.423},
+    "star": 1.13,
+    "feh": 0.00,
+    "cto": 0.55,
+    "spin": 0.483,
+    "planets": [
+      {"name":"HD 209458 b","r":0.0475,"observed":219.3}
+    ]
+  },
+  {
+    "id": "hd189733",
+    "name": "HD 189733",
+    "ly": 64.5,
+    "comment": "HJ-ONLY: hot Jupiter HD 189733 b (1.13 M_Jup≈359 M⊕, a=0.0313 AU), the only known planet, forward-predicted as a fission product. At the T-Tauri spin λ=0.486 the K-dwarf primary (0.81 M☉) is in the deep fission window (R_co/R_A≈1.3) and sheds a close fragment ≈220 M⊕ (obs 359 — forward residual ~1.6× UNDER; the observed HJ is more massive than the lone fission overflow). Spin is the fission-window value, NOT the parking inversion (which gave λ≈1.34, far too fast to fission). In pure-forward mode the K-dwarf also sheds a SECOND fragment at ~0.7 AU (multi-fragment) — a testable outer prediction. [Fe/H]=-0.03 (K1-2V).",
+    "budget": {"rock":4016.91,"ice":0.0,"hydrogen":303425.430},
+    "star": 0.81,
+    "feh": -0.03,
+    "cto": 0.55,
+    "spin": 0.486,
+    "planets": [
+      {"name":"HD 189733 b","r":0.0313,"observed":359.1}
+    ]
+  },
+  {
+    "id": "tauboo",
+    "name": "Tau Bootis",
+    "ly": 51.0,
+    "comment": "Hot Jupiter — the CONCENTRATION end of the fission lift slide, forward-predicted from inputs. τ Boo A (F7V, 1.34 M☉ — the most massive host, [Fe/H]+0.26) hosts τ Boo b (m sin i≈5.95 M_Jup≈1891 M⊕, a=0.046 AU). It is a LARGE star at LOW primordial spin (λ≈0.25), so the fission lift = (½Ω²R² + 1.5kT_core/μ)/(GM/R) is the LOWEST in the catalogue (3.1e-4): rotation can't lift the boiled core against its deep gravitational well, so almost nothing is propelled out to a disc — the whole shed budget stays CONCENTRATED close as one in-situ lump. fission_concentrated_mass = (1−lift_fraction)·0.45%·reservoir ≈ 2086 M⊕ at 0.05 AU (obs 1891 @ 0.046, ~+10%). This is ONE law (no special case): the same force balance gives Sol the highest lift (full disc, no fragment) and τ Boo the lowest (full fragment, no disc); the in-between systems (ups And, 55 Cnc) split, with 55 Cnc's extra fission from rock fragmentation and 47 UMa's from the high-spin threshold-edge. The wide companion τ Boo B (~0.4 M☉ at ~240 AU) is a separate wide pairing, beyond the modelled system. Budget = primary A's reservoir (1.34 M☉).",
+    "budget": {"rock":2850.586,"ice":10106.624,"hydrogen":495651.100},
+    "star": 1.34,
+    "feh": 0.26,
+    "cto": 0.55,
+    "spin": 0.25,
+    "planets": [
+      {"name":"Tau Boo b","r":0.046,"observed":1890.9}
+    ]
+  },
+  {
     "id": "tauceti",
     "name": "Tau Ceti",
     "ly": 11.92,
@@ -257,7 +328,7 @@ window.EXOPLANETS = [
     "id": "upsand",
     "name": "Upsilon Andromedae",
     "ly": 43.9,
-    "budget": {"rock":1957.19,"ice":6939.13,"hydrogen":473142.9},
+    "budget": {"rock":6761.20,"ice":2135.12,"hydrogen":473142.9},
     "star": 1.27,
     "feh": 0.12,
     "cto": 0.55,
@@ -273,7 +344,7 @@ window.EXOPLANETS = [
     "id": "47uma",
     "name": "47 Ursae Majoris",
     "ly": 45.91,
-    "budget": {"rock":1290.23,"ice":4574.45,"hydrogen":385080.5},
+    "budget": {"rock":4515.80,"ice":1348.88,"hydrogen":385080.5},
     "star": 1.03,
     "feh": 0.03,
     "cto": 0.55,
@@ -288,7 +359,7 @@ window.EXOPLANETS = [
     "id": "muarae",
     "name": "Mu Arae",
     "ly": 49.85,
-    "budget": {"rock":2686.72,"ice":9525.64,"hydrogen":405301.9},
+    "budget": {"rock":488.49,"ice":11723.87,"hydrogen":405301.9},
     "star": 1.1,
     "feh": 0.32,
     "cto": 0.55,

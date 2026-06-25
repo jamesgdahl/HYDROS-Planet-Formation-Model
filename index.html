@@ -913,14 +913,18 @@ function renderWaveform(fit, R_disc, R_A, r_snow, hwInner, hwOuter) {
     const pm = s.primordial || {};
     const yw = symlog(sup(formR));
     const name = s.filled ? s.name : '(slot ' + s.slot_n + ')';
-    const obsM = (s.filled && s.observed > 0) ? s.observed : 0;
+    // A FORWARD-PREDICTED body (e.g. "Hot Jupiter (predicted)") has no real observation — its mass
+    // is the prediction echoed into `observed` so the slot exists. Render it like a predicted slot
+    // product (semi-transparent formation dot only), NOT as a full-opacity observed point.
+    const isForwardPred = (s.name || '').includes('(predicted)');
+    const obsM = (s.filled && s.observed > 0 && !isForwardPred) ? s.observed : 0;
     // SCATTERED slots no longer show the faint "intact planet that would have formed without
     // scattering" — the prediction IS the scatter products (belt + remnant + collision), drawn
     // below. Only un-scattered slots get the predicted-formation dot.
     if (!s.scatter) predPts.push({
       x: formR, y: yw, _c: hexRgba(st.c, 0.5), _rad: radOf(formM),
       _tip: [name + ' — predicted ' + st.t, 'formation slot ' + formR.toFixed(formR < 0.1 ? 4 : 3) + ' AU · period ' + periodStr(formR),
-             'formation mass ' + massStr(formM) + (obsM > 0 ? ' → observed ' + massStr(obsM) : ' → nothing'),
+             'formation mass ' + massStr(formM) + (isForwardPred ? ' (forward prediction — unobserved)' : (obsM > 0 ? ' → observed ' + massStr(obsM) : ' → nothing')),
              'comp: ' + compStr(pm.rock || 0, (pm.ice || 0) + (pm.pebble || 0), pm.h_he || 0)
             ].concat(s.t_form > 0 ? ['t_form ' + fmtTime(s.t_form)] : []).concat(s.interpretation ? [s.interpretation] : [])
     });

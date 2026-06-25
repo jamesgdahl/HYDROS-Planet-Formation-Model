@@ -143,13 +143,25 @@ function core_fragments(lambda) {
 }
 // LOW-SPIN fission window — LOWER edge. The accretion-overflow hot-Jupiter channel needs the core spun
 // near enough to breakup to shed the lump; the density-corrected β must clear this floor. (in_fission_
-// window sets the UPPER edge — too-fast flings the lump to the cascade instead.) Because fission_beta
-// carries 1/ρ, the floor is a DENSITY-RAISED minimum spin: a rock-rich core (HD 142, λ=0.47) falls
-// below it and does NOT fission, while the same-composition 55 Cnc (λ=0.52) and water-rich ups And
-// (λ=0.42) clear it. Value sits in the HD 142 (0.00102) ↔ 55 Cnc (0.00124) gap.
+// EDGE sets the UPPER edge — the scattering/boiling threshold at R_co/R_A≈0.62 ≈ λ 0.7: above it the
+// core runs below its accretion-boiling point and the overflow scatters to the disc instead of lumping.
+// NOTE this is the SAME 0.7-spin threshold the close-fission detector uses; the old 0.9 "deep window"
+// was an erroneous tighter cutoff that made the forward fragment vanish at λ≈0.55 — the boiling
+// threshold is the one physical edge.) Because fission_beta carries 1/ρ, the floor is a DENSITY-RAISED
+// minimum spin: a rock-rich core (HD 142, λ=0.47) falls below it and does NOT fission, while the
+// same-composition 55 Cnc (λ=0.52) and water-rich ups And (λ=0.42) clear it. Value sits in the HD 142
+// (0.00102) ↔ 55 Cnc (0.00124) gap.
 const FISSION_BETA_FLOOR = 0.00112;
-function in_low_spin_fission_window(lambda, M_star_msun, R_A, f_rock = COMP_F_ROCK) {
-    return fission_beta(lambda, f_rock) >= FISSION_BETA_FLOOR && in_fission_window(M_star_msun, lambda, R_A);
+const FISSION_CONC_LIFT_MAX = 0.5; // a hot core lifting < this fraction concentrates → fissions
+function in_low_spin_fission_window(lambda, M_star_msun, R_A, _f_rock = COMP_F_ROCK) {
+    // Fission fires within the SCATTERING edge (R_co/R_A ≥ FISSION_EDGE_LO — too-fast spin flings the
+    // overflow to the disc instead), OR when a hot core CONCENTRATES (low lift, e.g. τ Boo). The old
+    // β floor (a density-corrected MINIMUM spin) was REMOVED: it mis-excluded rock-rich low-spin cores
+    // (it dropped ups And/47 UMa below threshold once their HJ-inferred f_rock made the core dense),
+    // and never worked cleanly. The lift force balance + the scattering edge are the fission criteria.
+    const hot = COMP_MDOT > 0 && core_accretion_temperature(M_star_msun, lambda, COMP_MDOT) > T_SILICA_BOIL;
+    const concentrating = hot && fission_lift_fraction(M_star_msun, lambda) < FISSION_CONC_LIFT_MAX;
+    return in_fission_edge(M_star_msun, lambda, R_A) || concentrating;
 }
 // Centrifugal radius = the Davis Dam. R_wind(M) carries the SIS M³ mass-scaling;
 // λ² carries the rotational dispersion. Sol (λ=1)→30 AU, Alpha Cen (λ≈5.7)→14k AU.
@@ -190,13 +202,26 @@ function corotation_radius(M_star_msun, lambda) {
     const P_yr = (SOL_TTAURI_PERIOD_DAYS / 365.25) / Math.max(lambda, 1e-6);
     return Math.pow(Math.max(M_star_msun, 1e-3), 1 / 3) * Math.pow(P_yr, 2 / 3);
 }
-// FISSION PARKING RADIUS. A fission product migrates in and STALLS at the 2:1 resonance interior
-// to corotation (orbital period ≈ ½ the stellar rotation period; Bouvier/Lin hot-Jupiter pile-up),
-// a_park = (½)^⅔ · R_co ≈ 0.63 R_co. Validated: 0.63·R_co lands the catalogue's confirmed fission
-// products at ~0.04–0.11 AU with the 6-d Sol period (μ Arae d, υ And b, HD 219134/69830 cores).
-const FISSION_PARK_FRAC = Math.pow(0.5, 2 / 3); // ≈ 0.630 (the 2:1 resonance interior to corotation)
-function hot_jupiter_park_radius(M_star_msun, lambda) {
-    return FISSION_PARK_FRAC * corotation_radius(M_star_msun, lambda);
+// UNIFIED FISSION-PRODUCT RADIUS (no migration). The fragment is launched from the magnetosphere R_A
+// by CENTRIFUGAL force; as spin rises (R_A → R_co, x = R_co/R_A → 1) the launch turns super-Keplerian
+// and the dynamo field flings it out MAGNETICALLY — the position DIVERGING at the corotation–Alfvén
+// crossing. ONE law replaces the old deep-park (0.63·R_co, position DECREASED with spin) + threshold-
+// edge (√(a_bin·R_c)) split: those moved the product in opposite directions and were glued at a
+// threshold. Calibrated on the slot-zero-anchored set (λ pinned by the outermost dam giant), where the
+// product's position in R_A units is a clean, MASS-INDEPENDENT function of x = R_co/R_A:
+//   ups And x=1.59 → 0.76 R_A (inside),  55 Cnc 1.22 → 1.41,  47 UMa 0.73 → 17.8 R_A (flung).
+//   μ Arae (10.5 M⊕) and 55 Cnc (255 M⊕) sit on the SAME curve ⇒ position is set by spin, not mass.
+//   g(x) = COEF/(x − X0), diverging at x → X0 (just below the R_co=R_A crossing). x ≤ X0 ⇒ unbound.
+// [Stellar density should further mitigate the fling (denser → less far); the calibration set is
+//  near-uniform ρ so q is not yet constrained — left as a TODO factor.]
+const FISSION_FLING_COEF = 0.683; // calibrated on ups And / 55 Cnc / 47 UMa (slot-zero-pinned λ)
+const FISSION_FLING_X0 = 0.692; // divergence point R_co/R_A → 0.69 (the corotation–Alfvén crossing)
+function fission_product_radius(M_star_msun, lambda, R_A) {
+    if (!(R_A > 0))
+        return 0;
+    const x = corotation_radius(M_star_msun, lambda) / R_A;
+    const denom = Math.max(x - FISSION_FLING_X0, 1e-3); // x ≤ X0 ⇒ super-Keplerian/unbound (flung far)
+    return R_A * (FISSION_FLING_COEF / denom);
 }
 // FISSION WINDOW. Fission requires the disc-locked crossing R_co ≈ 1.6 R_A (so the 2:1 parking
 // 0.63·R_co lands on the magnetospheric edge R_A, where the retained material sits). Bounded by:
@@ -206,11 +231,21 @@ function hot_jupiter_park_radius(M_star_msun, lambda) {
 //   • too low spin → R_co ≫ R_A: parking sits above the magnetosphere, material can't reach it →
 //     INVERTED mound (TRAPPIST ≈6.1). Inverted is gated separately (R_A ≥ R_disc); this is the
 //     UPPER (cascade) edge — the one R_co/R_A captures cleanly.
-const FISSION_WINDOW_LO = 0.9; // below ⇒ starved/launched → cascade
+const FISSION_WINDOW_LO = 0.9; // below ⇒ starved/launched → cascade (DEEP close-in fission)
 function in_fission_window(M_star_msun, lambda, R_A) {
     if (!(R_A > 0))
         return false;
     return corotation_radius(M_star_msun, lambda) / R_A >= FISSION_WINDOW_LO;
+}
+// THRESHOLD-EDGE scattering floor. The deep window (0.9) is for close-in parked fission; the
+// threshold-edge (47 UMa, flung to √(a_bin·R_c)) sits BELOW it but still needs the overflow to reach
+// R_A. Above ~0.7 spin the material is centrifugally flung PAST R_A to the disc (scattered) → cascade,
+// no fission — 51 Peg (R_co/R_A 0.57 at λ 0.73) is just over this edge, 47 UMa (0.73) just inside.
+const FISSION_EDGE_LO = 0.62; // R_co/R_A floor for threshold-edge fission (≈ spin 0.7 scattering limit)
+function in_fission_edge(M_star_msun, lambda, R_A) {
+    if (!(R_A > 0))
+        return false;
+    return corotation_radius(M_star_msun, lambda) / R_A >= FISSION_EDGE_LO;
 }
 // PREDICTED low-spin hot-Jupiter fragment MASS — the accretion-pressure Hill-overflow lump.
 // At low spin the accretion heat vaporises rock and builds outward pressure, but the core can't
@@ -236,14 +271,58 @@ const FRAG_OVERFLOW_COEF = 0.305;
 // Pinned on 47 UMa b (the unique threshold-edge system): 440 M⊕ → 804 M⊕ (E≈1.83). Needs Ṁ
 // (COMP_MDOT, set during the fit); without it E=1 (deep-fission lone hot Jupiters are E≈1 regardless).
 const FRAG_ENHANCE_COEF = 0.072;
+// ── FISSION LIFT: the propulsion-vs-gravity force balance (ONE law, every star, no special cases) ──
+// How much of the shed budget is LIFTED outward (→ disc cascade + Kuiper belt + returning pebble flux
+// + KBOs) vs stays CONCENTRATED close (→ core fission product). Rotational + viscous-boiling thermal
+// energy against gravitational binding at the proto-stellar surface:
+//   lift = (½Ω²R² + 1.5·k·T_core/μ) / (G·M/R)
+// Low lift (low spin × high binding — a LARGE star, e.g. τ Boo) → little lifted → the whole budget
+// concentrates into one in-situ lump (the 1890 M⊕ hot Jupiter); high lift (Sol) → all lifted → full
+// cascade. The radius R is set by the composition mean density (denser → smaller → deeper well). The
+// outcome difference between stars is purely their own M, R, T_core, Ω in the SAME equation.
+const FLIFT_RHO_ROCK = 3.3, FLIFT_RHO_ICE = 1.0;
+const FLIFT_RHO_H = 0.1144; // g/cm³ — calibrated so a solar-composition 1 M☉ → 2.3 R☉ at the T-Tauri epoch
+const FLIFT_G = 6.674e-8, FLIFT_KB = 1.381e-16, FLIFT_MSUN = 1.989e33, FLIFT_DAY = 86400.0;
+const FLIFT_MU = 30.0 * 1.66e-24; // rock-vapour mean molecular weight (~SiO/Mg)
+function stellar_mean_density_cgs() {
+    const Xr = COMP_Z * COMP_F_ROCK, Xi = COMP_Z * (1 - COMP_F_ROCK), Xh = 1 - COMP_Z;
+    return 1.0 / (Xr / FLIFT_RHO_ROCK + Xi / FLIFT_RHO_ICE + Xh / FLIFT_RHO_H);
+}
+function fission_lift(M_star, lambda) {
+    if (!(COMP_MDOT > 0))
+        return 1.0; // no Ṁ context (legacy path) ⇒ treat as fully lifted (no concentration)
+    const R = Math.pow(M_star * FLIFT_MSUN / ((4 / 3) * Math.PI * stellar_mean_density_cgs()), 1 / 3); // cm
+    const Om = 2 * Math.PI / ((SOL_TTAURI_PERIOD_DAYS / Math.max(lambda, 1e-6)) * FLIFT_DAY);
+    const T_core = core_accretion_temperature(M_star, lambda, COMP_MDOT);
+    const rot = 0.5 * Om * Om * R * R;
+    const therm = 1.5 * FLIFT_KB * T_core / FLIFT_MU;
+    const bind = FLIFT_G * M_star * FLIFT_MSUN / R;
+    return (rot + therm) / bind;
+}
+const FISSION_LIFT_C = 3.8e-4, FISSION_LIFT_W = 3.0e-5; // logistic centre/width (calibrated: τ Boo→~0, Sol→~1)
+function fission_lift_fraction(M_star, lambda) {
+    return 1.0 / (1.0 + Math.exp(-(fission_lift(M_star, lambda) - FISSION_LIFT_C) / FISSION_LIFT_W));
+}
+const FISSION_TOTAL_SHED_FRAC = 0.0045; // total shed budget ≈ 0.45% of the reservoir (spin-independent)
+// The CONCENTRATED (unlifted) fission mass: the fraction of the shed budget that gravity holds close.
+function fission_concentrated_mass(M_star, lambda) {
+    return (1 - fission_lift_fraction(M_star, lambda)) * FISSION_TOTAL_SHED_FRAC * m_star_earth(M_star);
+}
+// The overflow is ROCK-VAPOUR driven, so it scales with the core's rock fraction — anchored on 55 Cnc
+// (measured C/O ⇒ f_rock 0.78). A water-rich star (low f_rock, e.g. μ Arae 0.04) sheds a tiny lump; a
+// rock-rich one a large one. This makes the hot Jupiter a ROCK-FRACTION GAUGE: f_rock can be read back
+// off the observed HJ mass when C/O is unmeasured (the inversion), the same way slot-zero pins spin.
+const FISSION_FROCK_REF = 0.78;
 function fragment_overflow_mass(M_star, lambda) {
-    const base = FRAG_OVERFLOW_COEF * rotational_beta(lambda) * m_star_earth(M_star);
-    if (COMP_MDOT > 0) {
-        const x = core_accretion_temperature(M_star, lambda, COMP_MDOT) / T_SILICA_BOIL - 1.0;
-        if (x > 0)
-            return base * (1.0 + FRAG_ENHANCE_COEF / (x * x));
-    }
-    return base;
+    // The fission product CORE carries the LARGER of: the rock-vapour overflow lump (∝ f_rock), or the
+    // gravity-concentrated unlifted budget (large low-spin star, τ Boo). NO boiling enhancement: the old
+    // E = 1 + K/(T_core/T_boil−1)² was a one-system fudge for 47 UMa that coupled the mass to T_core (and
+    // thus Ṁ, f_rock) — its "extra" mass is really GAS the core sweeps at the gas edge (added separately,
+    // see fission_edge_gas), not a boiling lump. Removing E decouples the core from temperature.
+    const concentrated = fission_concentrated_mass(M_star, lambda);
+    const base = FRAG_OVERFLOW_COEF * rotational_beta(lambda) * m_star_earth(M_star)
+        * (Math.max(COMP_F_ROCK, 0) / FISSION_FROCK_REF);
+    return Math.max(base, concentrated);
 }
 // ── PHYSICAL FISSION THRESHOLD: core accretion temperature vs rock/iron boiling ──────────────────
 // The accretion-overflow that pinches off a fission product is driven by ROCK VAPOUR PRESSURE: the

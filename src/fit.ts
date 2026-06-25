@@ -2091,6 +2091,15 @@ function budgetFit(planets: Planet[], budget: Budget,
   if (parent == null && primaryMass != null && isFinite(primaryMass)) {
     const M_pre = mass_from_budget(budget);
     if (!is_inverted_budget(M_pre)) {
+      // CORE FISSION HAPPENS FIRST — before the disc forms. The fission lift/boiling needs the core's
+      // accretion temperature (Ṁ), but the refined disc Ṁ is set ~200 lines later, so compute a
+      // PRELIMINARY Ṁ here from the inputs (basic centrifugal f_disc + the wind dam). This lets the
+      // force-balance lift decide fission-vs-disc up front; the disc's refined Ṁ overwrites it after.
+      if (lambda != null && isFinite(lambda) && lambda > 0) {
+        const Z_pre = metallicity_from_budget(budget), fr_pre = f_rock_from_budget(budget);
+        set_mdot(accretion_rate(M_pre, Z_pre, fr_pre, disc_fraction_centrifugal(lambda),
+                                disc_radius_wind(M_pre), M_pre / SOL_M_PRIMORDIAL, 1.0));
+      }
       const r_snow_pre = irradiation_snow_line(M_pre);
       // FISSION WINDOW (validated): fission requires the disc-locked crossing R_co ≈ 1.6 R_A — the
       // spin range where the accretion-pressure overflow reaches R_A but the centrifugal fling is too
@@ -2115,13 +2124,22 @@ function budgetFit(planets: Planet[], budget: Budget,
         const m = p.observed || 0;
         if (m > 0 && m < M_STELLAR_BOUNDARY && p.r > outer_r) outer_r = p.r;
       }
+      // A genuine cascade barrier is an OUTER cold slot-0 giant — a body beyond the close-fission
+      // reach (a_bin) or beyond the snow line. A close hot body inside a_bin is NOT a barrier, so a
+      // lone hot Jupiter (HJ-only system: it is its own outer_r) must not spare itself — it flags.
+      let barrier_r = 0;
+      for (const p of planets) {
+        if (p.core || p.kbo) continue;
+        const m = p.observed || 0;
+        if (m > 0 && m < M_STELLAR_BOUNDARY && (p.r > a_bin || p.r >= r_snow_pre) && p.r > barrier_r) barrier_r = p.r;
+      }
       let frag: Planet | null = null;        // the single innermost qualifying candidate
       if (in_window) for (const p of planets) {
         if (p.core || p.kbo || p.fragment) continue;
         const mo = p.observed || 0;
         if (mo < FRAG_GIANT_MIN || mo >= M_STELLAR_BOUNDARY || !(p.r > 0)) continue;
         if (p.r >= r_snow_pre) continue;     // cold giants = cascade slot-0 (e.g. HD 134987 c)
-        if (!(p.r < outer_r)) continue;      // outermost body = cascade barrier, spared
+        if (barrier_r > 0 && !(p.r < barrier_r)) continue;  // spared only behind a real outer barrier
         if (p.r > a_bin) continue;           // beyond the close-fission reach ⇒ not a fragment
         if (frag === null || p.r < frag.r) frag = p;   // keep the INNERMOST qualifier
       }
@@ -2142,11 +2160,12 @@ function budgetFit(planets: Planet[], budget: Budget,
           && !core_fragments(lambda) && in_window && isFinite(a_bin) && a_bin > 0) {
         const m_frag = fragment_overflow_mass(M_pre, lambda);
         if (m_frag >= FRAG_GIANT_MIN) {
-          // The fragment forms at the fission radius a_bin but migrates inward and STALLS at the
-          // inner-disc cavity / magnetospheric-truncation pile-up (~0.04·M^⅓ AU), NOT at a_bin
-          // (the old placement parked hot Jupiters out at the Alfvén-dam region). a_bin is kept as
-          // the formation seat (form_r); r is the close parked orbit.
-          const r_park = hot_jupiter_park_radius(M_pre, lambda);
+          // Position from the UNIFIED centrifugal-magnetic launch (no migration): the fragment is
+          // flung from R_A by centrifugal force, the dynamo field extending it as the launch turns
+          // super-Keplerian (R_co/R_A → 1). Replaces the old close-park (0.63·R_co) AND the separate
+          // threshold-edge √(a_bin·R_c) fling — one law, position rising with spin, calibrated on the
+          // slot-zero-anchored set (ups And/55 Cnc/47 UMa).
+          const r_park = fission_product_radius(M_pre, lambda, alfven_radius(M_pre, lambda));
           planets = [...planets,
             { name: "Hot Jupiter (predicted)", r: r_park, observed: m_frag, fragment: true }];
         }
@@ -2332,7 +2351,10 @@ function budgetFit(planets: Planet[], budget: Budget,
         && lambda != null && isFinite(lambda) && lambda > 0) {
       const Mdot_fe = Mdot_of(f_disc_derived);
       const T_core_fe = core_accretion_temperature(M, lambda, Mdot_fe);
-      if (T_core_fe > T_SILICA_BOIL && T_core_fe < 2.0 * T_SILICA_BOIL) {
+      // SCATTERING gate: even at the boiling edge, a too-fast spin flings the overflow PAST R_A to the
+      // disc (R_co/R_A below FISSION_EDGE_LO) ⇒ it scatters into a cascade, no fission product (51 Peg).
+      if (T_core_fe > T_SILICA_BOIL && T_core_fe < 2.0 * T_SILICA_BOIL
+          && in_fission_edge(M, lambda, alfven_radius(M, lambda))) {
         set_mdot(Mdot_fe);                                            // engage the overflow-mass enhancement
         const m_pred = fragment_overflow_mass(M, lambda);            // enhanced overflow mass
         const reservoir = f_disc_derived * M * M_SUN_TO_EARTH;       // disc mass available to source it
@@ -2341,8 +2363,7 @@ function budgetFit(planets: Planet[], budget: Budget,
         // HD 20794: predicts 2278 M⊕ but reservoir only 1446) cannot source it ⇒ no giant fissions.
         // Only a disc that can actually supply it (47 UMa: 808 ≪ 3389) produces the body.
         if (m_pred >= FRAG_GIANT_MIN && m_pred <= reservoir) {
-          const pos = Math.sqrt(close_binary_separation(lambda, primaryMass)
-                                * centrifugal_radius(M, lambda));     // √(a_bin·R_c) — the threshold-edge fling
+          const pos = fission_product_radius(M, lambda, alfven_radius(M, lambda));  // unified centrifugal-magnetic launch (replaces √(a_bin·R_c))
           let outer_r = 0;
           for (const p of planets) {
             if (p.core || p.kbo) continue;
@@ -2361,7 +2382,11 @@ function budgetFit(planets: Planet[], budget: Budget,
             if (Math.abs(mo - m_pred) / m_pred > 0.5) continue;       // mass match (±50%)
             p.fragment = true; matched = true; break;
           }
-          if (!matched) {
+          // Don't add a SECOND forward fragment: the deep-fission path (top of budgetFit) already
+          // emits the close-in product for this spin range, so the threshold-edge path only MATCHES
+          // an observed giant here (47 UMa b) — it must not inject a duplicate flung body.
+          const already_fragment = planets.some(p => p.fragment);
+          if (!matched && !already_fragment) {
             planets = [...planets,
               { name: "Hot Jupiter (predicted)", r: pos, observed: m_pred, fragment: true }];
           }
