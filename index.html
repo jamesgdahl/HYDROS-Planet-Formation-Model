@@ -689,16 +689,25 @@ function calculate() {
   // NORMAL regime → the Alfvén-Maas waveform (planets on the standing wave). INVERTED regime is a
   // single Davis assembly line, not a superposition, so the waveform is replaced by the factory
   // timeline chart below (t_form vs distance-from-dam) — its only chart.
+  // The standing wave forms only in a WIDE (uncompressed) cavity. A compressed/inverted cavity cannot
+  // support a usable wave: the peak SPACING is the fixed ρ ratio (~1.71×) and compression only LENGTHENS
+  // the Alfvén wavelength (λ = v_A/f, v_A = B/√(μ₀ρ) ∝ ρ^1/6 under flux-frozen compression) → fewer,
+  // WIDER peaks. The compact systems are spaced ~1.3×, tighter than any magnetic wavelength, so they are
+  // FACTORY-packed (Hill spacing), NOT wave-deposited — there is no accretion/decretion halo to deposit
+  // them. So: no standing-wave chart for inverted systems, even after the dam un-inverts past R_A (the
+  // marching dam just keeps factory-minting; un-inversion is a geometric label, not a wave switch).
+  const R_A_w = rB.budget_R_A_outer;
   if (!inverted) {
     // Binary: anchor the waveform's Alfvén dam at the OUTERMOST core dam (the cascade's real inner
     // terminus, where the slots were snapped), not the combined R_A at the barycentre.
-    try { renderWaveform(fit, R_disc, rB.budget_R_A_outer, r_snow, rB.budget_hw_inner, rB.budget_hw_outer); }
+    try { renderWaveform(fit, R_disc, R_A_w, r_snow, rB.budget_hw_inner, rB.budget_hw_outer); }
     catch (e) { console.warn('waveform:', e); }
   } else {
     document.getElementById('waveform').innerHTML = '';
   }
-  // Factory timeline: t_form (Myr, log) vs AU-from-Davis-Dam (log). Inverted → ALL assembly-line
-  // products; normal → the dam-exterior KBO cohort.
+  // Factory timeline: t_form (Myr, log) vs orbital radius (log). Inverted → the assembly-line products
+  // minted WHILE inverted (inside R_A); normal → the dam-exterior KBO cohort. For an un-inverting system
+  // the products beyond R_A formed in the normal regime and belong on the WAVEFORM above, not here.
   try { renderFactoryChart(fit, R_disc, inverted, M_star); }
   catch (e) { console.warn('factorychart:', e); }
 
@@ -709,10 +718,10 @@ function calculate() {
   // spin λ stretches R_disc, so the reservoir's radial WIDTH is the spin signature.
   const Mtot_b = inp.budget.rock + inp.budget.ice + inp.budget.hydrogen;
   const coreSlots = rB.fit.slots.filter(s => s.core_component && s.predicted > 0);
-  const coreMe = coreSlots.reduce((a, s) => a + s.predicted, 0) || Math.max(0, budgetTotalMe - bodyMe);
+  let coreMe = coreSlots.reduce((a, s) => a + s.predicted, 0) || Math.max(0, budgetTotalMe - bodyMe);
   const nebulaMe = Math.max(0, Mtot_b - coreMe);          // everything not bound into the core
-  const discMe = Math.min(f_disc * Mtot_b, nebulaMe);     // inter-dam reservoir — can't exceed the non-core budget
-  const beyondMe = Math.max(0, nebulaMe - discMe);         // ⇒ core + disc + beyond = budget exactly (any regime)
+  const discMe = Math.min(f_disc * Mtot_b, nebulaMe);     // inter-dam reservoir
+  const beyondMe = Math.max(0, nebulaMe - discMe);        // ⇒ core + disc + beyond = budget exactly
   const capturedMe = Math.min(discMe, bodyMe);            // reservoir share that condensed into bodies
   const dispersedMe = Math.max(0, discMe - capturedMe);   // reservoir share blown back out
   // SIGNED barycentric position — the primary sits on the negative side of the barycentre (e.g.
@@ -1167,20 +1176,23 @@ function renderFactoryChart(fit, R_disc, inverted, M_star) {
   const el = document.getElementById("factorychart");
   if (!el) return;
   if (typeof Chart === 'undefined') { el.innerHTML = ''; return; }
-  const bodies = fit.slots.filter(s => isFinite(s.slot_r) && s.slot_r > 0 && !s.core_component && !s.external
-    && (inverted ? true : s.exterior));
+  // FACTORY products only (s.exterior) — NEVER the empty cascade slots the inverted run leaves behind at
+  // the same radii (those carry a different, cascade-default t_form and would scatter a phantom predicted
+  // cloud away from the real products). The inverted regime's products are ALL factory-minted (the
+  // compressed cavity supports no usable standing wave), so ALL of them belong here — including the ones
+  // the marching dam minted after un-inverting past R_A. Normal regime → the dam-exterior KBO cohort.
+  const bodies = fit.slots.filter(s => isFinite(s.slot_r) && s.slot_r > 0 && !s.core_component && !s.external && s.exterior);
   if (!bodies.length) { el.innerHTML = ''; return; }
 
-  // X = AU from the Davis Dam (slot_r − R_disc); bodies at the dam (dist 0) floor onto the log axis.
-  const distOf = r => Math.max(r - R_disc, 0);
-  const posD = bodies.map(b => distOf(b.slot_r)).filter(d => d > 0);
-  const minPosD = posD.length ? Math.min(...posD) : 0.01;
-  const distFloor = minPosD * 0.4;
-  const dx = r => distOf(r);                              // true AU beyond the dam (linear axis from the dam)
+  // X = ORBITAL RADIUS (AU) on a LOG axis. A compact inverted chain (TRAPPIST 0.011–0.06 AU) or a
+  // tight KBO cohort collapses to a vertical smear on a linear distance-from-dam axis; log-radius
+  // spreads it and shows the true close-in scale. The Davis Dam sits at R_disc (drawn as a line below).
+  const dx = r => Math.max(r, 1e-9);                      // orbital radius (AU)
   const ty = t => Math.max(t || 0, 1e-3);                 // Myr floor for the log axis
-  const maxDist = Math.max(...bodies.map(b => dx(b.slot_r)), distFloor);
-  const distPad = Math.max(maxDist * 0.05, 1.5);         // a little breathing room so the dam-edge body (Triton, dist≈0) and the outermost KBO aren't clipped at the axis ends
-  const distMin = -distPad, distMax = maxDist + distPad;
+  const rs_all = [];
+  for (const b of bodies) { rs_all.push(dx(b.slot_r)); if (isFinite(b.observed_r) && b.observed_r > 0) rs_all.push(dx(b.observed_r)); }
+  rs_all.push(dx(R_disc));
+  const distMin = Math.min(...rs_all) * 0.8, distMax = Math.max(...rs_all) * 1.25;
   const tMin = Math.min(...bodies.map(b => ty(b.t_form))) * 0.6;
   const tMax = Math.max(...bodies.map(b => ty(b.t_form))) * 1.6;
 
@@ -1244,9 +1256,9 @@ function renderFactoryChart(fit, R_disc, inverted, M_star) {
       interaction: { mode: 'nearest', intersect: true },
       scales: {
         x: {
-          type: 'linear', min: distMin, max: distMax,
-          title: { display: true, text: 'orbital distance (AU)', color: '#aaa' },
-          ticks: { color: '#aaa', callback: v => { const au = v + R_disc; return au.toFixed(au < 10 ? 2 : au < 100 ? 1 : 0); } }, grid: { color: '#26262e' }
+          type: 'logarithmic', min: distMin, max: distMax,
+          title: { display: true, text: 'orbital radius (AU, log)', color: '#aaa' },
+          ticks: { color: '#aaa', callback: v => v < 0.01 ? v.toFixed(4) : v < 0.1 ? v.toFixed(3) : v < 10 ? v.toFixed(2) : v.toFixed(0) }, grid: { color: '#26262e' }
         },
         y: {
           type: 'logarithmic', min: tMin, max: tMax,
@@ -1299,7 +1311,10 @@ function renderBudgetChart(v) {
   const sx = au => Math.sign(au) * Math.log10(1 + Math.abs(au) / XT);
   const isx = y => Math.sign(y) * (Math.pow(10, Math.abs(y)) - 1) * XT;
   const fragPos = v.coreFrags.map(f => f.r + SHIFT);             // primary → 0, co-primaries at their separation
-  const posMost = Math.max(outerDam, ...(fragPos.length ? fragPos : [outerDam]));
+  // UN-INVERSION reach: in the inverted regime the Davis Dam marches outward minting bodies and can cross
+  // R_A; the outermost minted body marks where it ended up, so the chart must extend out to it.
+  const bodyMost = (v.inverted && v.bodies && v.bodies.length) ? Math.max(...v.bodies.map(b => b.r + SHIFT)) : 0;
+  const posMost = Math.max(outerDam, bodyMost, ...(fragPos.length ? fragPos : [outerDam]));
   const xLo = 0;                                                 // the primary sits at the origin
   const xHi = posMost * 3;
 
@@ -1376,11 +1391,11 @@ function renderBudgetChart(v) {
       // their planetary radius — same scale, so nothing is drawn bigger than it really is.
       const radAxisPx = (disp, R_AU) => Math.max(2, Math.min(42,
         Math.abs(xs.getPixelForValue(sx(Math.abs(disp) + R_AU)) - xs.getPixelForValue(sx(disp)))));
-      const damLine = (r, label, color) => {
+      const damLine = (r, label, color, dash) => {
         if (!(r > xLo && r < xHi)) return;
         const px = xs.getPixelForValue(sx(r));
         c.save();
-        c.strokeStyle = color; c.lineWidth = 1.5; c.setLineDash([5, 4]);
+        c.strokeStyle = color; c.lineWidth = 1.5; c.setLineDash(dash || [5, 4]);
         c.beginPath(); c.moveTo(px, ca.top); c.lineTo(px, ca.bottom); c.stroke();
         c.setLineDash([]); c.fillStyle = color; c.font = '11px sans-serif'; c.textAlign = 'left';
         c.fillText(label, px + 3, ca.top + 10);
@@ -1456,6 +1471,12 @@ function renderBudgetChart(v) {
       });
       damLine(R_A, (v.isBinary ? 'outermost Alfvén Dam ' : 'Alfvén Dam  R_A ') + v.R_A.toFixed(v.R_A < 0.1 ? 3 : 2) + ' AU', '#e6695a');
       damLine(R_disc, 'Davis Dam  R_disc ' + (v.R_disc < 10 ? v.R_disc.toFixed(2) : v.R_disc.toFixed(0)) + ' AU', '#3cb371');
+      // UN-INVERSION: the inverted Davis Dam (inside R_A) marches outward minting bodies; once it crosses
+      // R_A the system UN-INVERTS and the dam settles OUTSIDE the Alfvén Dam, at the outer edge of the
+      // minted chain. Draw the Davis Dam a SECOND time there (dotted) to show the crossing.
+      if (v.inverted && bodyMost > R_A) {
+        damLine(bodyMost, 'Davis Dam → un-inverted  ' + (bodyMost < 10 ? bodyMost.toFixed(3) : bodyMost.toFixed(1)) + ' AU', '#3cb371', [2, 3]);
+      }
     }
   };
 

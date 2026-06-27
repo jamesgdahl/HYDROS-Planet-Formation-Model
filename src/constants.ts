@@ -99,6 +99,13 @@ function reset_pebble_flux_budget(): void { COMP_PEBBLE_FLUX = -1.0; }
 let COMP_KBO_BUDGET = -1.0;
 function set_kbo_budget(m: number): void { COMP_KBO_BUDGET = (m >= 0) ? m : 0; }
 function reset_kbo_budget(): void { COMP_KBO_BUDGET = -1.0; }
+// CONSERVED disc-metal budget (M⊕): the accretion-halo rock+ice = the whole NON-STELLAR metal budget
+// (budget − star − fission products), one bucket. The slots consume it to their accretion potential;
+// the leftover flows past the Davis Dam as KBO/pebble. Replaces the f_disc·budget·Z FRACTION (which
+// double-counted against the separate beyond-dam reservoir). -1 = unset ⇒ legacy f_disc fraction.
+let COMP_DISC_METALS = -1.0;
+function set_disc_metals(m: number): void { COMP_DISC_METALS = (m >= 0) ? m : -1.0; }
+function reset_disc_metals(): void { COMP_DISC_METALS = -1.0; }
 // Outer-zone (KBO) streaming-instability RETENTION ε_SI. M_G = 4π⁵G²Σ³/Ω⁴ is the UPPER bound — the
 // full self-gravitating clump collapsing into one body, realised only when the trap holds the
 // solids to completion (the inverted regime, ε_SI=1). Untrapped (normal outer zone), drift strips
@@ -597,7 +604,9 @@ const DISC_TRUNCATION_FACTOR = 0.15; // Holman-Wiegert fallback only
 // super-Earth / Neptune, and — unlike the bare M_crit test — it does NOT collapse during the f_disc
 // bisection sweep, so packed super-Earth systems (Kepler-90) and clean Neptune systems (HD 69830)
 // are never mislabelled. See accretion-overflow-fragmentation.md.
-const FRAG_GIANT_MIN = 30.0;
+const FRAG_GIANT_MIN = 0.0;   // REMOVED (was 30): fission products can be ANY size (μ Arae d is 10.5 M⊕);
+                              // they're usually big but not always. The gas-threshold / position / in_window
+                              // gates do the real discrimination — the size floor mis-excluded small fragments.
 // Upper edge of the low-spin fragment WINDOW (primordial spin λ). Below it (and above the
 // overflow floor) the accretion-pressure overflow can't be spread into a disc cascade, so it
 // lumps off as a hot-Jupiter fragment; at/above it the spread is efficient and the would-be

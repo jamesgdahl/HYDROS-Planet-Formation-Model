@@ -120,8 +120,12 @@ const CASCADE_DECAY = Math.log(2) / (-Math.log(CASCADE_RATIO));
 // Alfvén dam), giving ρ = (R_A/R_disc)^(1/N) and α_eff = Nπ/ln(R_disc/R_A). N is the nearest integer to
 // the base-ρ rung count, so the wave is PINNED to BOTH dams — it can't drift off the inner dam the way a
 // fixed-ρ wave does (the fixed ρ=0.5837 gives Sol N=9.3, a non-integer mismatch that floats the inner
-// rungs and was ratcheting Earth outward). Compression then enters through N (a packed/compressed cavity
-// wants more rungs); for now N is the geometric nearest-integer, pinning only.
+// rungs and was ratcheting Earth outward). NOTE — compression does NOT add rungs: the peak SPACING is the
+// fixed ρ ratio (~1.71×), so a compressed (narrower) cavity holds FEWER rungs, and the Alfvén wavelength
+// only LENGTHENS under compression (λ = v_A/f, v_A ∝ ρ^1/6 with flux-frozen B ∝ ρ^2/3) → wider peaks still.
+// That is WHY compact systems (TRAPPIST, ~1.3× spacing — tighter than any magnetic wavelength) are
+// FACTORY-packed (Hill spacing), not wave-deposited: a compressed cavity has no usable standing wave, so
+// there is no accretion/decretion halo placing them. The fixed-α N = α·ln(R_disc/R_A)/π already does this.
 function cascade_alpha_eff(R_disc: number, R_A: number): number {
   const span = Math.log(R_disc / Math.max(R_A, 1e-9));
   if (!(span > 0)) return CASCADE_ALPHA;

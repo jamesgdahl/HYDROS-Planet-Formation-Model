@@ -596,7 +596,10 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   // The cap is on the DIRECT (in-situ) disc accretion only — the local material the standing wave
   // concentrates. The pebble flux is gravitationally captured drift, NOT limited by this budget, so
   // it is added AFTER the cap (uncapped) in the slot loop.
-  const disc_solid_budget = f_disc * m_star_earth(M_star) * COMP_Z;
+  // CONSERVED: the slots draw from the whole accretion-halo metal budget (budget − star − fission), set
+  // by budgetFit; they consume to their accretion potential and the leftover flows out as KBO/pebble.
+  // Falls back to the legacy f_disc fraction only when the conserved budget isn't set (sub-cascades).
+  const disc_solid_budget = (COMP_DISC_METALS >= 0) ? COMP_DISC_METALS : f_disc * m_star_earth(M_star) * COMP_Z;
   const cap_active = !inverted && !COMP_FRAGMENTING && R_disc_local > 0 && avail_sumA > 0;
   const availability_of = (rr: number): number =>
     cap_active ? disc_solid_budget * avail_amp(rr) / avail_sumA : Infinity;
@@ -827,7 +830,10 @@ function slot_aware_fit(planets: Planet[], M_star: number,
   //           at 4,570 Myr)
   // slot_r carries the BIRTH STANCE, so r_form / Δr display formation
   // position and displacement exactly as for interior rows.
-  if (kbo_bodies.length > 0) {
+  // Run the factory block when there are KBO/exterior bodies to mint OR the system is inverted — the
+  // inverted MARCH generates its chain from inputs (forward purity), so it must run even with no
+  // observed bodies (a bare inverted run still produces the full marched chain).
+  if (kbo_bodies.length > 0 || inverted) {
     const R_dam = R_disc_local > 0 ? R_disc_local
       : disc_radius(M_star, spin as number, omega, f_disc);
     // KBO/exterior products are minted from the OUTER zone. The branch is keyed
@@ -852,52 +858,109 @@ function slot_aware_fit(planets: Planet[], M_star: number,
       // fraction of the (factory) solid budget already swept up inward of it. Inner bodies are
       // the early vintage, outer the late. The mass itself is factory_product (one factory).
       const disp_t = gas_consumption_time(M_star, f_disc);
-      const sorted_in = [...kbo_bodies].sort((a, b) => a.r - b.r);
-      const fp_solid: Record<string, number> = {};
-      for (const p of sorted_in) {
-        const fp = factory_product(p.r, M_star, omega, f_disc);
-        fp_solid[p.name] = fp.rock + fp.ice;
+      // FORWARD MARCH (forward purity): the Davis Dam marches OUTWARD from R_dam, minting one isolation-
+      // mass product per Hill feeding-zone, depleting the pile, until the inverted disc profile (scale
+      // R_c ≈ R_A) tapers off (~3 R_c). The POSITIONS are GENERATED from inputs alone — no observed radii
+      // — so a bare run and a populated run produce the IDENTICAL chain; observed planets are then matched
+      // to the generated chain for scoring (an observed body beyond the march is an honest miss, pred 0).
+      // [OPEN ACCURACY: the derived f_disc under-counts the compressed pile, so M_iso — and hence the Hill
+      //  spacing and product count — are not yet calibrated. That is the accuracy pass, separate from this
+      //  purity pass; the spacing/extent constants below are placeholders.]
+      const MARCH_SPACING = (globalThis as any).__MARCH_SPACING || 14.0;   // mutual Hill radii between products (peas-in-a-pod)
+      const MARCH_EXTENT = (globalThis as any).__INV_MARCH || 2.5;         // march reach in units of R_A (where products stop forming)
+      const R_c_taper = Math.max(R_A_now, R_dam);
+      const M_star_E = M_star * M_SUN_TO_EARTH;
+      const march: { r: number; rock: number; ice: number; total: number }[] = [];
+      {
+        // BUDGET CONSERVATION: the marching dam DEPLETES the pile. Each product takes at most what is left
+        // of each disc component (rock, ice) — so Σ(minted) ≤ the disc budget, and the isolation mass
+        // (∝ Σ^1.5) can't over-mint the super-linearly-amplified inner rock pile. This also produces the
+        // dip physically: the inner products exhaust the (concentrated) rock, so the mid-chain thins until
+        // ice condenses past the accretion-temperature front and recovers the outer products.
+        const disc_solid = f_disc * m_star_earth(M_star) * COMP_Z;
+        let rem_rock = disc_solid * COMP_F_ROCK, rem_ice = disc_solid * (1 - COMP_F_ROCK);
+        const ROCK_TAKE = (globalThis as any).__ROCK_TAKE || 0.40;   // fraction of the remaining rock each product takes
+        const MIN_SEED = (globalThis as any).__MIN_SEED || 0.05;     // smallest viable rock seed (M⊕)
+        let Rm = R_dam, guard = 0;
+        while (guard++ < 80 && rem_rock > 1e-9) {
+          // ROCK SEED: the dam takes a FRACTION of the remaining pile each step, so the rock declines
+          // quickly but asymptotically — never quite zero. The march ENDS when the seed falls below the
+          // smallest viable planetesimal: past there (≈ beyond h) water is still available, but there is
+          // no rock seed left for it to accrete onto, so no further product forms (the emergent outer edge).
+          const rk = rem_rock * ROCK_TAKE;
+          if (rk < MIN_SEED) break;
+          rem_rock -= rk;
+          // ICE accretes onto the seed where the accretion-heating has dropped below freezing (T_acc<270,
+          // from factory_product) — the flux-swept water (rem_ice, plentiful) freezing on. Capped at what's left.
+          const iso = factory_product(Rm, M_star, omega, f_disc);
+          const ic = Math.min(iso.ice, Math.max(rem_ice, 0));
+          rem_ice -= ic;
+          march.push({ r: Rm, rock: rk, ice: ic, total: rk + ic });
+          const Mi = Math.max(rk + ic, 1e-9);
+          const Rh = Rm * Math.pow(Mi / (3 * M_star_E), 1.0 / 3.0);
+          Rm += Math.max(MARCH_SPACING * Rh, Rm * 0.03);   // Hill step, floored so it always advances
+        }
       }
-      const total_solid = sorted_in.reduce((s, p) => s + fp_solid[p.name], 0) || 1;
-      const vintage: Record<string, number> = {};
+      const total_solid = march.reduce((s, m) => s + m.total, 0) || 1;
+      // Match each observed planet to its nearest (unclaimed) generated position.
+      const matchOf: Record<number, Planet> = {};
+      const claimed = new Set<number>();
+      for (const p of [...kbo_bodies].sort((a, b) => a.r - b.r)) {
+        let best = -1, bd = Infinity;
+        for (let i = 0; i < march.length; i++) {
+          if (claimed.has(i)) continue;
+          const d = Math.abs(Math.log((p.r || 1e-9) / march[i].r));
+          if (d < bd) { bd = d; best = i; }
+        }
+        if (best >= 0) { matchOf[best] = p; claimed.add(best); }
+      }
       let cum_solid = 0;
-      for (const p of sorted_in) {
-        cum_solid += fp_solid[p.name];
-        vintage[p.name] = disp_t * cum_solid / total_solid;
-      }
-      for (const p of kbo_bodies) {
-        const rr = p.r, observed = p.observed || 0;
-        // ONE FACTORY everywhere (no special cases): the shared isolation-mass product. Rock seeds
-        // every body; ice mantles it past the snow line. Inverted planets, exterior KBOs and outer
-        // moons all mint through the same factory_product.
-        const iso = factory_product(p.r, M_star, omega, f_disc);
-        let rock = iso.rock;
-        let ice = iso.ice;
-        let peb = 0;
+      for (let i = 0; i < march.length; i++) {
+        const m = march[i];
+        const rr = m.r;
+        cum_solid += m.total;
+        const t_form = disp_t * cum_solid / total_solid;   // marching-dam vintage (inner early, outer late)
+        const matched = matchOf[i];
+        const observed = matched ? (matched.observed || 0) : 0;
+        let rock = m.rock, ice = m.ice, peb = 0;
         let core = rock + ice + peb;
-        const t_form = vintage[p.name];   // marching-dam formation epoch
         let h_he = (core > gas_threshold_mass(rr, M_star, f_disc))
           ? hydrogen_capture(core, t_form, spin, rr, M_star, f_disc, omega) : 0;
-        let total = core + h_he;
+        const total = core + h_he;
         const primordial: Composition = { rock, ice, pebble: peb, h_he, core, total };
-        const stripped = is_stripped({ r: rr, observed }, M_star);
-        if (stripped) {
-          const [rk, ic, pb, hh] = apply_mantle_stripping(rock, ice, peb, h_he, rr, M_star);
-          rock = rk; ice = ic; peb = pb; h_he = hh; core = rock + ice + peb; total = core + h_he;
-        }
+        // No vaporization/gravitational stripping here: is_stripped (T_eq > T_STRIP) is for irradiated
+        // rocky cascade planets, not the inverted factory's pile-up products. Leaving it in also broke
+        // forward purity (it only fired on the filled/matched positions via post-formation).
+        const stripped = false;
         const comp = classify_slot(
-          { filled: true, slot_r: rr, r_used: rr, observed, stripped,
+          { filled: !!matched, slot_r: rr, r_used: matched ? matched.r : rr, observed, stripped,
             predicted: total, rock, ice, pebble: peb, h_he },
           primordial, r_snow_k, false, migrants);
         results.push({
           slot_n: -Math.max(0.01, Math.log(rr / Math.max(R_dam, 1e-6)) / Math.log(1 / CASCADE_RATIO)),
-          slot_r: rr, r_used: rr, filled: true, name: p.name,
+          slot_r: rr, r_used: matched ? matched.r : rr,
+          observed_r: matched ? matched.r : rr, filled: !!matched, name: matched ? matched.name : `(march ${i})`,
           rock, ice, pebble: peb, core, t_form, h_he,
           predicted: total, observed,
           err_pct: observed > 0 ? (total - observed) / observed * 100 : 0,
           implied_dM: observed > 0 ? observed - total : 0,
           stripped, in_void: false, exterior: true, primordial,
-          interpretation: `phase-3 nebula product (inverted, ${comp})`,
+          interpretation: `phase-3 nebula product (inverted march, ${comp})`,
+        });
+      }
+      // Observed bodies the march never reached (beyond the disc taper) — honest forward MISSES (pred 0).
+      for (const p of kbo_bodies) {
+        if (Object.values(matchOf).indexOf(p) >= 0) continue;
+        const observed = p.observed || 0;
+        results.push({
+          slot_n: -Math.max(0.01, Math.log((p.r || R_dam) / Math.max(R_dam, 1e-6)) / Math.log(1 / CASCADE_RATIO)),
+          slot_r: p.r, r_used: p.r, observed_r: p.r, filled: true, name: p.name,
+          rock: 0, ice: 0, pebble: 0, core: 0, t_form: disp_t, h_he: 0,
+          predicted: 0, observed,
+          err_pct: observed > 0 ? -100 : 0, implied_dM: observed,
+          stripped: false, in_void: false, exterior: true,
+          primordial: { rock: 0, ice: 0, pebble: 0, h_he: 0, core: 0, total: 0 },
+          interpretation: `beyond the marched dam — not a factory product of this disc (outer/scattered population)`,
         });
       }
     } else {
@@ -2133,15 +2196,25 @@ function budgetFit(planets: Planet[], budget: Budget,
         const m = p.observed || 0;
         if (m > 0 && m < M_STELLAR_BOUNDARY && (p.r > a_bin || p.r >= r_snow_pre) && p.r > barrier_r) barrier_r = p.r;
       }
-      let frag: Planet | null = null;        // the single innermost qualifying candidate
+      // The observed fission product must sit near the UNIFIED fling position (fission_product_radius —
+      // the same law the forward synthesis below uses), NOT within a_bin. The old a_bin gate excluded
+      // FLUNG products (47 UMa b @ 2.1 ≫ a_bin 0.31) so they fell through to a cascade slot, while the
+      // forward path correctly synthesised them — the two paths disagreed. R_pos handles close (deep)
+      // and flung (super-Keplerian) on one law.
+      // FIRST DIBS by POSITION: when fission fires (in_window), the forward-predicted fission product
+      // CLAIMS the observed giant nearest its PREDICTED position R_pos = fission_product_radius (from
+      // spin + composition) — before the cascade matcher gets it, and NOT merely the innermost. A flung
+      // product (47 UMa b @ 2.1 ≈ R_pos 2.13) is the fission product even with no closer giant; a close
+      // one (τ Boo) claims the close giant. No a_bin/snow gates (they dropped flung products to a cascade
+      // slot); in_window already restricts this to fissioning systems (Sol/HR 8799 are out).
+      const R_pos_frag = (R_A_pre > 0) ? fission_position(M_pre, lambda as number, R_A_pre) : a_bin;
+      let frag: Planet | null = null;        // the giant nearest the predicted fission position
       if (in_window) for (const p of planets) {
         if (p.core || p.kbo || p.fragment) continue;
         const mo = p.observed || 0;
         if (mo < FRAG_GIANT_MIN || mo >= M_STELLAR_BOUNDARY || !(p.r > 0)) continue;
-        if (p.r >= r_snow_pre) continue;     // cold giants = cascade slot-0 (e.g. HD 134987 c)
-        if (barrier_r > 0 && !(p.r < barrier_r)) continue;  // spared only behind a real outer barrier
-        if (p.r > a_bin) continue;           // beyond the close-fission reach ⇒ not a fragment
-        if (frag === null || p.r < frag.r) frag = p;   // keep the INNERMOST qualifier
+        if (barrier_r > 0 && !(p.r < barrier_r)) continue;  // spared behind a real outer cascade barrier
+        if (frag === null || Math.abs(Math.log(p.r / R_pos_frag)) < Math.abs(Math.log(frag.r / R_pos_frag))) frag = p;
       }
       if (frag) frag.fragment = true;        // sub-stellar core fragment ⇒ a shared-core element
       // FORWARD low-spin fragment synthesis — predict the hot Jupiter from the INPUTS alone, with
@@ -2160,12 +2233,11 @@ function budgetFit(planets: Planet[], budget: Budget,
           && !core_fragments(lambda) && in_window && isFinite(a_bin) && a_bin > 0) {
         const m_frag = fragment_overflow_mass(M_pre, lambda);
         if (m_frag >= FRAG_GIANT_MIN) {
-          // Position from the UNIFIED centrifugal-magnetic launch (no migration): the fragment is
-          // flung from R_A by centrifugal force, the dynamo field extending it as the launch turns
-          // super-Keplerian (R_co/R_A → 1). Replaces the old close-park (0.63·R_co) AND the separate
-          // threshold-edge √(a_bin·R_c) fling — one law, position rising with spin, calibrated on the
-          // slot-zero-anchored set (ups And/55 Cnc/47 UMa).
-          const r_park = fission_product_radius(M_pre, lambda, alfven_radius(M_pre, lambda));
+          // Position from the REGIME-AWARE fission_position (no migration): a fission BINARY sits at the
+          // binary separation a_bin (concentration regime, τ Boo) and is centrifugally flung only in the
+          // propeller regime (in_fission_edge, 47 UMa → 2.1 AU). Replaces the old close-park (0.63·R_co)
+          // AND the bare fling law (which extrapolated to ≈0 at deep sub-Keplerian spin, e.g. τ Boo).
+          const r_park = fission_position(M_pre, lambda, alfven_radius(M_pre, lambda));
           planets = [...planets,
             { name: "Hot Jupiter (predicted)", r: r_park, observed: m_frag, fragment: true }];
         }
@@ -2240,6 +2312,10 @@ function budgetFit(planets: Planet[], budget: Budget,
     let R_A_mag: number | null = null;
     let f_disc_derived: number | null = null;
     let M_core_earth = 0;   // hoisted: needed below for the outer-zone (pebble/KBO) budget
+    // CONSERVED-BUDGET corrector state (hoisted): the accretion-halo metals and the pebble/KBO split
+    // efficiencies, recomputed into the true Kuiper LEFTOVER (halo − Σ consumed-solid) after the cascade.
+    let halo_metals_conserved = -1;   // Z·(budget − star − fission); −1 ⇒ not the conserved normal branch
+    let eps_PA_conserved = 0, eps_SI_conserved = 0;
     let spin: number;
     if (usePhysicsDam) {
       // Co-primaries — OBSERVED or forward-SYNTHESIZED above — make this a fragmenting binary
@@ -2363,7 +2439,7 @@ function budgetFit(planets: Planet[], budget: Budget,
         // HD 20794: predicts 2278 M⊕ but reservoir only 1446) cannot source it ⇒ no giant fissions.
         // Only a disc that can actually supply it (47 UMa: 808 ≪ 3389) produces the body.
         if (m_pred >= FRAG_GIANT_MIN && m_pred <= reservoir) {
-          const pos = fission_product_radius(M, lambda, alfven_radius(M, lambda));  // unified centrifugal-magnetic launch (replaces √(a_bin·R_c))
+          const pos = fission_position(M, lambda, alfven_radius(M, lambda));  // regime-aware: a_bin (concentration) or centrifugal fling (propeller)
           let outer_r = 0;
           for (const p of planets) {
             if (p.core || p.kbo) continue;
@@ -2420,6 +2496,33 @@ function budgetFit(planets: Planet[], budget: Budget,
     // (inverted: no headwind, nothing leaks → efficient assembly line). No beyond-dam ⇒ no flux.
     if (usePhysicsDam && R_disc_phys != null && f_disc_derived != null && M_core_earth > 0 && parent == null) {
       const Mtot_e = M * M_SUN_TO_EARTH;
+      // CONSERVED, LIFT-GATED DISC BUDGET. There is ONE budget. The star sheds material; the LIFTED
+      // fraction (lift) spreads outward into a disc, the UNLIFTED fraction stays gravitationally bound
+      // and collapses into the fission fragment. A high-lift star (HR 8799, λ≈1.2 → lift≈1) flings its
+      // whole nebula into a big disc; a low-lift star (τ Boo, λ=0.25, M=1.34 → lift≈0) lifts almost
+      // nothing — its nebula stays bound and its shed (0.45%·m⋆) concentrates into the one fragment b,
+      // leaving the cascade only (shed − fragment). So the disc budget is the LIFTED NEBULA plus the shed
+      // remainder after the fragment took its share — conservation off ONE knob (lift), no switch:
+      //   disc = lift·(nebula) + max(0, shed − fragment).
+      // τ Boo: lift→0, fragment≈shed ⇒ disc ≈ shed−fragment (small). HD 60532/Tau Ceti: no fragment ⇒
+      // disc ≈ full shed (enough). HR 8799/Sol: lift→1 ⇒ disc ≈ nebula (unchanged). The fragment is the
+      // ACTUAL formed fission body (0 when none forms), so a low-lift star WITHOUT a hot Jupiter keeps a
+      // shed-sized disc. (OPEN: uses the observed fragment mass — forward purity needs the predicted one.)
+      const nebula = Math.max(0, Mtot_e - (primaryMass as number) * M_SUN_EARTH);   // budget − star
+      const fragment_mass = Math.max(0, M_core_earth - (primaryMass as number) * M_SUN_EARTH);
+      const lift = fission_lift_fraction(M, omega as number);
+      const shed = FISSION_TOTAL_SHED_FRAC * m_star_earth(M);
+      // The shed remainder feeds the cascade ONLY where the nebula didn't (low lift) — the (1−lift) factor
+      // keeps high-lift systems (Sol, HR 8799) on the pure nebula disc, unchanged; low-lift systems get the
+      // shed leftover after the fragment (τ Boo: tiny; HD 60532 with no fragment: full shed → giants).
+      const disc_budget = lift * nebula + (1 - lift) * Math.max(0, shed - fragment_mass);
+      const halo_metals = COMP_Z * disc_budget;                 // disc-available solids (rock+ice)
+      if (!inverted) { set_disc_metals(halo_metals); halo_metals_conserved = halo_metals; }
+      else reset_disc_metals();
+      const M_d_nebula = Math.max(0, Mtot_e - M_core_earth);    // (kept for the pebble/KBO split below)
+      // The pre-cascade pebble/KBO budget is a PROVISIONAL split of the whole halo; after the cascade
+      // we know Σ(consumed solid) and re-set it to the true leftover (halo − consumed). Provisional uses
+      // the old beyond-dam slice so a system whose slots happen to consume ≈ the inner disc is unchanged.
       const M_beyond = Math.max(0, Mtot_e - M_core_earth - f_disc_derived * Mtot_e);
       const S_outer = COMP_Z * M_beyond;                        // outer solids (full f_rock:1−f_rock ratio)
       const P_dam = Math.sqrt(Math.pow(R_disc_phys, 3) / Math.max(M, 1e-9));   // yr (model period convention)
@@ -2437,6 +2540,7 @@ function budgetFit(planets: Planet[], budget: Budget,
         // the star. ε_PA = √(R_A/R_disc) — Sol (0.2/30) ≈ 0.08, Kepler-90 (0.2/1.2) ≈ 0.41. This is
         // the budget-split knob that lets a compact disc keep the recycled flux and build big planets.
         const eps_PA = Math.min(0.9, Math.sqrt(R_A_used / Math.max(R_disc_scale, 1e-9)));
+        eps_PA_conserved = eps_PA; eps_SI_conserved = eps_SI;   // remembered for the leftover corrector
         set_pebble_flux_budget(eps_PA * (1 - eps_SI) * S_outer);
         set_kbo_budget(eps_SI * S_outer);                       // the 1% the SI retains (KBO factory ceiling)
         set_si_retention(eps_SI);
@@ -2449,6 +2553,7 @@ function budgetFit(planets: Planet[], budget: Budget,
       reset_pebble_flux_budget();                               // sub-cascade → legacy disc-ice flux
       reset_kbo_budget();
       reset_si_retention();                                     // sub-cascade moons: no KBO-style decline
+      reset_disc_metals();                                      // sub-cascade → legacy f_disc·budget·Z availability
     }
     // SUHL PARAMETRIC SUBHARMONIC (wavelength doubling) — set the cascade-wave order FORWARD, from the
     // cavity geometry and the field, never from observed planets. The 1×→2× onset is a 2-D FARADAY
@@ -2483,30 +2588,33 @@ function budgetFit(planets: Planet[], budget: Budget,
       // formation clock → allocate. A bare system and a populated one get the IDENTICAL
       // disc geometry, snow line and slot masses; the planets only fill what physics laid.
       f = f_disc_derived;
+      set_mdot(Mdot_of(f));
       set_snow_line(snow_of(f));
       set_mdot(Mdot_of(f));
       const om_slot = omega;
       fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot, defer_post_formation: true });
-      // INVERTED in-situ: the observed bodies are the dense pile-up's in-situ factory
-      // products. The self-similar reservoir under-counts that compressed pile, so close
-      // f_disc to the observed in-situ total (snow line stays frozen from the derived reservoir).
-      // Normal/forward systems keep the pure derived f_disc — only the inverted dense pile
-      // is closed to its products. (No effect when there are no observed targets.)
-      if (inverted) {
-        const tot = sel(fit).reduce((a, s) => a + (s.observed || 0), 0);
-        if (tot > 0) {
-          const tol = Math.max(1e-6, 0.001 * tot);
-          let lo = 1e-5, hi = 1.0;
-          for (let i = 0; i < 60; i++) {
-            const fm = Math.sqrt(lo * hi);
-            const f2 = slot_aware_fit(planets, M, spin, fm, { auto_compress: false, omega: om_slot, defer_post_formation: true });
-            const e = sel(f2).reduce((a, s) => a + (s.predicted - (s.observed || 0)), 0);
-            f = fm; fit = f2;
-            if (Math.abs(e) < tol) break;
-            if (e > 0) hi = fm; else lo = fm;
-          }
-        }
+      // CONSERVED-BUDGET LEFTOVER CORRECTOR. The slots have now consumed Σ(solid core) from the halo —
+      // direct disc material plus whatever pebble flux they caught. What's LEFT of the halo is the
+      // Kuiper/pebble reservoir: leftover = halo − Σ(consumed solid). The provisional pre-cascade split
+      // used the old beyond-dam slice; re-set the pebble/KBO budgets to the true leftover and re-run so
+      // the KBO factory and the recycled pebble flux both draw from a conserved remainder (no double-
+      // count of the beyond-dam metals). One predictor-corrector pass — the pebble↔core coupling is
+      // second-order.
+      if (halo_metals_conserved >= 0) {
+        const consumed = fit.slots.reduce((a, s) =>
+          (s.filled && !s.exterior && !s.external) ? a + Math.max(0, s.core || 0) : a, 0);
+        const leftover = Math.max(0, halo_metals_conserved - consumed);
+        set_pebble_flux_budget(eps_PA_conserved * (1 - eps_SI_conserved) * leftover);
+        set_kbo_budget(eps_SI_conserved * leftover);
+        set_si_retention(eps_SI_conserved);
+        fit = slot_aware_fit(planets, M, spin, f, { auto_compress: false, omega: om_slot, defer_post_formation: true });
       }
+      // FORWARD PURITY: the inverted regime now keeps the PURE DERIVED f_disc — no closing to the
+      // observed in-situ total. (Removed the bisection that solved f_disc so Σ(predicted)=Σ(observed):
+      // it made the prediction depend on the observed planets, so a bare run and a populated run gave
+      // different f_disc — 0.033 vs 0.189 for TRAPPIST — and thus different masses. The derived
+      // reservoir under-counts the compressed pile [open: the magnitude calibration], but it is now
+      // identical forward and with-observed, which is the property we need first.)
     } else {
       // SUB-CASCADE fallback (gas-giant satellite disc — parent-fed, no stellar dam):
       // f_disc still closed to the parent-fed products by bisection. Targets: the
@@ -2542,6 +2650,7 @@ function budgetFit(planets: Planet[], budget: Budget,
     reset_pebble_flux_budget();  // scope the outer-sourced pebble flux to this fit
     reset_kbo_budget();          // scope the KBO budget to this fit
     reset_si_retention();        // scope the KBO drift-retention (M_G·ε_SI) to this fit
+    reset_disc_metals();         // scope the conserved accretion-halo metals to this fit
     // The Davis dam is fixed by the budget − core − captured-planets (f_disc-
     // independent). The outermost body's distance from it is the fit-quality metric —
     // no longer forced to zero by an anchor.
@@ -2565,7 +2674,24 @@ function budgetFit(planets: Planet[], budget: Budget,
     const hasCoPrimary = planets.some(p => p.core && (p.observed || 0) > 0);
     const M_disc_host = (hasCoPrimary && primaryMass != null && isFinite(primaryMass) && primaryMass > 0)
       ? primaryMass : M;
-    const H_reservoir = f * m_star_earth(M_disc_host);
+    // CONSERVED BUDGET: the fission products draw their H ENVELOPE out of the bucket BEFORE the cascade
+    // giants fill from it — one budget drawn down in order (star → fission → disc), not three independent
+    // draws. (Without this the disc H reservoir double-counted the gas already locked in the fission
+    // product, over-feeding the cascade giants — the ups And c/d/e over-prediction.)
+    // CONSERVED, LIFT-GATED GAS (mirrors the solid disc budget above). The disc's gas reservoir is the
+    // LIFTED nebula gas plus the shed gas the fragment didn't take: H = lift·(f·m⋆) + (1−Z)·(shed − frag).
+    // A high-lift star (Sol, HR 8799) keeps its full lifted reservoir; a low-lift star with a hot Jupiter
+    // (τ Boo) has lift≈0 AND its shed gas is locked in b ⇒ ~no disc gas, so the small cores can't runaway-
+    // gorge into giants — the disc stays small. A low-lift star WITHOUT a fragment (HD 60532) still gets
+    // the full shed gas ⇒ it can build giants. The fragment's own gas is removed via (shed − frag), so we
+    // no longer separately subtract fission_H (that was the f·m⋆-scale draw-down; this is the shed-scale).
+    const shed_gas_total = FISSION_TOTAL_SHED_FRAC * m_star_earth(M_disc_host);
+    const fragment_total = fit.slots
+      .filter(s => s.core_fragment)
+      .reduce((a, s) => a + Math.max(0, s.predicted || 0), 0);
+    const gas_lift = fission_lift_fraction(M_disc_host, spin);
+    const H_reservoir = Math.max(0, gas_lift * f * m_star_earth(M_disc_host)
+                                    + (1 - gas_lift) * (1 - COMP_Z) * Math.max(0, shed_gas_total - fragment_total));
     const Hcons = apply_hydrogen_conservation(fit.slots, H_reservoir, M_disc_host, spin, f);
     // RE-CLASSIFY after the H-cap: classify_slot ran in the cascade with the PRE-cap mass, so a
     // far-dam slot that wanted a stellar gas envelope but lost it to the dam-slot kept a stale

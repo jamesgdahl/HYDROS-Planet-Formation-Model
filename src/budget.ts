@@ -169,7 +169,13 @@ function in_low_spin_fission_window(lambda: number, M_star_msun: number, R_A: nu
   // (it dropped ups And/47 UMa below threshold once their HJ-inferred f_rock made the core dense),
   // and never worked cleanly. The lift force balance + the scattering edge are the fission criteria.
   const hot = COMP_MDOT > 0 && core_accretion_temperature(M_star_msun, lambda, COMP_MDOT) > T_SILICA_BOIL;
-  const concentrating = hot && fission_lift_fraction(M_star_msun, lambda) < FISSION_CONC_LIFT_MAX;
+  // The unlifted (concentrated) lump parks at the magnetospheric edge R_A. If R_A is inside the stellar
+  // Roche limit, even the concentrated material is tidally sheared / falls onto the star — no lump (the
+  // low-spin packed cascades Kepler-90 / HD 69830 die here; τ Boo's R_A clears Roche and its 1890 M⊕
+  // hot Jupiter survives). Same physics as the fling-side Roche gate in in_fission_edge.
+  const r_roche = roche_limit_au(M_star_msun);
+  const concentrating = hot && fission_lift_fraction(M_star_msun, lambda) < FISSION_CONC_LIFT_MAX
+                            && (r_roche <= 0 || R_A > r_roche);
   return in_fission_edge(M_star_msun, lambda, R_A) || concentrating;
 }
 // Centrifugal radius = the Davis Dam. R_wind(M) carries the SIS M³ mass-scaling;
@@ -254,7 +260,31 @@ function in_fission_window(M_star_msun: number, lambda: number, R_A: number): bo
 const FISSION_EDGE_LO = 0.62;     // R_co/R_A floor for threshold-edge fission (≈ spin 0.7 scattering limit)
 function in_fission_edge(M_star_msun: number, lambda: number, R_A: number): boolean {
   if (!(R_A > 0)) return false;
-  return corotation_radius(M_star_msun, lambda) / R_A >= FISSION_EDGE_LO;
+  if (corotation_radius(M_star_msun, lambda) / R_A < FISSION_EDGE_LO) return false;
+  // A fission product CANNOT coalesce inside the proto-star's Roche limit — tidal shear tears any lump
+  // apart there (and below the surface it is simply inside the star). The shed material forms puffy
+  // (ρ ≈ the proto-star's, both proto-material), so d_Roche ≈ 2.44·R_star. When the centrifugal launch
+  // lands the product inside d_Roche it produces NO body. This is what separates the genuinely flung
+  // fission systems (47 UMa 2.1 AU, μ Arae / 55 Cnc / ups And ~0.06–0.1 AU — all well outside) from
+  // low-spin packed cascades whose R_pos collapses to inside the star (Kepler-90 0.004 AU, HD 69830
+  // 0.002 AU): those are read as cascades, not fission, with no size floor needed.
+  const r_roche = roche_limit_au(M_star_msun);
+  if (r_roche > 0 && !(fission_product_radius(M_star_msun, lambda, R_A) > r_roche)) return false;
+  return true;
+}
+
+// Where the fission product SITS — REGIME-AWARE. A core fragment is a ROTATIONAL FISSION BINARY, so in
+// the CONCENTRATION regime (low spin / low lift — τ Boo) it sits at the fission binary separation
+// a_bin = A_BIN_COEF·√M·λ² (τ Boo 0.050 AU ≈ obs 0.046), NOT at any magnetospheric radius — R_A landing
+// near 0.040 there was a coincidence. Only in the FLING / propeller regime (in_fission_edge: R_co/R_A at
+// or below the crossing, the genuinely super-Keplerian launch) is the lump thrown out per the centrifugal
+// law (47 UMa → 2.1 AU). The fling law's 1/(x−X0) decay must NOT be extrapolated into the deep-sub-
+// Keplerian concentration regime — there it runs to ≈0 (the stellar centre), which is exactly why
+// τ Boo's forward position came out as a spurious 0.007 AU.
+function fission_position(M_star_msun: number, lambda: number, R_A: number): number {
+  if (!(R_A > 0)) return 0;
+  if (in_fission_edge(M_star_msun, lambda, R_A)) return fission_product_radius(M_star_msun, lambda, R_A);
+  return close_binary_separation(lambda, M_star_msun);
 }
 
 // PREDICTED low-spin hot-Jupiter fragment MASS — the accretion-pressure Hill-overflow lump.
@@ -297,6 +327,17 @@ const FLIFT_MU = 30.0 * 1.66e-24;   // rock-vapour mean molecular weight (~SiO/M
 function stellar_mean_density_cgs(): number {
   const Xr = COMP_Z * COMP_F_ROCK, Xi = COMP_Z * (1 - COMP_F_ROCK), Xh = 1 - COMP_Z;
   return 1.0 / (Xr / FLIFT_RHO_ROCK + Xi / FLIFT_RHO_ICE + Xh / FLIFT_RHO_H);
+}
+// Proto-stellar (T-Tauri) radius and Roche limit in AU, from the composition mean density. The Roche
+// coefficient 2.44 assumes the shed lump forms with ≈ the proto-star's (puffy) density — fission
+// products that fall inside this radius cannot coalesce (see in_fission_edge).
+const FLIFT_AU_CM = 1.495978707e13, ROCHE_COEF = 2.8;
+function stellar_radius_au(M_star: number): number {
+  if (!(COMP_MDOT > 0)) return 0;   // no composition context (legacy path)
+  return Math.pow(M_star * FLIFT_MSUN / ((4 / 3) * Math.PI * stellar_mean_density_cgs()), 1 / 3) / FLIFT_AU_CM;
+}
+function roche_limit_au(M_star: number): number {
+  return ROCHE_COEF * stellar_radius_au(M_star);
 }
 function fission_lift(M_star: number, lambda: number): number {
   if (!(COMP_MDOT > 0)) return 1.0;   // no Ṁ context (legacy path) ⇒ treat as fully lifted (no concentration)

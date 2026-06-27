@@ -34,8 +34,15 @@ function factory_product(r, M_star, omega, f_disc) {
     const R_A = alfven_radius(M_star, omega);
     const r_visc = viscous_snow_line(M_star, f_disc);
     const R_in = Math.max(Math.min(R_A, R_disc), 1e-9); // inner dam
-    const R_outer = Math.max(R_A, R_disc); // outer dam (Davis in normal, Alfvén in inverted)
     const R_c = disc_centrifugal_radius(M_star, omega); // centrifugal disc extent (Hill-capped for sub-cascades)
+    // OUTER boundary of the oligarchic (isolation-mass) zone. In the NORMAL regime the Davis Dam (R_disc)
+    // is the outer wall and KBOs begin just beyond it. In the INVERTED regime the Davis Dam starts inside
+    // R_A and MARCHES OUTWARD, crossing R_A (the system un-inverts at the crossing) and minting isolation-
+    // mass bodies the whole way to the disc's physical edge R_c — so R_A is a crossing, NOT a wall, and the
+    // streaming-instability/KBO zone only begins at R_c. (Without this the march was capped at R_A and every
+    // body past it — e.g. TRAPPIST e/f/g/h beyond R_A=0.025 — was wrongly minted as ~0 SI dust.)
+    const inverted_here = R_A > R_disc;
+    const R_outer = inverted_here ? Math.max(R_c, R_A) : Math.max(R_A, R_disc);
     const M_star_E = M_star * M_SUN_EARTH; // central mass in M⊕ (Hill dynamics)
     // COMPOSITION SPLIT (same in both zones): ROCK is refractory and seeds every radius;
     // ICE mantles it only past the viscous snow line. fr = rock fraction of the local solid.
@@ -59,15 +66,59 @@ function factory_product(r, M_star, omega, f_disc) {
         const M_G = M_G_g / EARTH_G_PER_ME;
         return { total: M_G, rock: M_G * fr, ice: M_G * (1 - fr) };
     }
-    // INTER-DAM ZONE: oligarchic isolation mass. The disc metals (f_disc·budget·Z) spread as
-    // Σ ∝ r⁻² over the capture region; coagulation runs to the local isolation mass.
-    const R_out = Math.max(R_c, R_in * 1.0001);
-    const lnD = Math.log(R_out / R_in);
-    if (!(lnD > 0))
-        return { total: 0, rock: 0, ice: 0 };
+    // INTER-DAM ZONE: oligarchic isolation mass over the local solid surface density Σ; M_iso ∝ (r²·Σ)^1.5.
     const solid = f_disc * m_star_earth(M_star) * COMP_Z; // disc metals budget
-    const S_base = solid / (2 * Math.PI * lnD) / (r * r); // Σ_solid ∝ r⁻², normalized to disc metals
-    const S_solid = (r > r_visc) ? S_base : S_base * COMP_F_ROCK; // rock-only inside snow, rock+ice past
+    if (inverted_here) {
+        // INVERTED PILE (the inverted-regime composition law). The disc piles against the INNER Davis Dam,
+        // so the pile surface density is CONCENTRATED there and falls off outward (scale R_pile ~ R_in):
+        //   Σ_pile ∝ r⁻¹·e^(−r/R_pile), normalized to the disc metals over [R_in, R_outer].
+        // ROCK is refractory and tracks the pile everywhere, so the rock content DECLINES outward (the
+        // OPPOSITE of the normal regime, where the spread disc gives a rising isolation mass). ICE condenses
+        // only past the ACCRETIVE snow line r_acc — where the PILE'S accretion heating drops below freezing
+        // (pile_snow_line; NOT the irradiation snow line) — and then RISES outward (f_cond: 0→1), mantling
+        // the now-smaller rock seeds. Net Σ_solid = pile·[f_rock + (1−f_rock)·f_cond]: rock-high inner →
+        // a DIP at r_acc (rock thinned, ice not yet condensed) → ice recovery outer. (Matches TRAPPIST's
+        // big b/c → small d → recovering e/f/g pattern, which a single monotonic profile cannot.)
+        const INV_PILE_SCALE = globalThis.__INV_PILE || 0.8; // pile scale in units of R_in (<1 ⇒ declining rock); TRAPPIST-calibrated
+        const T_ACC_COEF = globalThis.__T_ACC || 1.0e4; // accretion-heating temperature coefficient; sets the ice (T_acc<270) transition
+        const R_pile = Math.max(INV_PILE_SCALE * R_in, 1e-9);
+        const norm = R_pile * (Math.exp(-R_in / R_pile) - Math.exp(-R_outer / R_pile));
+        if (!(norm > 0))
+            return { total: 0, rock: 0, ice: 0 };
+        const Sig_pile = solid * Math.exp(-r / R_pile) / (2 * Math.PI * r * norm); // ∝ r⁻¹·e^(−r/R_pile), declining
+        const Sig_rock = Sig_pile * COMP_F_ROCK; // refractory: tracks the pile (declines)
+        // ICE is TEMPERATURE-gated, not snow-line-gated. The pile is heated by planetesimal accretion —
+        // T_acc ∝ (Σ_rock·Ω²)^¼, high where rock piles densely, dropping as the rock declines outward. Ice
+        // can accrete onto the seeds only once T_acc falls below water freezing (~270 K) — i.e. once the rock
+        // content has thinned enough (a vaporization threshold like the rock-fission boiling point, NOT a
+        // fixed radius). The water comes from the BROAD gas reservoir (extends past the compact rock pile),
+        // and the condensed fraction RISES as T_acc drops further below 270. So Σ_solid = high-rock inner →
+        // DIP where rock has thinned but T_acc is still > 270 → ice recovery once T_acc < 270 on small seeds.
+        const Sig_rock_cgs = Sig_rock * EARTH_G_PER_ME / (AU_CM * AU_CM);
+        const Omega2 = G_CGS * (M_star * M_SUN_G) / Math.pow(r * AU_CM, 3); // s⁻²
+        const T_acc = T_ACC_COEF * Math.pow(Math.max(Sig_rock_cgs, 1e-30) * Omega2, 0.25); // K
+        const ice_frac = (T_acc < 270) ? (1 - T_acc / 270) : 0; // rises as T_acc drops below freezing
+        // Water vapour is flux-swept OUTWARD out of the hot inner pile and freezes/piles in the cold zone, so
+        // the water reservoir is CONCENTRATED at the cold front (~R_A region), NOT spread over the broad gas
+        // disc — that concentration is what lets the ice mantles recover the outer planets to ~1 M⊕.
+        const R_gas = (globalThis.__INV_WATER || 2.0) * R_A; // water piled at the cold front (~R_A), TRAPPIST-calibrated
+        const gnorm = R_gas * (Math.exp(-R_in / R_gas) - Math.exp(-R_outer / R_gas));
+        const Sig_water = (gnorm > 0) ? solid * (1 - COMP_F_ROCK) * Math.exp(-r / R_gas) / (2 * Math.PI * r * gnorm) : 0;
+        const Sig_ice = Sig_water * ice_frac;
+        const Sig_solid = Sig_rock + Sig_ice;
+        if (Sig_solid <= 0)
+            return { total: 0, rock: 0, ice: 0 };
+        const M_iso = Math.pow(2 * Math.PI * ISO_HILL_C * r * r * Sig_solid, 1.5) / Math.sqrt(3 * M_star_E);
+        const fr_loc = Sig_rock / Sig_solid;
+        return { total: M_iso, rock: M_iso * fr_loc, ice: M_iso * (1 - fr_loc) };
+    }
+    // NORMAL / sub-cascade inter-dam: LBP self-similar Σ ∝ r⁻¹·e^(−r/R_c), R_c = centrifugal disc extent.
+    const R_c_prof = Math.max(R_c, R_in * 1.0001);
+    const norm = R_c_prof * (Math.exp(-R_in / R_c_prof) - Math.exp(-R_outer / R_c_prof));
+    if (!(norm > 0))
+        return { total: 0, rock: 0, ice: 0 };
+    const S_base = solid * Math.exp(-r / R_c_prof) / (2 * Math.PI * r * norm);
+    const S_solid = (r > r_visc) ? S_base : S_base * COMP_F_ROCK;
     if (S_solid <= 0)
         return { total: 0, rock: 0, ice: 0 };
     const M_iso = Math.pow(2 * Math.PI * ISO_HILL_C * r * r * S_solid, 1.5) / Math.sqrt(3 * M_star_E);

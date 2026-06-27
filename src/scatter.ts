@@ -124,6 +124,11 @@ function apply_scattering(results: FitSlot[], M_star: number, R_A_now: number,
   const v_orbit_r = (r: number) => (29.785 * Math.sqrt(M_PRIM_TO_MSUN)) * Math.sqrt(M_star / r);
   for (let i = 0; i < results.length - 1; i++) {
     const outer = results[i], inner = results[i + 1];
+    // Factory / KBO products (exterior) are NOT cascade planets — the inverted compressed pile has no
+    // empty Alfvén-Dam slot flinging sandblasting planetesimals, so skip them. (Leaving them in fired
+    // the Mercury bombardment on the inner inverted-factory products and, because it keys on `filled`,
+    // broke forward purity — only the matched/observed positions got sandblasted to iron cores.)
+    if (outer.exterior || inner.exterior) continue;
     if (!outer.filled || inner.filled) continue;   // survivor is the FILLED body; impactor an empty slot
     if (outer.observed <= 0) continue;
     const outer_rocky = outer.primordial.rock + outer.primordial.pebble;
